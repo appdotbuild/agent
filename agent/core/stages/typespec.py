@@ -3,7 +3,7 @@ import re
 
 PROMPT = """
 Given user application description generate TypeSpec models and interface for the application. Output just a single interface.
-Every decorated @llm_func operates on free-form text messages and it's arguments should be
+Every decorated @llm_func operates on free-form text messages and its arguments should be
 easily extractable from chat messages. Keep argument complexity within what can be extracted / inferred
 from the chat messages directly. When designing the interface expect that every function has a pre- and post-processor.
 
@@ -20,7 +20,7 @@ Bot that records my diet and calculates calories.
 Output:
 <reasoning>
 I expect user to send messages like "I ate a burger" or "I had a salad for lunch".
-LLM can extract and impute the arguments from plain text and pass them to the handler
+LLM can extract and infer the arguments from plain text and pass them to the handler
 "I ate a burger" -> recordDish({name: "burger", ingredients: [
     {name: "bun", calories: 200},
     {name: "patty", calories: 300},

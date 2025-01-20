@@ -3,7 +3,7 @@ import re
 
 
 PROMPT = """
-Based on TypeSpec application definition and drizzle schema, generate a handlervfor {{function_name}} function.
+Based on TypeSpec application definition and drizzle schema, generate a handler for {{function_name}} function.
 
 Handler should satisfy following interface:
 
