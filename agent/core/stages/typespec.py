@@ -68,6 +68,12 @@ class TypespecOutput(TypedDict):
     typespec_definitions: str
     llm_functions: list[str]
 
+def extract_llm_func_names(output: str) -> list[str]:
+    pattern = re.compile(
+        r'@llm_func\(\d+\)\s*(\w+)\s*\(',
+        re.DOTALL,
+    )
+    return pattern.findall(output)
 
 def parse_output(output: str) -> TypespecOutput:
     pattern = re.compile(
@@ -79,8 +85,5 @@ def parse_output(output: str) -> TypespecOutput:
         raise ValueError("Failed to parse output")
     reasoning = match.group(1).strip()
     typespec_definitions = match.group(2).strip()
-    llm_functions = re.findall(
-        r'@llm_func\(\d+\)\s*(\w+)\s*\(',
-        typespec_definitions
-    )
+    llm_functions = extract_llm_func_names(output)
     return TypespecOutput(reasoning=reasoning, typespec_definitions=typespec_definitions, llm_functions=llm_functions)
