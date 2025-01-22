@@ -1,11 +1,17 @@
 from typing import TypedDict
-import re
 
+EXTRACT_USER_FUNCTIONS_TOOL_NAME = "extract_user_functions"
 
 PROMPT = """
 Given TypeSpec application definition for all functions decorated with @llm_func
 generate prompt for the LLM to classify which function should handle user request.
-For each function generate description of user intent.
+
+Structure your response according to the schema, with each @llm_func function having:
+- name: The function name
+- description: A clear description of its purpose and description of user intent
+- examples: Example user requests that should route to this function
+
+Use {EXTRACT_USER_FUNCTIONS_TOOL_NAME} tool to extract functions from the TypeSpec.
 
 Example input:
 
@@ -29,21 +35,55 @@ interface DietBot {
 </typespec>
 
 Example output:
-<functions>
-<function name="recordDish">
-Log user's dish. Examples:
-- "I ate a burger."
-- "I had a salad for lunch."
-- "Chili con carne"
-</function>
-<function name="listDishes">
-List user's dishes. Examples:
-- "What did I eat yesterday?"
-- "Show me my meals for last week."
-</function>
-</functions>
+{
+  "user_functions": [
+    {
+      "name": "logUsersDish",
+      "description": "Log users dish.",
+      "examples": [
+        "I ate a burger.",
+        "I had a salad for lunch.",
+        "Chili con carne"]
+      ]
+    }
+  ]
+}
+
+Application TypeSpec:
+
+<typespec>
+{{typespec_definitions}}
+</typespec>
+
+User request:
+
+{{user_request}}
 """.strip()
 
+TOOLS =[
+        {
+            "name": EXTRACT_USER_FUNCTIONS_TOOL_NAME,
+            "description": "Extracts user functions from the specification.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "user_functions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "The extracted entity name."},
+                                "description": {"type": "string", "description": "The entity description."},
+                                "examples": {"type": "array", "items": {"type": "string"}, "description": "The context in which the entity appears in the text."}
+                            },
+                            "required": ["name", "description", "examples"]
+                        }
+                    }
+                },
+                "required": ["user_functions"]
+            }
+        }
+    ]
 
 class RouterInput(TypedDict):
     application_description: str
@@ -58,15 +98,8 @@ class RouterOutput(TypedDict):
     functions: list[Function]
 
 
-def parse_output(output: str) -> RouterOutput:
-    pattern = re.compile(
-        r"<functions>(.*?)</functions>",
-        re.DOTALL,
-    )
-    match = pattern.search(output)
-    if match is None:
-        raise ValueError("Failed to parse output")
-    functions = match.group(1).strip()
-    functions_pattern = re.compile(r'<function name="(.*?)">(.*?)</function>', re.DOTALL)
-    functions = functions_pattern.findall(functions)
-    return RouterOutput(functions=[Function(name=name, description=description) for name, description in functions])
+def parse_outputs(content_blocks) -> RouterOutput:
+    for content in content_blocks:
+        if content.type == "tool_use" and content.name == EXTRACT_USER_FUNCTIONS_TOOL_NAME:
+            return content.input
+
