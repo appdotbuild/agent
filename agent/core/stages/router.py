@@ -72,9 +72,9 @@ TOOLS =[
                         "items": {
                             "type": "object",
                             "properties": {
-                                "name": {"type": "string", "description": "The extracted entity name."},
-                                "description": {"type": "string", "description": "The entity description."},
-                                "examples": {"type": "array", "items": {"type": "string"}, "description": "The context in which the entity appears in the text."}
+                                "name": {"type": "string", "description": "The extracted function name."},
+                                "description": {"type": "string", "description": "A clear description of its purpose and description of user intent."},
+                                "examples": {"type": "array", "items": {"type": "string"}, "description": "Example user requests that should route to this function."}
                             },
                             "required": ["name", "description", "examples"]
                         }
