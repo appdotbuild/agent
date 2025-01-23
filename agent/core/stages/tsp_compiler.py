@@ -1,44 +1,49 @@
+from enum import Enum, auto
 from typing import TypedDict, Union, List
 from pathlib import Path
 import subprocess
 import re
 import json
 
+class TypeSpecCompilationStatus(Enum):
+    """Status of the TypeSpec compilation process."""
+    SUCCESS = auto()
+    COMPILATION_ERROR = auto()
+    UNKNOWN_ERROR = auto()
+    
 class CompilationResult(TypedDict):
-    success: bool
+    result: TypeSpecCompilationStatus
     errors: List[str]
     file_path: str
+    stdout: str
+    stderr: str
 
 class TypeSpecCompiler:
-    def __init__(self, tsp_path: str = '/usr/local/bin/tsp'):
-        self.tsp_path = tsp_path
+    def __init__(self, cwd: Union[str, Path] = '.'):
+        self.cwd = cwd
         self.error_pattern = re.compile(
             r'(?P<filepath>.+?):(?P<line>\d+):(?P<col>\d+)\s*-\s*(?P<msg>.+)'
         )
 
     def compile(self, file_path: Union[str, Path]) -> CompilationResult:
-        file_path = Path(file_path)
-        if not file_path.exists():
-            return CompilationResult(
-                success=False,
-                errors=[f"File not found: {file_path}"],
-                file_path=str(file_path)
-            )
-
         try:
+            file_path = Path(file_path)
             result = subprocess.run(
-                [self.tsp_path, 'compile', str(file_path)],
-                capture_output=True,
-                text=True,
-                env={'NO_COLOR': '1'}
+                ['tsp', 'compile', str(file_path)], 
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=self.cwd,
+                #env={'NO_COLOR': '1'}
             )
 
-            error_output = result.stderr if result.stderr else result.stdout
+            error_output = result.stderr.decode() if result.stderr else result.stdout.decode()
             if result.returncode == 0 and 'error' not in error_output.lower():
                 return CompilationResult(
-                    success=True,
+                    result=TypeSpecCompilationStatus.SUCCESS,
                     errors=[],
-                    file_path=str(file_path)
+                    file_path=str(file_path),
+                    stdout=result.stdout.decode(),
+                    stderr=result.stderr.decode()
                 )
 
             errors = []
@@ -66,22 +71,24 @@ class TypeSpecCompiler:
                 i += 1
 
             return CompilationResult(
-                success=False,
+                result=TypeSpecCompilationStatus.COMPILATION_ERROR,
                 errors=errors or ["Unknown compilation error"],
-                file_path=str(file_path)
+                file_path=str(file_path),
+                stdout=result.stdout.decode(),
+                stderr=result.stderr.decode()
             )
 
         except subprocess.CalledProcessError as e:
             return CompilationResult(
-                success=False,
+                result=TypeSpecCompilationStatus.UNKNOWN_ERROR,
                 errors=[f"Compilation error: {str(e)}"],
-                file_path=str(file_path)
+                file_path=str(file_path),
             )
         except Exception as e:
             return CompilationResult(
-                success=False,
+                result=TypeSpecCompilationStatus.UNKNOWN_ERROR,
                 errors=[f"Unexpected error: {str(e)}"],
-                file_path=str(file_path)
+                file_path=str(file_path),
             )
 
 if __name__ == '__main__':
@@ -90,6 +97,6 @@ if __name__ == '__main__':
         print("Please provide path to TypeSpec file")
         sys.exit(1)
         
-    compiler = TypeSpecCompiler()
-    result = compiler.compile(sys.argv[1])
-    print(json.dumps(result, indent=2))
+    compiler = TypeSpecCompiler(cwd=sys.argv[1])
+    result = compiler.compile(file_path=sys.argv[2])
+    print(result)
