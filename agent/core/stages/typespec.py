@@ -77,6 +77,11 @@ User application description:
 {{application_description}}
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
+
+Make sure to address following TypeSpec compilation errors:
+<errors>
+{{typespec_errors}}
+</errors>
 """.strip()
 
 
