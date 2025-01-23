@@ -1,4 +1,5 @@
 from enum import Enum, auto
+import os
 from typing import TypedDict, Union, List
 from pathlib import Path
 import subprocess
@@ -6,7 +7,6 @@ import re
 import json
 
 class TypeSpecCompilationStatus(Enum):
-    """Status of the TypeSpec compilation process."""
     SUCCESS = auto()
     COMPILATION_ERROR = auto()
     UNKNOWN_ERROR = auto()
@@ -33,7 +33,7 @@ class TypeSpecCompiler:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self.cwd,
-                #env={'NO_COLOR': '1'}
+                env={**dict(os.environ), 'NO_COLOR': '1'}
             )
 
             error_output = result.stderr.decode() if result.stderr else result.stdout.decode()
@@ -94,7 +94,7 @@ class TypeSpecCompiler:
 if __name__ == '__main__':
     import sys
     if len(sys.argv) < 2:
-        print("Please provide path to TypeSpec file")
+        print("Please provide working directory ands path to TypeSpec file")
         sys.exit(1)
         
     compiler = TypeSpecCompiler(cwd=sys.argv[1])
