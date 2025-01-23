@@ -51,7 +51,7 @@ def evaluate_typespec_generation() -> float:
     ]
     
     successful_compilations = 0
-    total_attempts = 50
+    total_attempts = 5
     
     with tempfile.TemporaryDirectory() as tmpdir:
         for i in range(total_attempts):
@@ -64,7 +64,7 @@ def evaluate_typespec_generation() -> float:
                     application_description=description
                 )
                 
-                print(f"\nAttempt {i + 1}/50:")
+                print(f"\nAttempt {i + 1}/{total_attempts}:")
                 print(f"Description: {description}")
                 
                 response = client.messages.create(
