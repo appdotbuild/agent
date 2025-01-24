@@ -11,7 +11,7 @@ Structure your response according to the schema, with each @llm_func function ha
 - description: A clear description of its purpose and description of user intent
 - examples: Example user requests that should route to this function
 
-Use {EXTRACT_USER_FUNCTIONS_TOOL_NAME} tool to extract functions from the TypeSpec.
+Use extract_user_functions tool to extract functions from the TypeSpec.
 
 Example input:
 

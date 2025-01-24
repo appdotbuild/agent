@@ -7,6 +7,28 @@ Every decorated @llm_func operates on free-form text messages and its arguments 
 easily extractable from chat messages. Keep argument complexity within what can be extracted / inferred
 from the chat messages directly. When designing the interface expect that every function has a pre- and post-processor.
 
+Make sure using correct TypeSpec types for date and time:
+Dates and Times
+- plainDate: A date on a calendar without a time zone, e.g. “April 10th”
+- plainTime: A time on a clock without a time zone, e.g. “3:00 am”
+- utcDateTime: Represents a date and time in Coordinated Universal Time (UTC)
+- offsetDateTime: Represents a date and time with a timezone offset
+- duration:	A duration/time period. e.g 5s, 10h
+NOTE: There are NO other types for date and time in TypeSpec.
+
+TypeSpec basic types:
+- numeric: Represents any possible number
+- integer: Represents any integer
+- float: Represents any floating-point number
+- decimal: Represents a decimal number with arbitrary precision
+- string: Represents a sequence of characters
+- boolean: Represents true and false values
+bytes: Represents a sequence of bytes
+null: Represents a null value
+-unknown: Represents a value of any type
+-void: Used to indicate no return value for functions/operations
+NOTE: Avoid using other types.
+
 TypeSpec is extended with special decorator that indicates that this function
 is processed by language model parametrized with number of previous messages passed to the LLM.
 
@@ -34,20 +56,20 @@ LLM can extract and infer the arguments from plain text and pass them to the han
 
 <typespec>
 model Dish {
-    name: String
-    ingredients: Ingredient[]
+    name: string;
+    ingredients: Ingredient[];
 }
 
 model Ingredient {
-    name: String
-    calories: Int
+    name: string;
+    calories: integer;
 }
 
 interface DietBot {
     @llm_func(1)
     recordDish(dish: Dish): void;
     @llm_func(1)
-    listDishes(from: Date, to: Date): Dish[];
+    listDishes(from: utcDateTime, to: utcDateTime): Dish[];
 }
 </typespec>
 
@@ -55,6 +77,11 @@ User application description:
 {{application_description}}
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
+
+Make sure to address following TypeSpec compilation errors:
+<errors>
+{{typespec_errors}}
+</errors>
 """.strip()
 
 
@@ -68,12 +95,14 @@ class TypespecOutput(TypedDict):
     typespec_definitions: str
     llm_functions: list[str]
 
+
 def extract_llm_func_names(output: str) -> list[str]:
     pattern = re.compile(
         r'@llm_func\(\d+\)\s*(\w+)\s*\(',
         re.DOTALL,
     )
     return pattern.findall(output)
+
 
 def parse_output(output: str) -> TypespecOutput:
     pattern = re.compile(
