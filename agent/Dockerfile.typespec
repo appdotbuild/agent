@@ -1,0 +1,13 @@
+FROM node:20.0.0
+
+RUN apt-get update
+RUN npm install -g @typespec/compiler
+RUN useradd -m -s /bin/bash typespec
+
+COPY --chown=typespec ./templates/tsp_schema /app
+
+USER typespec
+WORKDIR /app
+RUN tsp install
+
+CMD ["tsp", "compile", ".", "--no-emit"]

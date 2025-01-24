@@ -1,0 +1,12 @@
+FROM node:20.0.0
+
+RUN apt-get update
+RUN useradd -m -s /bin/bash botbuild
+
+COPY --chown=botbuild ./templates/app_schema /app
+
+USER botbuild
+WORKDIR /app
+RUN npm install
+
+CMD ["npx", "tsx", "src/main.ts"]
