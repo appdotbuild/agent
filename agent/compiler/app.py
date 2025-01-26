@@ -30,11 +30,3 @@ class CompileTypespecRequest(BaseModel):
 @app.post("/compile/typespec", response_model=CompileResult)
 def compile_typespec(request: CompileTypespecRequest):
     return compiler.compile_typespec(request.payload)
-
-class CompileTypescriptRequest(BaseModel):
-    payload: dict[str, str]
-
-
-@app.post("/compile/typescript", response_model=CompileResult)
-def compile_typescript(request: CompileTypescriptRequest):
-    return compiler.compile_typescript(request.payload)
