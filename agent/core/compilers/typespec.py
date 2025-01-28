@@ -9,7 +9,9 @@ class TypeSpecCompiler:
 
     def compile(self, typespec_schema: str, schema_name: str = 'schema.tsp') -> CompilationResult:
         with open(os.path.join(self.workdir, schema_name), 'w') as f:
-            f.writelines(['import "./helpers.js";', '', typespec_schema])
+            f.write('import "./helpers.js";\n')
+            f.write('\n')
+            f.write(typespec_schema)
         try:
             result = subprocess.run(
                 ['tsp', 'compile', schema_name, '--no-emit'],

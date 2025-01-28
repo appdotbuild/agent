@@ -1,7 +1,10 @@
 import { GenericHandler } from "../common/handler";
-{% for handler in handlers %}
-import {{ handler.name }} from "./{{ handler.name }}"
+{% for handler_name, handler in handlers.items() %}
+import { {{ handler_name }} } from "../handlers/{{ handler.module_name }}";
+{% endfor %}
 
-export const handlers: {[key: string]: GenericHandler<any[], any>} = {{% for handler in handlers %}
-    '{{ handler.name }}': {{ handler.name }},{% endfor %}
+export const handlers: {[key: string]: GenericHandler<any[], any>} = {
+    {% for handler_name in handlers.keys() %}
+    '{{ handler_name }}': {{ handler_name }},
+    {% endfor %}
 };
