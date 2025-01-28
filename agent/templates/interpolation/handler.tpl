@@ -38,3 +38,5 @@ const preProcessor = async (input: Message[]): Promise<[string]> => {
             throw new Error("Unexpected response type");
     }
 };
+
+export const {{handler_name}} = new GenericHandler<[string], string>(handle, preProcessor, postProcessor);
