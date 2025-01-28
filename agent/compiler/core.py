@@ -24,7 +24,7 @@ class Compiler:
             command=["sleep", "1"],
             detach=True,
         )
-        schema_path = "schema.tsp"
+        schema_path, schema = "schema.tsp", schema.replace("'", "\'")
         command = [
             "sh",
             "-c",
@@ -45,7 +45,7 @@ class Compiler:
     def compile_drizzle(self, schema: str):
         with self.tmp_network() as network, self.tmp_postgres() as postgres:
             network.connect(postgres)
-            schema_path = "src/db/schema/application.ts"
+            schema_path, schema = "src/db/schema/application.ts", schema.replace("'", "\'")
             container = self.client.containers.run(
                 self.app_image,
                 command=["sleep", "1"],
