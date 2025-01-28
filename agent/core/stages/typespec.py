@@ -111,7 +111,7 @@ def parse_output(output: str) -> TypespecOutput:
     )
     match = pattern.search(output)
     if match is None:
-        raise ValueError("Failed to parse output")
+        raise ValueError("Failed to parse output, expected <reasoning> and <typespec> tags")
     reasoning = match.group(1).strip()
     typespec_definitions = match.group(2).strip()
     llm_functions = extract_llm_func_names(output)

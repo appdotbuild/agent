@@ -53,7 +53,7 @@ def parse_output(output: str) -> DrizzleOutput:
     )
     match = pattern.search(output)
     if match is None:
-        raise ValueError("Failed to parse output")
+        raise ValueError("Failed to parse output, expected <reasoning> and <drizzle> tags")
     reasoning = match.group(1).strip()
     drizzle_schema = match.group(2).strip()
     return DrizzleOutput(reasoning=reasoning, drizzle_schema=drizzle_schema)
