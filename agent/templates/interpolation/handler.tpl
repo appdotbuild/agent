@@ -1,4 +1,4 @@
-import { Message } from "../common/handler";
+import { Message, GenericHandler } from "../common/handler";
 import { client } from "../common/llm";
 {{handler}}
 
