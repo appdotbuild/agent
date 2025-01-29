@@ -42,7 +42,7 @@ class Application:
         print("Generating Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(preprocessors, handlers)
+        application = self._make_application(application_description, typespec_definitions, drizzle_schema, preprocessors, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,
@@ -52,11 +52,20 @@ class Application:
             "application": application,
         }
 
-    def _make_application(self, preprocessors: dict, handlers: dict):
+    def _make_application(self, application_description: str, typespec_definitions: str, drizzle_schema: str, preprocessors: dict, handlers: dict):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
+
         copytree(self.template_dir, self.generation_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'))
+
+        with open(os.path.join(self.generation_dir, "tsp_schema", "main.tsp"), "a") as f:
+            f.write(typespec_definitions)
+        
+        with open(os.path.join(self.generation_dir, "app_schema/src/db/schema", "application.ts"), "a") as f:
+            f.write(drizzle_schema)
+        
         interpolator = Interpolator(self.generation_dir)
+        
         return interpolator.interpolate_all(preprocessors, handlers)
     
     def _make_typespec(self, application_description: str):
