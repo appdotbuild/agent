@@ -5,7 +5,8 @@
     "drizzle-orm": "^0.38.3",
     "nunjucks": "^3.2.4",
     "pg": "^8.13.1",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "typescript": "^5.7.3"
   },
   "devDependencies": {
     "@types/pg": "^8.11.10",

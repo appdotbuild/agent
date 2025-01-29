@@ -68,6 +68,35 @@ class Compiler:
                 stdout=stdout.decode("utf-8") if stdout else None,
                 stderr=stderr.decode("utf-8") if stderr else None,
             )
+        
+    def compile_typescript(self, files: dict[str, str]):
+        container = self.client.containers.run(
+            self.app_image,
+            command=["sleep", "1"],
+            detach=True,
+        )
+        for path, content in files.items():
+            content = content.replace("'", "\'")
+            command = [
+                "sh",
+                "-c",
+                f"echo '{content}' > {path}"
+            ]
+            container.exec_run(
+                command,
+                environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+            )
+        exit_code, (stdout, stderr) = container.exec_run(
+            ["npx", "tsc", "--noEmit"],
+            demux=True,
+            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+        )
+        container.remove(force=True)
+        return CompileResult(
+            exit_code=exit_code,
+            stdout=stdout.decode("utf-8") if stdout else None,
+            stderr=stderr.decode("utf-8") if stderr else None,
+        )
     
     @contextmanager
     def tmp_network(self, network_name: str = None, driver: str = "bridge"):
