@@ -57,7 +57,7 @@ class Application:
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
         copytree(self.template_dir, self.generation_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'))
         interpolator = Interpolator(self.generation_dir)
-        interpolator.interpolate_all(preprocessors, handlers)
+        return interpolator.interpolate_all(preprocessors, handlers)
     
     def _make_typespec(self, application_description: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
