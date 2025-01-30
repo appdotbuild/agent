@@ -48,6 +48,11 @@ class Node[T]:
             stack.extend(node.children)
         return all_nodes
 
+class TypescriptData(TypedDict):
+    message: dict
+    output: stages.typescript.TypeScriptSchemaOutput
+    feedback: CompileResult
+
 
 class TypespecData(TypedDict):
     message: dict
@@ -69,6 +74,149 @@ class SearchPolicy:
         self.client = TracingClient(client)
         self.compiler = compiler
         self._model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    @staticmethod
+    def run_typescript(
+        messages: list[dict],
+        client: TracingClient,
+        compiler: CompilerService,
+        model: str,
+    ) -> TypescriptData:
+        response = client.messages.create(
+            model=model,
+            max_tokens=8192,
+            messages=messages,
+        )
+        output = stages.typescript.parse_output(response.content[0].text)
+        schema = output["typescript_schema"]
+        feedback = compiler.compile_typescript(schema)
+        return {
+            "message": {"role": "assistant", "content": response.content[0].text},
+            "output": output,
+            "feedback": feedback,
+        }
+        
+    def bfs_typescript(
+        self,
+        init_message: dict,
+        root: Node[TypescriptData],
+        max_depth: int = 3,
+        branch_factor: int = 3,
+        max_workers: int = 5,
+    ) -> Node[TypescriptData]:
+        while True:
+            if root.best_solution().score == 1:
+                break
+            
+            candidates: list[Node[TypescriptData]] = []
+            for node in [root] + root._get_all_children():
+                if (
+                    node.is_terminal
+                    and node.depth < max_depth
+                    and node.data["feedback"]["exit_code"] != 0
+                ):
+                    candidates.append(node)
+            if not candidates:
+                break
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_node: dict[concurrent.futures.Future, Node[TypescriptData]] = {}
+                for node in candidates:
+                    messages = [init_message]
+                    for n in node.get_trajectory():
+                        messages.append(n.data["message"])
+                        messages.append({"role": "user", "content": n.data["feedback"]["stdout"]})
+                    for _ in range(branch_factor):
+                        future_to_node[executor.submit(
+                            SearchPolicy.run_typespec,
+                            messages,
+                            self.client,
+                            self.compiler,
+                            self._model
+                        )] = node
+                for future in concurrent.futures.as_completed(future_to_node):
+                    node = future_to_node[future]
+                    result = future.result()
+                    score = 1 if result["feedback"]["exit_code"] == 0 else 0
+                    child = Node(result, score, parent=node)
+                    node.children.append(child)
+        solution = root.best_solution()
+        langfuse_context.update_current_observation(
+            metadata={"data": solution.data, "depth": solution.depth}
+        )
+        return root.best_solution()
+
+    @staticmethod
+    @observe(capture_input=False)
+    def run_typescript(
+        messages: list[dict],
+        client: AnthropicBedrock,
+        compiler: CompilerService,
+        model: str,
+        *args,
+    ) -> TypespecData:
+        response = client.call_anthropic(
+            model=model,
+            max_tokens=8192,
+            messages=messages,
+        ) try:
+            output = stages.typespec.parse_output(response.content[0].text)
+            schema = "\n".join(['import "./helpers.js";', output["typespec_definitions"]])
+            feedback = compiler.compile_typespec(schema)
+        except Exception:
+            feedback = {"exit_code": 1, "stdout": "Parsing failed.", "stderr": None}
+        return {
+            "message": {"role": "assistant", "content": response.content[0].text},
+            "output": output,
+            "feedback": feedback,
+        }
+        
+    @observe(capture_input=False, capture_output=False)
+    def bfs_typescript(
+        self,
+        init_message: dict,
+        root: Node[TypescriptData],
+        max_depth: int = 3,
+        branch_factor: int = 3,
+        max_workers: int = 5,
+    ) -> Node[TypescriptData]:
+        while True:
+            if root.best_solution().score == 1:
+                break
+            
+            candidates: list[Node[TypescriptData]] = []
+            for node in [root] + root._get_all_children():
+                if (
+                    node.is_terminal
+                    and node.depth < max_depth
+                    and node.data["feedback"]["exit_code"] != 0
+                ):
+                    candidates.append(node)
+            if not candidates:
+                break
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_node: dict[concurrent.futures.Future, Node[TypescriptData]] = {}
+                for node in candidates:
+                    messages = [init_message]
+                    for n in node.get_trajectory():
+                        messages.append(n.data["message"])
+                        messages.append({"role": "user", "content": FIX_FORMAT.format(error=n.data["feedback"]["stdout"])}) #n.data["feedback"]["stdout"]})
+                    for _ in range(branch_factor):
+                        future_to_node[executor.submit(
+                            SearchPolicy.run_typespec,
+                            messages,
+                            self.client,
+                            self.compiler,
+                            self._model
+                        )] = node
+                for future in concurrent.futures.as_completed(future_to_node):
+                    node = future_to_node[future]
+                    result = future.result()
+                    score = 1 if result["feedback"]["exit_code"] == 0 else 0
+                    child = Node(result, score, parent=node)
+                    node.children.append(child)
+        return root.best_solution()
 
     @staticmethod
     @observe(capture_input=False)
@@ -146,6 +294,7 @@ class SearchPolicy:
                     score = 1 if result["feedback"]["exit_code"] == 0 else 0
                     child = Node(result, score, parent=node)
                     node.children.append(child)
+                    
         solution = root.best_solution()
         langfuse_context.update_current_observation(
             metadata={"data": solution.data, "depth": solution.depth}
