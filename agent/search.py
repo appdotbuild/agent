@@ -80,9 +80,12 @@ class SearchPolicy:
             max_tokens=8192,
             messages=messages,
         )
-        output = stages.typespec.parse_output(response.content[0].text)
-        schema = "\n".join(['import "./helpers.js";', output["typespec_definitions"]])
-        feedback = compiler.compile_typespec(schema)
+        try:
+            output = stages.typespec.parse_output(response.content[0].text)
+            schema = "\n".join(['import "./helpers.js";', output["typespec_definitions"]])
+            feedback = compiler.compile_typespec(schema)
+        except Exception:
+            feedback = {"exit_code": 1, "stdout": "Parsing failed.", "stderr": None}
         return {
             "message": {"role": "assistant", "content": response.content[0].text},
             "output": output,
@@ -97,6 +100,7 @@ class SearchPolicy:
         branch_factor: int = 3,
         max_workers: int = 5,
     ) -> Node[TypespecData]:
+        FIX_FORMAT = "{error}\nRespond with <reasoning> and <typespec> tags."
         while True:
             if root.best_solution().score == 1:
                 break
@@ -118,7 +122,7 @@ class SearchPolicy:
                     messages = [init_message]
                     for n in node.get_trajectory():
                         messages.append(n.data["message"])
-                        messages.append({"role": "user", "content": n.data["feedback"]["stdout"]})
+                        messages.append({"role": "user", "content": FIX_FORMAT.format(error=n.data["feedback"]["stdout"])}) #n.data["feedback"]["stdout"]})
                     for _ in range(branch_factor):
                         future_to_node[executor.submit(
                             SearchPolicy.run_typespec,
@@ -147,8 +151,11 @@ class SearchPolicy:
             max_tokens=8192,
             messages=messages,
         )
-        output = stages.drizzle.parse_output(response.content[0].text)
-        feedback = compiler.compile_drizzle(output["drizzle_schema"])
+        try:
+            output = stages.drizzle.parse_output(response.content[0].text)
+            feedback = compiler.compile_drizzle(output["drizzle_schema"])
+        except Exception:
+            feedback = {"exit_code": 1, "stdout": None, "stderr": "Parsing failed."}
         return {
             "message": {"role": "assistant", "content": response.content[0].text},
             "output": output,
@@ -163,6 +170,7 @@ class SearchPolicy:
         branch_factor: int = 3,
         max_workers: int = 5,
     ) -> Node[DrizzleData]:
+        FIX_FORMAT = "{error}\nRespond with <reasoning> and <drizzle> tags."
         while True:
             if root.best_solution().score == 1:
                 break
@@ -184,7 +192,7 @@ class SearchPolicy:
                     messages = [init_message]
                     for n in node.get_trajectory():
                         messages.append(n.data["message"])
-                        messages.append({"role": "user", "content": n.data["feedback"]["stderr"]})
+                        messages.append({"role": "user", "content": FIX_FORMAT.format(error=n.data["feedback"]["stderr"])})#n.data["feedback"]["stderr"]})
                     for _ in range(branch_factor):
                         future_to_node[executor.submit(
                             SearchPolicy.run_drizzle,
