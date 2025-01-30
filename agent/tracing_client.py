@@ -1,0 +1,50 @@
+from anthropic import AnthropicBedrock
+from anthropic.types import Message
+from langfuse.decorators import langfuse_context, observe
+
+
+class TracingClient:
+    def __init__(self, m_claude: AnthropicBedrock):
+        self.m_claude = m_claude
+    
+    @observe(as_type="generation", name="Anthropic-generation")
+    def call_anthropic(
+        self,
+        model: str,
+        messages: list[dict[str, str | dict]],
+        max_tokens: int = 8192,
+        temperature: float = 1.0,
+        **kwargs,
+    ):
+        trace_messages = messages.copy()
+        system_prompt = kwargs.pop("system", None)
+        if system_prompt:
+            trace_messages.append({"role": "system", "content": system_prompt})
+        langfuse_context.update_current_observation(
+            input=trace_messages,
+            model=model,
+            model_parameters={
+                "maxTokens": max_tokens,
+                "temperature": temperature,
+            },
+            metadata=kwargs,
+        )
+        completion: Message = self.m_claude.messages.create(
+            max_tokens=max_tokens,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            **kwargs,
+        )
+        if len(completion.content) == 1 and completion.content[0].type == "text":
+            trace_output = completion.content[0].text
+        else:
+            trace_output = completion.content
+        langfuse_context.update_current_observation(
+            output=trace_output,
+            usage={
+                "input": completion.usage.input_tokens,
+                "output": completion.usage.output_tokens,
+            }
+        )
+        return completion

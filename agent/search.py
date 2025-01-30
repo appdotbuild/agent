@@ -2,9 +2,11 @@ from typing import Optional, TypedDict
 
 import concurrent.futures
 from anthropic import AnthropicBedrock
+from langfuse.decorators import langfuse_context, observe
 
 from core import stages
 from services import CompilerService
+from tracing_client import TracingClient
 from compiler.core import CompileResult
 
 
@@ -64,18 +66,20 @@ class SearchPolicy:
     compiler: CompilerService
 
     def __init__(self, client: AnthropicBedrock, compiler: CompilerService):
-        self.client = client
+        self.client = TracingClient(client)
         self.compiler = compiler
         self._model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 
     @staticmethod
+    @observe(capture_input=False)
     def run_typespec(
         messages: list[dict],
-        client: AnthropicBedrock,
+        client: TracingClient,
         compiler: CompilerService,
         model: str,
+        *args,
     ) -> TypespecData:
-        response = client.messages.create(
+        response = client.call_anthropic(
             model=model,
             max_tokens=8192,
             messages=messages,
@@ -92,6 +96,7 @@ class SearchPolicy:
             "feedback": feedback,
         }
 
+    @observe(capture_input=False, capture_output=False)
     def bfs_typespec(
         self,
         init_message: dict,
@@ -101,6 +106,8 @@ class SearchPolicy:
         max_workers: int = 5,
     ) -> Node[TypespecData]:
         FIX_FORMAT = "{error}\nRespond with <reasoning> and <typespec> tags."
+        trace_id = langfuse_context.get_current_trace_id()
+        observation_id = langfuse_context.get_current_observation_id()
         while True:
             if root.best_solution().score == 1:
                 break
@@ -129,7 +136,9 @@ class SearchPolicy:
                             messages,
                             self.client,
                             self.compiler,
-                            self._model
+                            self._model,
+                            langfuse_parent_trace_id=trace_id,
+                            langfuse_parent_observation_id=observation_id,
                         )] = node
                 for future in concurrent.futures.as_completed(future_to_node):
                     node = future_to_node[future]
@@ -137,16 +146,22 @@ class SearchPolicy:
                     score = 1 if result["feedback"]["exit_code"] == 0 else 0
                     child = Node(result, score, parent=node)
                     node.children.append(child)
-        return root.best_solution()
+        solution = root.best_solution()
+        langfuse_context.update_current_observation(
+            metadata={"data": solution.data, "depth": solution.depth}
+        )
+        return solution
     
     @staticmethod
+    @observe(capture_input=False)
     def run_drizzle(
         messages: list[dict],
-        client: AnthropicBedrock,
+        client: TracingClient,
         compiler: CompilerService,
         model: str,
+        *args,
     ) -> DrizzleData:
-        response = client.messages.create(
+        response = client.call_anthropic(
             model=model,
             max_tokens=8192,
             messages=messages,
@@ -162,6 +177,7 @@ class SearchPolicy:
             "feedback": feedback,
         }
     
+    @observe(capture_input=False, capture_output=False)
     def bfs_drizzle(
         self,
         init_message: dict,
@@ -171,6 +187,8 @@ class SearchPolicy:
         max_workers: int = 5,
     ) -> Node[DrizzleData]:
         FIX_FORMAT = "{error}\nRespond with <reasoning> and <drizzle> tags."
+        trace_id = langfuse_context.get_current_trace_id()
+        observation_id = langfuse_context.get_current_observation_id()
         while True:
             if root.best_solution().score == 1:
                 break
@@ -199,7 +217,9 @@ class SearchPolicy:
                             messages,
                             self.client,
                             self.compiler,
-                            self._model
+                            self._model,
+                            langfuse_parent_trace_id=trace_id,
+                            langfuse_parent_observation_id=observation_id,
                         )] = node
                 for future in concurrent.futures.as_completed(future_to_node):
                     node = future_to_node[future]
@@ -207,15 +227,21 @@ class SearchPolicy:
                     score = 1 if not result["feedback"]["stderr"] else 0
                     child = Node(result, score, parent=node)
                     node.children.append(child)
-        return root.best_solution()
+        solution = root.best_solution()
+        langfuse_context.update_current_observation(
+            metadata={"data": solution.data, "depth": solution.depth}
+        )
+        return solution
     
     @staticmethod
+    @observe(capture_input=False)
     def run_router(
         messages: list[dict],
-        client: AnthropicBedrock,
+        client: TracingClient,
         model: str,
+        *args,
     ):
-        response = client.messages.create(
+        response = client.call_anthropic(
             model=model,
             max_tokens=8192,
             messages=messages,
@@ -224,12 +250,14 @@ class SearchPolicy:
         return stages.router.parse_outputs([content for content in response.content])
     
     @staticmethod
+    @observe(capture_input=False)
     def run_preprocessor(
         messages: list[dict],
-        client: AnthropicBedrock,
+        client: TracingClient,
         model: str,
+        *args,
     ):
-        response = client.messages.create(
+        response = client.call_anthropic(
             model=model,
             max_tokens=8192,
             messages=messages,
@@ -237,12 +265,14 @@ class SearchPolicy:
         return stages.processors.parse_output(response.content[0].text)
     
     @staticmethod
+    @observe(capture_input=False)
     def run_handler(
         messages: list[dict],
-        client: AnthropicBedrock,
+        client: TracingClient,
         model: str,
+        *args,
     ):
-        response = client.messages.create(
+        response = client.call_anthropic(
             model=model,
             max_tokens=8192,
             messages=messages,

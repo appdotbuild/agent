@@ -1,9 +1,11 @@
 from typing import Optional
 from typing_extensions import Self
+import os
 import shutil
 import tempfile
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, model_validator
 
 from anthropic import AnthropicBedrock
@@ -11,11 +13,20 @@ from application import Application
 from services import CompilerService
 
 
-client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+client = AnthropicBedrock(aws_region="us-west-2")
 compiler = CompilerService()
 
 
 app = FastAPI()
+
+
+@app.middleware("http")
+async def check_bearer(request: Request, call_next):
+    bearer = os.getenv("BUILDER_TOKEN")
+    if request.headers.get("Authorization") != f"Bearer {bearer}":
+        return JSONResponse(status_code=401, content={"message": "Unauthorized"})
+    response = await call_next(request)
+    return response
 
 
 class BuildRequest(BaseModel):

@@ -7,6 +7,7 @@ from shutil import copytree, ignore_patterns
 from search import Node, SearchPolicy
 from services import CompilerService
 from core.interpolator import Interpolator
+from langfuse.decorators import langfuse_context, observe
 
 class Application:
     def __init__(self, client: AnthropicBedrock, compiler: CompilerService, template_dir: str = "templates", output_dir: str = "app_output"):
@@ -23,6 +24,7 @@ class Application:
         self.output_dir = os.path.join(output_dir, "generated")
         self._model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     
+    @observe(capture_output=False)
     def create_bot(self, application_description: str):
         print("Compiling TypeSpec...")
         typespec = self._make_typespec(application_description)
@@ -70,36 +72,42 @@ class Application:
         
         return interpolator.interpolate_all(preprocessors, handlers)
     
+    @observe(capture_input=False, capture_output=False)
     def _make_typespec(self, application_description: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
 
         typespec_prompt_params = {"application_description": application_description}
         prompt_typespec = self.typespec_tpl.render(**typespec_prompt_params)
         init_typespec = {"role": "user", "content": prompt_typespec}
-        data_typespec = self.policy.run_typespec([init_typespec], self.policy.client, self.policy.compiler, self.policy._model)
+        data_typespec = SearchPolicy.run_typespec([init_typespec], self.policy.client, self.policy.compiler, self.policy._model)
         root_typespec = Node(data_typespec, data_typespec["feedback"]["exit_code"] == 0)
         best_typespec = self.policy.bfs_typespec(init_typespec, root_typespec, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
         return best_typespec
     
+    @observe(capture_input=False, capture_output=False)
     def _make_drizzle(self, typespec_definitions: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
 
         drizzle_prompt_params = {"typespec_definitions": typespec_definitions}
         prompt_drizzle = self.drizzle_tpl.render(**drizzle_prompt_params)
         init_drizzle = {"role": "user", "content": prompt_drizzle}
-        data_drizzle = self.policy.run_drizzle([init_drizzle], self.policy.client, self.policy.compiler, self.policy._model)
+        data_drizzle = SearchPolicy.run_drizzle([init_drizzle], self.policy.client, self.policy.compiler, self.policy._model)
         root_drizzle = Node(data_drizzle, int(data_drizzle["feedback"]["stderr"] is None))
         best_drizzle = self.policy.bfs_drizzle(init_drizzle, root_drizzle, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
         return best_drizzle
 
+    @observe(capture_input=False, capture_output=False)
     def _make_router(self, application_description: str, typespec_definitions: str):
         router_prompt_params = {"user_request": application_description, "typespec_definitions": typespec_definitions}
         prompt_router = self.router_tpl.render(**router_prompt_params)
         init_router = {"role": "user", "content": prompt_router}
-        return self.policy.run_router([init_router], self.policy.client, self.policy._model)
+        return SearchPolicy.run_router([init_router], self.policy.client, self.policy._model)
     
+    @observe(capture_input=False, capture_output=False)
     def _make_preprocessors(self, llm_functions: list[str], typespec_definitions: str):
         MAX_WORKERS = 5
+        trace_id = langfuse_context.get_current_trace_id()
+        observation_id = langfuse_context.get_current_observation_id()
         preprocessors: dict[str, stages.processors.PreprocessorOutput] = {}
         with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
             future_to_preprocessor = {}
@@ -108,18 +116,23 @@ class Application:
                 prompt_preprocessor = self.preprocessors_tpl.render(**preprocessor_prompt_params)
                 init_preprocessor = {"role": "user", "content": prompt_preprocessor}
                 future_to_preprocessor[executor.submit(
-                    self.policy.run_preprocessor,
+                    SearchPolicy.run_preprocessor,
                     [init_preprocessor],
                     self.policy.client,
                     self.policy._model,
+                    langfuse_parent_trace_id=trace_id,
+                    langfuse_parent_observation_id=observation_id,
                 )] = function_name
             for future in concurrent.futures.as_completed(future_to_preprocessor):
                 function_name = future_to_preprocessor[future]
                 preprocessors[function_name] = future.result()
         return preprocessors
     
+    @observe(capture_input=False, capture_output=False)
     def _make_handlers(self, llm_functions: list[str], typespec_definitions: str, drizzle_schema: str):
         MAX_WORKERS = 5
+        trace_id = langfuse_context.get_current_trace_id()
+        observation_id = langfuse_context.get_current_observation_id()
         handlers: dict[str, stages.handlers.HandlerOutput] = {}
         with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
             future_to_handler = {}
@@ -128,10 +141,12 @@ class Application:
                 prompt_handler = self.handlers_tpl.render(**handler_prompt_params)
                 init_handler = {"role": "user", "content": prompt_handler}
                 future_to_handler[executor.submit(
-                    self.policy.run_handler,
+                    SearchPolicy.run_handler,
                     [init_handler],
                     self.policy.client,
                     self.policy._model,
+                    langfuse_parent_trace_id=trace_id,
+                    langfuse_parent_observation_id=observation_id,
                 )] = function_name
             for future in concurrent.futures.as_completed(future_to_handler):
                 function_name = future_to_handler[future]
