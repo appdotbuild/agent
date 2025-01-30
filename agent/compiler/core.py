@@ -24,7 +24,7 @@ class Compiler:
             command=["sleep", "1"],
             detach=True,
         )
-        schema_path = "schema.tsp"
+        schema_path, schema = "schema.tsp", schema.replace("'", "\'")
         command = [
             "sh",
             "-c",
@@ -45,7 +45,7 @@ class Compiler:
     def compile_drizzle(self, schema: str):
         with self.tmp_network() as network, self.tmp_postgres() as postgres:
             network.connect(postgres)
-            schema_path = "src/db/schema/application.ts"
+            schema_path, schema = "src/db/schema/application.ts", schema.replace("'", "\'")
             container = self.client.containers.run(
                 self.app_image,
                 command=["sleep", "1"],
@@ -68,6 +68,35 @@ class Compiler:
                 stdout=stdout.decode("utf-8") if stdout else None,
                 stderr=stderr.decode("utf-8") if stderr else None,
             )
+        
+    def compile_typescript(self, files: dict[str, str]):
+        container = self.client.containers.run(
+            self.app_image,
+            command=["sleep", "1"],
+            detach=True,
+        )
+        for path, content in files.items():
+            content = content.replace("'", "\'")
+            command = [
+                "sh",
+                "-c",
+                f"echo '{content}' > {path}"
+            ]
+            container.exec_run(
+                command,
+                environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+            )
+        exit_code, (stdout, stderr) = container.exec_run(
+            ["npx", "tsc", "--noEmit"],
+            demux=True,
+            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+        )
+        container.remove(force=True)
+        return CompileResult(
+            exit_code=exit_code,
+            stdout=stdout.decode("utf-8") if stdout else None,
+            stderr=stderr.decode("utf-8") if stderr else None,
+        )
     
     @contextmanager
     def tmp_network(self, network_name: str = None, driver: str = "bridge"):
