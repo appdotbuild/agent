@@ -33,7 +33,10 @@ class Application:
             raise Exception("Failed to generate typespec")
         print("Generating Typescript Schema Definitions...")
         typescript_schema = self._make_typescript_schema(typespec.data["output"]["typespec_definitions"])
+        if typescript_schema.score != 1:
+            raise Exception("Failed to generate typescript schema")
         print("Compiling Drizzle...")
+        typescript_schema_definitions = typescript_schema.data["output"]["typescript_schema"]
         typespec_definitions = typespec.data["output"]["typespec_definitions"]
         llm_functions = typespec.data["output"]["llm_functions"]
         drizzle = self._make_drizzle(typespec_definitions)
@@ -47,7 +50,7 @@ class Application:
         print("Generating Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(application_description, typespec_definitions, typescript_schema, drizzle_schema, preprocessors, handlers)
+        application = self._make_application(application_description, typespec_definitions, typescript_schema_definitions, drizzle_schema, preprocessors, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,
@@ -58,7 +61,7 @@ class Application:
             "application": application,
         }
 
-    def _make_application(self, application_description: str, typespec_definitions: str, typescript_schema: str, drizzle_schema: str, preprocessors: dict, handlers: dict):
+    def _make_application(self, application_description: str, typespec_definitions: str, typescript_schema_definitions: str, drizzle_schema: str, preprocessors: dict, handlers: dict):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
 
@@ -77,8 +80,8 @@ class Application:
             f.write("\n")
             f.write(drizzle_schema)
 
-        with open(os.path.join(self.generation_dir, "app_schema/src/common", "schema.ts"), "w") as f:
-            f.write(typescript_schema)
+        with open(os.path.join(self.generation_dir, "app_schema/src/common", "schema.ts"), "a") as f:
+            f.write(typescript_schema_definitions)
         
         interpolator = Interpolator(self.generation_dir)
         

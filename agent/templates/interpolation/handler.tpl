@@ -1,5 +1,7 @@
 import { Message, GenericHandler } from "../common/handler";
 import { client } from "../common/llm";
+#import { TypeA, TypeB, TypeC } from "../common/schema";
+
 {{handler}}
 
 
