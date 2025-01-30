@@ -15,7 +15,7 @@ class Application:
         self.policy = SearchPolicy(client, compiler)
         self.jinja_env = jinja2.Environment()
         self.typespec_tpl = self.jinja_env.from_string(stages.typespec.PROMPT)
-        self.typescript_model_tpl = self.jinja_env.from_string(stages.tsp_schema.PROMPT)
+        self.typescript_schema_tpl = self.jinja_env.from_string(stages.typescript.PROMPT)
         self.drizzle_tpl = self.jinja_env.from_string(stages.drizzle.PROMPT)
         self.router_tpl = self.jinja_env.from_string(stages.router.PROMPT)
         self.handlers_tpl = self.jinja_env.from_string(stages.handlers.PROMPT)
@@ -89,8 +89,8 @@ class Application:
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
 
         typespec_schema_prompt_params = {"typespec_definitions": typespec_definitions}
-        prompt_drizzle = self.drizzle_tpl.render(**typespec_schema_prompt_params)
-        init_typespec_schema = {"role": "user", "content": prompt_drizzle}
+        typespec_schema_prompt = self.typescript_schema_tpl.render(**typespec_schema_prompt_params)
+        init_typespec_schema = {"role": "user", "content": typespec_schema_prompt}
         data_typespec_schema = self.policy.run_typescript([init_typespec_schema], self.policy.client, self.policy.compiler, self.policy._model)
         root_typespec_schema = Node(data_typespec_schema, int(data_typespec_schema["feedback"]["stderr"] is None))
         best_typespec_schema = self.policy.bfs_typescript(init_typespec_schema, root_typespec_schema, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
