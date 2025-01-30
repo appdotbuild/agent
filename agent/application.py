@@ -15,6 +15,7 @@ class Application:
         self.policy = SearchPolicy(client, compiler)
         self.jinja_env = jinja2.Environment()
         self.typespec_tpl = self.jinja_env.from_string(stages.typespec.PROMPT)
+        self.typescript_model_tpl = self.jinja_env.from_string(stages.tsp_schema.PROMPT)
         self.drizzle_tpl = self.jinja_env.from_string(stages.drizzle.PROMPT)
         self.router_tpl = self.jinja_env.from_string(stages.router.PROMPT)
         self.handlers_tpl = self.jinja_env.from_string(stages.handlers.PROMPT)
@@ -30,6 +31,8 @@ class Application:
         typespec = self._make_typespec(application_description)
         if typespec.score != 1:
             raise Exception("Failed to generate typespec")
+        print("Generating Typescript Schema Definitions...")
+        typescript_schema = self._make_typescript_schema(typespec.data["output"]["typespec_definitions"])
         print("Compiling Drizzle...")
         typespec_definitions = typespec.data["output"]["typespec_definitions"]
         llm_functions = typespec.data["output"]["llm_functions"]
@@ -44,21 +47,27 @@ class Application:
         print("Generating Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(application_description, typespec_definitions, drizzle_schema, preprocessors, handlers)
+        application = self._make_application(application_description, typespec_definitions, typescript_schema, drizzle_schema, preprocessors, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,
             "router": router,
             "preprocessors": preprocessors,
             "handlers": handlers,
+            "typescript_schema": typescript_schema,
             "application": application,
         }
 
-    def _make_application(self, application_description: str, typespec_definitions: str, drizzle_schema: str, preprocessors: dict, handlers: dict):
+    def _make_application(self, application_description: str, typespec_definitions: str, typescript_schema: str, drizzle_schema: str, preprocessors: dict, handlers: dict):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
 
         copytree(self.template_dir, self.generation_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'))
+        
+        with open(os.path.join(self.generation_dir, "tsp_schema", "main.tsp"), "a") as f:
+            f.write("\n")
+            f.write(typespec_definitions)
+        
 
         with open(os.path.join(self.generation_dir, "tsp_schema", "main.tsp"), "a") as f:
             f.write("\n")
@@ -67,11 +76,26 @@ class Application:
         with open(os.path.join(self.generation_dir, "app_schema/src/db/schema", "application.ts"), "a") as f:
             f.write("\n")
             f.write(drizzle_schema)
+
+        with open(os.path.join(self.generation_dir, "app_schema/src/common", "schema.ts"), "w") as f:
+            f.write(typescript_schema)
         
         interpolator = Interpolator(self.generation_dir)
         
         return interpolator.interpolate_all(preprocessors, handlers)
-    
+
+    @observe(capture_input=False, capture_output=False)
+    def _make_typescript_schema(self, typespec_definitions: str):
+        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
+
+        typespec_schema_prompt_params = {"typespec_definitions": typespec_definitions}
+        prompt_drizzle = self.drizzle_tpl.render(**typespec_schema_prompt_params)
+        init_typespec_schema = {"role": "user", "content": prompt_drizzle}
+        data_typespec_schema = self.policy.run_typescript([init_typespec_schema], self.policy.client, self.policy.compiler, self.policy._model)
+        root_typespec_schema = Node(data_typespec_schema, int(data_typespec_schema["feedback"]["stderr"] is None))
+        best_typespec_schema = self.policy.bfs_typescript(init_typespec_schema, root_typespec_schema, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
+        return best_typespec_schema
+   
     @observe(capture_input=False, capture_output=False)
     def _make_typespec(self, application_description: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
