@@ -50,7 +50,7 @@ class Application:
         print("Generating Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(application_description, typescript_schema_definitions, drizzle_schema, preprocessors, handlers)
+        application = self._make_application(application_description, typespec_definitions, typescript_schema_definitions, drizzle_schema, preprocessors, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,

@@ -56,7 +56,6 @@ class Interpolator:
             handler = handlers[handler_name]["handler"]
             instructions = pre_processors[handler_name]["instructions"]
             examples = pre_processors[handler_name]["examples"]
-            typescript_schema_type_names = pre_processors[handler_name]["typescript_schema_type_names"]
             module = self._interpolate_handler(handler_name, handler, instructions, examples, typescript_schema_type_names)
             processed_handlers[handler_name] = {**handlers[handler_name], "module": module}
         
