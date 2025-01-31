@@ -4,7 +4,7 @@ import re
 
 PROMPT = """
 Based on TypeSpec application definition and drizzle schema, generate a handler for {{function_name}} function.
-
+Handler always accepts single argument. It should be declared at the beginning as interface Options;
 Handler should satisfy following interface:
 
 <handler>
@@ -13,23 +13,23 @@ interface Message {
     content: string;
 };
 
-interface Handler<Args extends any[], Output> {
-    preProcessor: (input: Message[]) => Args | Promise<Args>;
-    handle: (...args: Args) => Output | Promise<Output>;
-    postProcessor: (output: Output) => Message[] | Promise<Message[]>;
+interface Handler<Options, Output> {
+    preProcessor: (input: Message[]) => Options | Promise<Options>;
+    handle: (options: Options) => Output | Promise<Output>;
+    postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>;
 }
 
-class GenericHandler<Args extends any[], Output> implements Handler<Args, Output> {
+class GenericHandler<Options, Output> implements Handler<Options, Output> {
     constructor(
-        public handle: (...args: Args) => Output | Promise<Output>,
-        public preProcessor: (input: Message[]) => Args | Promise<Args>,
-        public postProcessor: (output: Output) => Message[] | Promise<Message[]>
+        public handle: (options: Options) => Output | Promise<Output>,
+        public preProcessor: (input: Message[]) => Options | Promise<Options>,
+        public postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>
     ) {}
 
     async execute(input: Message[]): Promise<Message[] | Output> {
-        const args = await this.preProcessor(input);
-        const result = await this.handle(...args);
-        return this.postProcessor ? await this.postProcessor(result) : result;
+        const options = await this.preProcessor(input);
+        const result = await this.handle(options);
+        return this.postProcessor ? await this.postProcessor(result, input) : result;
     }
 }
 </handler>
@@ -41,8 +41,12 @@ import { db } from "../db";
 import { customTable } from '../db/schema/application'; // all drizzle tables are defined in this file
 import { Message, Person } from "../common/schema";
 
-const handle = (input: string): string => {
-    await db.insert(customTable).values({ content: input }).execute();
+interface Options {
+    content: string;
+};
+
+const handle = (options: Options): string => {
+    await db.insert(customTable).values({ content: options.content }).execute();
     return input;
 };
 </handler>
