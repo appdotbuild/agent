@@ -48,9 +48,9 @@ class Application:
         print("Generating Preprocessors...")
         preprocessors = self._make_preprocessors(llm_functions, typespec_definitions)
         print("Generating Handlers...")
-        handlers = self._make_handlers(llm_functions, typespec_definitions, drizzle_schema)
+        handlers = self._make_handlers(llm_functions, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(application_description, typespec_definitions, typescript_schema_definitions, drizzle_schema, preprocessors, handlers)
+        application = self._make_application(application_description, typescript_schema_definitions, drizzle_schema, preprocessors, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,
@@ -83,9 +83,11 @@ class Application:
         with open(os.path.join(self.generation_dir, "app_schema/src/common", "schema.ts"), "a") as f:
             f.write(typescript_schema_definitions)
         
+        typescript_schema_type_names = stages.typescript.parse_typescript_schema_type_names(typescript_schema_definitions)
+        
         interpolator = Interpolator(self.generation_dir)
         
-        return interpolator.interpolate_all(preprocessors, handlers)
+        return interpolator.interpolate_all(preprocessors, handlers, typescript_schema_type_names)
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):
@@ -164,7 +166,8 @@ class Application:
         with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
             future_to_handler = {}
             for function_name in llm_functions:
-                handler_prompt_params = {"function_name": function_name, "typespec_definitions": typespec_definitions, "drizzle_schema": drizzle_schema}
+                typescript_schema_type_names = stages.typescript.parse_typescript_schema_type_names(typescript_schema_definitions)
+                handler_prompt_params = {"function_name": function_name, "typespec_definitions": typespec_definitions, "typescript_schema_type_names": typescript_schema_type_names, "drizzle_schema": drizzle_schema}
                 prompt_handler = self.handlers_tpl.render(**handler_prompt_params)
                 init_handler = {"role": "user", "content": prompt_handler}
                 future_to_handler[executor.submit(

@@ -50,4 +50,10 @@ def parse_output(output: str) -> TypeScriptSchemaOutput:
         raise ValueError("Failed to parse output, expected <reasoning> and <typescript> tags")
     reasoning = match.group(1).strip()
     typescript_schema = match.group(2).strip()
-    return TypeScriptSchemaOutput(reasoning=reasoning, typescript_schema=typescript_schema)
+    typescript_schema_type_names = re.findall(r"export interface (\w+)", typescript_schema)
+    return TypeScriptSchemaOutput(reasoning=reasoning, typescript_schema=typescript_schema, typescript_schema_type_names=typescript_schema_type_names)
+
+
+def parse_typescript_schema_type_names(typescript_schema: str) -> list[str]:
+    typescript_schema_type_names = re.findall(r"export interface (\w+)", typescript_schema)
+    return typescript_schema_type_names

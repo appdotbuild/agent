@@ -1,6 +1,6 @@
 import { Message, GenericHandler } from "../common/handler";
 import { client } from "../common/llm";
-#import { TypeA, TypeB, TypeC } from "../common/schema";
+import { {% for type in typescript_schema_type_names %} {{type}}, {% endfor %} } from "../common/schema";
 
 {{handler}}
 

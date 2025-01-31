@@ -39,6 +39,7 @@ Example handler implementation:
 <handler>
 import { db } from "../db";
 import { customTable } from '../db/schema/application'; // all drizzle tables are defined in this file
+import { Message, Person } from "../common/schema";
 
 const handle = (input: string): string => {
     await db.insert(customTable).values({ content: input }).execute();
