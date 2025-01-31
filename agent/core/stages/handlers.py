@@ -57,9 +57,9 @@ extern dec llm_func(target: unknown, history: valueof int32);
 
 Application Definitions:
 
-<typespec>
-{{typespec_definitions}}
-</typespec>
+<typescript_schema>
+{{typescript_schema}}
+</typescript_schema>
 
 <drizzle>
 {{drizzle_schema}}
