@@ -7,7 +7,7 @@ from anthropic import AnthropicBedrock
 from core import stages
 from compiler.core import Compiler
 
-DATASET_DIR = "agent/evals/dataset.min"
+DATASET_DIR = "evals/dataset.min"
 SCHEMA_SUFFIXES = {
     "_typescript_schema.ts": "typescript_schema",
     "_drizzle_schema.ts": "drizzle_schema" 
@@ -66,7 +66,7 @@ def evaluate_handlers_generation() -> float:
     with tempfile.TemporaryDirectory() as tmpdir:
         for i in range(total_attempts):
             test_case = test_cases[i % len(test_cases)]
-            tsc_handler_file = f"{tmpdir}/{test_case['function_name']}.ts"
+            tsc_handler_file = f"{tmpdir}/{test_case['function_name']}-{i}.ts"
             try:
                 prompt = handlers_tpl.render(function_name=test_case["function_name"], typescript_schema=test_case["typescript_schema"], drizzle_schema=test_case["drizzle_schema"])
                 
@@ -87,7 +87,11 @@ def evaluate_handlers_generation() -> float:
                     continue
                     
                 if result and result.get("handler"):
-                    result = compiler.compile_typescript({f"{tsc_handler_file}": result["handler"]})
+                    #print(f"Writing handler to file {tsc_handler_file}")
+                    #write_tsc_file(result["handler"], tsc_handler_file)
+                    
+                    result = compiler.compile_typescript({f"{tsc_handler_file}": result["handler"], "../db/schema/application.ts": test_case["drizzle_schema"], "../common/schema.ts": test_case["typescript_schema"]})
+                    print(f"Compilation result: {result}")
                     
                     if result["exit_code"] == 0:
                         successful_compilations += 1
