@@ -6,10 +6,12 @@ const { Context, Telegraf } = require('telegraf');
 const { message } = require('telegraf/filters');
 
 const mainHandler = async (ctx: typeof Context) => {
+    console.log('mainHandler');
     await putMessage(ctx.from!.id.toString(), 'user', ctx.message.text!);
     const messages = await getHistory(ctx.from!.id.toString(), 3);
     const validMessages = messages.filter(msg => msg.role !== null && msg.content !== null) as { role: "user" | "assistant"; content: string }[];
     const route = await getRoute(validMessages);
+    console.log('route', route);
     const handler = handlers[route];
     if (handler) {
         const result = await handler.execute(validMessages);

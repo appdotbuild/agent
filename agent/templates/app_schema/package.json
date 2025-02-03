@@ -15,7 +15,7 @@
     "tsx": "^4.19.2"
   },
   "scripts": {
-    "start": "bun run db:push && bun src/main.ts",
+    "start": "bun run src/helpers/reset.ts && bun run db:push && bun src/main.ts",
     "db:push": "drizzle-kit push --force"
   }
 }
