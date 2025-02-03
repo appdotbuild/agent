@@ -33,6 +33,7 @@ class BuildRequest(BaseModel):
     readUrl: Optional[str] = None
     writeUrl: str
     prompt: str
+    botId: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_urls(self) -> Self:
@@ -45,13 +46,14 @@ class BuildRequest(BaseModel):
 class BuildResponse(BaseModel):
     status: str
     message: str
+    metadata: dict = {}
 
 
 @app.post("/compile", response_model=BuildResponse)
 def compile(request: BuildRequest):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler, output_dir=tmpdir)
-        application.create_bot(request.prompt)
+        bot = application.create_bot(request.prompt, request.botId)
         zipfile = shutil.make_archive(
             f"{tmpdir}/app_schema",
             "zip",
@@ -63,4 +65,5 @@ def compile(request: BuildRequest):
                 data=f.read(),
             )
             upload_result.raise_for_status()
-    return BuildResponse(status="success", message="done")
+        metadata = {"functions": bot["router"]["user_functions"]}
+    return BuildResponse(status="success", message="done", metadata=metadata)
