@@ -12,7 +12,7 @@ class TypeScriptCompiler:
             f.write(typescript_schema)
         try:
             result = subprocess.run(
-                ['npx', 'tsx', schema_name, , "--noEmit"],
+                ['npx', 'tsx', schema_name, "--noEmit"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self.workdir,

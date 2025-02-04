@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from contextlib import contextmanager
 import re
+import uuid
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe
@@ -45,7 +46,7 @@ Example handler implementation:
 
 <handler>
 import { db } from "../db";
-import { customTable } from '../db/schema/application'; // all drizzle tables are defined in this file
+import { customTable } from "../db/schema/application"; // all drizzle tables are defined in this file
 
 interface Options {
     content: string;
@@ -177,7 +178,7 @@ if (condition) {
 ### 3. Array Operations
 ```typescript
 // For array comparisons, use 'in' operator instead of 'eq'
-import { inArray } from 'drizzle-orm';
+import { inArray } from "drizzle-orm";
 
 // Correct way to query array of values
 const query = db.select()
@@ -261,7 +262,7 @@ let query = db.select().from(table) as typeof baseQuery;
 #### 2. Proper Query Building Pattern
 ```typescript
 import { eq } from 'drizzle-orm';
-import { type PgSelect } from 'drizzle-orm/pg-core';
+import { type PgSelect } from "drizzle-orm/pg-core";
 
 // Define interface for your options
 interface QueryOptions {
@@ -295,9 +296,9 @@ function buildWorkoutQuery(
 
 #### 3. Real-World Example: Progress Tracking
 ```typescript
-import { eq } from 'drizzle-orm';
-import { progressTable } from './schema';
-import type { Database } from './db';
+import { eq } from "drizzle-orm";
+import { progressTable } from "./schema";
+import type { Database } from "./db";
 
 interface ProgressQueryOptions {
   exerciseName?: string;
@@ -329,9 +330,9 @@ export async function getProgress(
 
 #### 4. Real-World Example: Workout History
 ```typescript
-import { eq } from 'drizzle-orm';
-import { exerciseRecordsTable } from './schema';
-import type { Database } from './db';
+import { eq } from "drizzle-orm";
+import { exerciseRecordsTable } from "./schema";
+import type { Database } from "./db";
 
 interface WorkoutHistoryOptions {
   exerciseId?: number;
@@ -372,8 +373,8 @@ export async function listWorkoutHistory(
 2. Import Issues:
 ```typescript
 // ✅ Correct imports for PostgreSQL
-import { eq, and, or } from 'drizzle-orm';
-import type { PgSelect } from 'drizzle-orm/pg-core';
+import { eq, and, or } from "drizzle-orm";
+import type { PgSelect } from "drizzle-orm/pg-core";
 
 // Types for type safety
 import type { InferSelectModel } from 'drizzle-orm';
@@ -406,7 +407,9 @@ These patterns will help prevent common TypeScript errors while working with Dri
 
 Handler to implement: {{function_name}}
 
-Return output within <handler> tag. Generate only the handler function and table imports from drizzle schema, omit pre- and post-processors.
+Return output within <handler> tag.
+Generate only the handler function and table imports from drizzle schema, imports from drizzle orm.
+Omit pre- and post-processors.
 Handler code should contain just explicit logic such as database operations, performing calculations etc.
 """.strip()
 
@@ -421,13 +424,6 @@ Verify absence of reserved keywords in property names, type names, and function 
 Return fixed complete TypeScript definition encompassed with <typescript> tag.
 """
 
-
-#@dataclass
-#class HandlerInput(TypedDict):
-#    typespec_definitions: str
-#    drizzle_schema: str
-#    function_name: str
-
 @dataclass
 class HandlerOutput:
     handler: str
@@ -436,6 +432,7 @@ class HandlerOutput:
 @dataclass
 class HandlerData:
     messages: list[MessageParam]
+    #function_name: str
     output: HandlerOutput | Exception
 
 class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
@@ -455,7 +452,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                     raise RuntimeError(f"Received non-matched case: {catch_all}")
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages            
+        return messages #, self.data.function_name            
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
@@ -467,7 +464,9 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         )
         try:
             handler = HandlerTaskNode.parse_output(response.content[0].text)
-            feedback = typescript_compiler.compile_typescript(handler)
+            #feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler})
+            handler_filename = str(uuid.uuid4())
+            feedback = typescript_compiler.compile_typescript({f"src/handlers/{handler_filename}.ts": handler})
             output = HandlerOutput(
                 handler=handler,
                 feedback=feedback,
@@ -475,8 +474,8 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         except Exception as e:
             output = e
         messages = [{"role": "assistant", "content": response.content[0].text}]
+        #return HandlerData(messages=messages, output=output, function_name=kwargs['function_name'])
         return HandlerData(messages=messages, output=output)
-    
     @property
     def is_successful(self) -> bool:
         return (
