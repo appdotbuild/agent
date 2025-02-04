@@ -467,7 +467,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         )
         try:
             handler = HandlerTaskNode.parse_output(response.content[0].text)
-            feedback = typescript_compiler.compile_(handler)
+            feedback = typescript_compiler.compile_typescript(handler)
             output = HandlerOutput(
                 handler=handler,
                 feedback=feedback,
