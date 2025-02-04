@@ -1,30 +1,13 @@
-import os
-import subprocess
 import tempfile
-import jinja2
-from typing import Optional
 from anthropic import AnthropicBedrock
-from core import stages
+import jinja2
 from compiler.core import Compiler
+from core import stages
 
 def write_tsp_file(content: str, filepath: str) -> None:
     """Write TypeSpec content to a file."""
     with open(filepath, 'w') as f:
         f.write(content)
-
-def compile_typespec(filepath: str) -> bool:
-    """Compile TypeSpec file using tsp compiler."""
-    try:
-        # Run tsp compiler
-        result = subprocess.run(
-            ['tsp', 'compile', filepath],
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        return result.returncode == 0
-    except subprocess.CalledProcessError:
-        return False
 
 def evaluate_typespec_generation() -> float:
     """
@@ -35,13 +18,11 @@ def evaluate_typespec_generation() -> float:
     typespec_tpl = jinja_env.from_string(stages.typespec.PROMPT)
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     try:
-        # Initialize AWS client
         client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
     except Exception as e:
         print(f"Failed to initialize AWS client: {str(e)}")
         return 0.0
     
-    # Test cases - variety of bot descriptions
     test_descriptions = [
         "A bot that manages personal finances and tracks expenses",
         "Chat bot for answering programming questions with code examples",
@@ -60,9 +41,7 @@ def evaluate_typespec_generation() -> float:
     
     with tempfile.TemporaryDirectory() as tmpdir:
         for i in range(total_attempts):
-            # Use cycling test descriptions
             description = test_descriptions[i % len(test_descriptions)]
-            
             try:
                 # Generate TypeSpec
                 prompt = typespec_tpl.render(application_description=description)
@@ -76,7 +55,6 @@ def evaluate_typespec_generation() -> float:
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
-                # Parse output
                 try:
                     result = stages.typespec.parse_output(response.content[0].text)
                     print("Successfully parsed LLM output")
