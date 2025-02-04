@@ -161,10 +161,6 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             and self.data.output.feedback["exit_code"] == 0
         )
     
-    @property
-    def score(self) -> float:
-        return 1 if self.is_successful else 0
-    
     @staticmethod
     @contextmanager
     def platform(client: TracingClient, compiler: Compiler, jinja_env: jinja2.Environment):

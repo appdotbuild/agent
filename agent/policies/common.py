@@ -60,9 +60,9 @@ class TaskNode[T, U](ABC, Node[T]):
         return not self.is_successful  
     
     @property
-    @abstractmethod
     def score(self) -> float:
-        ...
+        """Defaults to binary reward 1.0 for success, 0.0 for failure."""
+        return 1 if self.is_successful else 0
     
     def best_solution(self) -> Self:
         all_nodes = [self] + self._get_all_children()
