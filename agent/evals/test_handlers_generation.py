@@ -69,7 +69,9 @@ def evaluate_handlers_generation() -> float:
             typespec_schema_file = os.path.join(common_dir, "schema.ts")
             
             try:
-                prompt = handlers_tpl.render(function_name=test_case["function_name"], typescript_schema=test_case["typescript_schema"], drizzle_schema=test_case["drizzle_schema"])
+                prompt = handlers_tpl.render(function_name=test_case["function_name"],
+                                             typescript_schema=test_case["typescript_schema"], 
+                                             drizzle_schema=test_case["drizzle_schema"])
                 
                 print(f"\nAttempt {i + 1}/{total_attempts}:")
                 print(f"Test handler: {tsc_handler_file}")
@@ -95,7 +97,9 @@ def evaluate_handlers_generation() -> float:
                         write_tsc_file(test_case["drizzle_schema"], os.path.join(tmpdir, drizzle_schema_file))
                         write_tsc_file(test_case["typescript_schema"], os.path.join(tmpdir, typespec_schema_file))
                     
-                    result = compiler.compile_typescript({tsc_handler_file: result["handler"], drizzle_schema_file: test_case["drizzle_schema"], typespec_schema_file: test_case["typescript_schema"]})
+                    result = compiler.compile_typescript({tsc_handler_file: result["handler"],
+                                                          drizzle_schema_file: test_case["drizzle_schema"], 
+                                                          typespec_schema_file: test_case["typescript_schema"]})
                     print(f"Compilation result: {result}")
                     
                     if result["exit_code"] == 0:
