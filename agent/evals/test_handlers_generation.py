@@ -17,19 +17,6 @@ def write_tsc_file(content: str, filepath: str) -> None:
     with open(filepath, 'w') as f:
         f.write(content)
 
-def compile_typescript(filepath: str) -> bool:
-    """Compile TypeSpec file using tsp compiler."""
-    try:
-        result = subprocess.run(
-            ['npx', 'tsc', filepath],
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        return result.returncode == 0
-    except subprocess.CalledProcessError:
-        return False
-
 def evaluate_handlers_generation() -> float:
     jinja_env = jinja2.Environment()
     handlers_tpl = jinja_env.from_string(stages.handlers.PROMPT)
@@ -62,11 +49,24 @@ def evaluate_handlers_generation() -> float:
     
     successful_compilations = 0
     total_attempts = 5
+    delete_tmpdir = True
     
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(delete=delete_tmpdir) as tmpdir:
         for i in range(total_attempts):
             test_case = test_cases[i % len(test_cases)]
-            tsc_handler_file = f"{tmpdir}/{test_case['function_name']}-{i}.ts"
+            
+            handlers_dir = os.path.join(tmpdir, "handlers")
+            db_schema_dir = os.path.join(tmpdir, "db", "schema")
+            common_dir = os.path.join(tmpdir, "common")
+
+            if not delete_tmpdir:
+                os.makedirs(handlers_dir, exist_ok=True)
+                os.makedirs(db_schema_dir, exist_ok=True)
+                os.makedirs(common_dir, exist_ok=True)
+            
+            tsc_handler_file = os.path.join(handlers_dir, f"{test_case['function_name']}-{i}.ts")
+            drizzle_schema_file = os.path.join(db_schema_dir, "application.ts")
+            typespec_schema_file = os.path.join(common_dir, "schema.ts")
             try:
                 prompt = handlers_tpl.render(function_name=test_case["function_name"], typescript_schema=test_case["typescript_schema"], drizzle_schema=test_case["drizzle_schema"])
                 
@@ -87,10 +87,12 @@ def evaluate_handlers_generation() -> float:
                     continue
                     
                 if result and result.get("handler"):
-                    #print(f"Writing handler to file {tsc_handler_file}")
-                    #write_tsc_file(result["handler"], tsc_handler_file)
+                    print(f"Writing handler to file {tsc_handler_file}")
+                    write_tsc_file(result["handler"], tsc_handler_file)
+                    write_tsc_file(test_case["drizzle_schema"], drizzle_schema_file)
+                    write_tsc_file(test_case["typescript_schema"], typespec_schema_file)
                     
-                    result = compiler.compile_typescript({f"{tsc_handler_file}": result["handler"], "../db/schema/application.ts": test_case["drizzle_schema"], "../common/schema.ts": test_case["typescript_schema"]})
+                    result = compiler.compile_typescript({tsc_handler_file: result["handler"], drizzle_schema_file: test_case["drizzle_schema"], typespec_schema_file: test_case["typescript_schema"]})
                     print(f"Compilation result: {result}")
                     
                     if result["exit_code"] == 0:
@@ -104,7 +106,7 @@ def evaluate_handlers_generation() -> float:
             except Exception as e:
                 print(f"Error in iteration {i}: {str(e)}")
                 continue
-    
+        
     success_rate = (successful_compilations / total_attempts) * 100
     print(f"\nHandlers Generation Success Rate: {success_rate:.2f}%")
     print(f"Successful compilations: {successful_compilations}/{total_attempts}")
