@@ -49,7 +49,7 @@ def evaluate_handlers_generation() -> float:
     
     successful_compilations = 0
     total_attempts = 5
-    delete_tmpdir = False
+    delete_tmpdir = True
     
     with tempfile.TemporaryDirectory(delete=delete_tmpdir) as tmpdir:
         for i in range(total_attempts):
@@ -100,11 +100,11 @@ def evaluate_handlers_generation() -> float:
                     
                     if result["exit_code"] == 0:
                         successful_compilations += 1
-                        print("TypeSpec compilation successful")
+                        print("Handler compilation successful")
                     else:
-                        print("TypeSpec compilation failed")
+                        print("Handler compilation failed")
                 else:
-                    print("No TypeSpec definitions found in result")
+                    print("No Handler found in result")
             
             except Exception as e:
                 print(f"Error in iteration {i}: {str(e)}")
