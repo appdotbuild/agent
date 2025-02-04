@@ -49,24 +49,25 @@ def evaluate_handlers_generation() -> float:
     
     successful_compilations = 0
     total_attempts = 5
-    delete_tmpdir = True
+    delete_tmpdir = False
     
     with tempfile.TemporaryDirectory(delete=delete_tmpdir) as tmpdir:
         for i in range(total_attempts):
             test_case = test_cases[i % len(test_cases)]
             
-            handlers_dir = os.path.join(tmpdir, "handlers")
-            db_schema_dir = os.path.join(tmpdir, "db", "schema")
-            common_dir = os.path.join(tmpdir, "common")
+            handlers_dir = "handlers"
+            db_schema_dir = os.path.join("db", "schema")
+            common_dir = os.path.join("common")
 
             if not delete_tmpdir:
-                os.makedirs(handlers_dir, exist_ok=True)
-                os.makedirs(db_schema_dir, exist_ok=True)
-                os.makedirs(common_dir, exist_ok=True)
+                os.makedirs(os.path.join(tmpdir, handlers_dir), exist_ok=True)
+                os.makedirs(os.path.join(tmpdir, db_schema_dir), exist_ok=True)
+                os.makedirs(os.path.join(tmpdir, common_dir), exist_ok=True)
             
             tsc_handler_file = os.path.join(handlers_dir, f"{test_case['function_name']}-{i}.ts")
             drizzle_schema_file = os.path.join(db_schema_dir, "application.ts")
             typespec_schema_file = os.path.join(common_dir, "schema.ts")
+            
             try:
                 prompt = handlers_tpl.render(function_name=test_case["function_name"], typescript_schema=test_case["typescript_schema"], drizzle_schema=test_case["drizzle_schema"])
                 
@@ -87,10 +88,12 @@ def evaluate_handlers_generation() -> float:
                     continue
                     
                 if result and result.get("handler"):
-                    print(f"Writing handler to file {tsc_handler_file}")
-                    write_tsc_file(result["handler"], tsc_handler_file)
-                    write_tsc_file(test_case["drizzle_schema"], drizzle_schema_file)
-                    write_tsc_file(test_case["typescript_schema"], typespec_schema_file)
+                    
+                    if not delete_tmpdir:
+                        print(f"Writing handler to file {tsc_handler_file}")
+                        write_tsc_file(result["handler"], os.path.join(tmpdir, tsc_handler_file))
+                        write_tsc_file(test_case["drizzle_schema"], os.path.join(tmpdir, drizzle_schema_file))
+                        write_tsc_file(test_case["typescript_schema"], os.path.join(tmpdir, typespec_schema_file))
                     
                     result = compiler.compile_typescript({tsc_handler_file: result["handler"], drizzle_schema_file: test_case["drizzle_schema"], typespec_schema_file: test_case["typescript_schema"]})
                     print(f"Compilation result: {result}")
