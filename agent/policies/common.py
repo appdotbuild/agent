@@ -46,7 +46,6 @@ class TaskNode[T, U](ABC, Node[T]):
 
     @staticmethod
     @abstractmethod
-    @observe(capture_input=False, capture_output=False)
     def run(input: U, *args, **kwargs) -> T:
         ...
 
@@ -56,9 +55,9 @@ class TaskNode[T, U](ABC, Node[T]):
         ...
 
     @property
-    @abstractmethod
     def is_expandable(self) -> bool:
-        ...
+        """By default if a node did not succeed, we can expand further."""
+        return not self.is_successful  
     
     @property
     @abstractmethod
@@ -72,6 +71,7 @@ class TaskNode[T, U](ABC, Node[T]):
     @staticmethod
     @contextmanager
     def platform[**P](*args: P.args, **kwargs: P.kwargs):
+        """Context manager for setting up globally accessible resources for workers."""
         try:
             yield
         finally:

@@ -1,5 +1,5 @@
 from anthropic import AnthropicBedrock
-from anthropic.types import Message
+from anthropic.types import Message, MessageParam
 from langfuse.decorators import langfuse_context, observe
 
 
@@ -11,7 +11,7 @@ class TracingClient:
     def call_anthropic(
         self,
         model: str,
-        messages: list[dict[str, str | dict]],
+        messages: list[MessageParam],
         max_tokens: int = 8192,
         temperature: float = 1.0,
         **kwargs,

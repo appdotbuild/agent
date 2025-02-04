@@ -99,7 +99,7 @@ class Compiler:
         )
     
     @contextmanager
-    def tmp_network(self, network_name: str = None, driver: str = "bridge"):
+    def tmp_network(self, network_name: str | None = None, driver: str = "bridge"):
         network_name = network_name or uuid.uuid4().hex
         try:
             network = self.client.networks.create(network_name, driver=driver)
