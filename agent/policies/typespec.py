@@ -35,7 +35,12 @@ bytes: Represents a sequence of bytes
 null: Represents a null value
 -unknown: Represents a value of any type
 -void: Used to indicate no return value for functions/operations
-NOTE: Avoid using other types. Avoid using reserved keywords for property / type names: ["model", "interface"].
+NOTE: Avoid using other types.
+
+TypeSpec RESERVED keywords:
+- model: Used to define a model
+- interface: Used to define an interface
+NOTE: Avoid using reserved keywords for property names, type names, and function names.
 
 TypeSpec is extended with special decorator that indicates that this function
 is processed by language model parametrized with number of previous messages passed to the LLM.
@@ -94,6 +99,7 @@ Make sure to address following TypeSpec compilation errors:
 {{errors}}
 </errors>
 
+Verify absence of reserved keywords in property names, type names, and function names.
 Return <reasoning> and fixed complete TypeSpec definition encompassed with <typespec> tag.
 """
 

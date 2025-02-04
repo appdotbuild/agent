@@ -72,7 +72,7 @@ class Compiler:
     def compile_typescript(self, files: dict[str, str]):
         container = self.client.containers.run(
             self.app_image,
-            command=["sleep", "1"],
+            command=["sleep", "10"],
             detach=True,
         )
         for path, content in files.items():
