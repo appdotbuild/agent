@@ -1,25 +1,13 @@
-import os
-import subprocess
 import tempfile
 from anthropic import AnthropicBedrock
+import jinja2
+from compiler.core import Compiler
 from core import stages
+
 def write_tsp_file(content: str, filepath: str) -> None:
     """Write TypeSpec content to a file."""
     with open(filepath, 'w') as f:
         f.write(content)
-
-def compile_typespec(filepath: str) -> bool:
-    """Compile TypeSpec file using tsp compiler."""
-    try:
-        result = subprocess.run(
-            ['tsp', 'compile', filepath],
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        return result.returncode == 0
-    except subprocess.CalledProcessError:
-        return False
 
 def evaluate_typespec_generation() -> float:
     """
