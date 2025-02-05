@@ -1,46 +1,62 @@
 import { type Message, GenericHandler } from "../common/handler";
 import { client } from "../common/llm";
-const nunjucks = require('nunjucks');
+const nunjucks = require("nunjucks");
+import * as TJS from "typescript-json-schema";
 import { {% for type in typescript_schema_type_names %}type {{type}}, {% endfor %} } from "../common/schema";
 
 {{handler}}
 
 const preProcessorPrompt = `
-Examine conversation between user and assistant and extract structured arguments for a function.
-
-<instructions>
-{{instructions}}
-</instructions>
-
-Examples:
-
-{% for example in examples %}
-Input:
-{{ example[0] }}
-Output:
-{{ example[1] }}
-{% endfor %}
-
 Conversation:{% raw %}
 {% for message in messages %}
 <role name="{{message.role}}">{{message.content}}</role>
 {% endfor %}{% endraw %}
-
-Respond with arguments in JSON format only inside <arguments></arguments> block.
 `;
+
+const getJSONSchema = () => {
+    const settings: TJS.PartialArgs = {
+        required: true,
+    };
+    
+    const compilerOptions: TJS.CompilerOptions = {
+        strictNullChecks: true,
+        allowJs: true,
+        allowImportingTsExtensions: true,
+        noEmit: true,
+        strict: true,
+        skipLibCheck: true,
+    };
+    
+    const program = TJS.getProgramFromFiles(
+        [__filename],
+        compilerOptions,
+    );
+    return TJS.generateSchema(program, "Options", settings)
+}
 
 const preProcessor = async (input: Message[]): Promise<Options> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
+    const schema = getJSONSchema()!;
     const response = await client.messages.create({
         model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
         max_tokens: 2048,
-        messages: [{ role: 'user', content: userPrompt }, { role: 'assistant', content: '<arguments>{'}]
+        messages: [{ role: 'user', content: userPrompt }],
+        tools: [
+            {
+                name: "handle",
+                description: "Execute handler.",
+                input_schema: {
+                    type: "object",
+                    properties: schema.properties,
+                    required: schema.required,
+                },
+            }
+        ],
+        tool_choice: {type: "tool", name: "handle"},
     });
     switch (response.content[0].type) {
-        case "text":
-            const fullResponse = '{' + response.content[0].text;
-            const jsonResponse = fullResponse.match(/{([^}]*)}/)![0];
-            return JSON.parse(jsonResponse!);
+        case "tool_use":
+            return response.content[0].input as Options;
         default:
             throw new Error("Unexpected response type");
     }

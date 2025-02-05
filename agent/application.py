@@ -49,23 +49,20 @@ class Application:
         drizzle_schema = drizzle.data["output"]["drizzle_schema"]
         print("Generating Router...")
         router = self._make_router(application_description, typespec_definitions)
-        print("Generating Preprocessors...")
-        preprocessors = self._make_preprocessors(llm_functions, typespec_definitions)
         print("Generating Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(application_description, typespec_definitions, typescript_schema_definitions, drizzle_schema, router, preprocessors, handlers)
+        application = self._make_application(typespec_definitions, typescript_schema_definitions, drizzle_schema, router, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,
             "router": router,
-            "preprocessors": preprocessors,
             "handlers": handlers,
             "typescript_schema": typescript_schema,
             "application": application,
         }
 
-    def _make_application(self, application_description: str, typespec_definitions: str, typescript_schema_definitions: str, drizzle_schema: str, router: dict, preprocessors: dict, handlers: dict):
+    def _make_application(self, typespec_definitions: str, typescript_schema_definitions: str, drizzle_schema: str, router: dict, handlers: dict):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
 
@@ -91,7 +88,7 @@ class Application:
         
         interpolator = Interpolator(self.generation_dir)
         
-        return interpolator.interpolate_all(preprocessors, handlers, typescript_schema_type_names, router)
+        return interpolator.interpolate_all(handlers, typescript_schema_type_names, router)
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):
