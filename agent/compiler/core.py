@@ -129,4 +129,4 @@ class Compiler:
                     time.sleep(0.1)
             yield container
         finally:
-            container.remove(force=True)
+            container.remove(force=True, v=True)
