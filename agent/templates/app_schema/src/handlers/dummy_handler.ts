@@ -66,6 +66,7 @@ const preProcessor = async (input: Message[]): Promise<Options> => {
                     type: "object",
                     properties: schema.properties,
                     required: schema.required,
+                    definitions: schema.definitions,
                 },
             }
         ],
