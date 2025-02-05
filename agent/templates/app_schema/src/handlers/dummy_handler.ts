@@ -1,43 +1,44 @@
 import { GenericHandler, type Message } from "../common/handler";
 import { client } from "../common/llm";
 const nunjucks = require('nunjucks');
+import * as TJS from "typescript-json-schema";
 
 interface Options {
     name: string;
     age: number;
 }
 
+const handle = (options: Options): string => {
+    return options.name + ' is ' + options.age + ' years old';
+};
+
 const preProcessorPrompt = `
-Examine conversation between user and assistant and extract structured arguments for a function.
-
-<instructions>
-The recordUser function requires two arguments:
-1. name: String identifying the exercise (case-insensitive)
-2. age: number
-
-Rules for processing input:
-- All arguments are mandatory
-</instructions>
-
-Examples:
-
-Input:
-Hi I'm Alex and I'm 25 years old
-Output:
-{"name": "Alex", "age": 25}
-
-Input:
-My name is John and I'm 30 years old
-Output:
-{"name": "John", "age": 30}
-
 Conversation:
 {% for message in messages %}
 <role name="{{message.role}}">{{message.content}}</role>
 {% endfor %}
-
-Respond with arguments in JSON format only inside <arguments></arguments> block.
 `;
+
+const getJSONSchema = () => {
+    const settings: TJS.PartialArgs = {
+        required: true,
+    };
+    
+    const compilerOptions: TJS.CompilerOptions = {
+        strictNullChecks: true,
+        allowJs: true,
+        allowImportingTsExtensions: true,
+        noEmit: true,
+        strict: true,
+        skipLibCheck: true,
+    };
+    
+    const program = TJS.getProgramFromFiles(
+        [__filename],
+        compilerOptions,
+    );
+    return TJS.generateSchema(program, "Options", settings)
+}
 
 const postProcessorPrompt = `
 Generate response to user using output from recordUser function and conversation.
@@ -52,23 +53,30 @@ Conversation:
 
 const preProcessor = async (input: Message[]): Promise<Options> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
+    const schema = getJSONSchema()!;
     const response = await client.messages.create({
         model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
         max_tokens: 2048,
-        messages: [{ role: 'user', content: userPrompt }, { role: 'assistant', content: '<arguments>{'}]
+        messages: [{ role: 'user', content: userPrompt }],
+        tools: [
+            {
+                name: "handle",
+                description: "Execute handler.",
+                input_schema: {
+                    type: "object",
+                    properties: schema.properties,
+                    required: schema.required,
+                },
+            }
+        ],
+        tool_choice: {type: "tool", name: "handle"},
     });
     switch (response.content[0].type) {
-        case "text":
-            const fullResponse = '{' + response.content[0].text;
-            const jsonResponse = fullResponse.match(/{([^}]*)}/)![0];
-            return JSON.parse(jsonResponse!);
+        case "tool_use":
+            return response.content[0].input as Options;
         default:
             throw new Error("Unexpected response type");
     }
-};
-
-const handle = (options: Options): string => {
-    return options.name + ' is ' + options.age + ' years old';
 };
 
 const postProcessor = async (output: string, input: Message[]): Promise<Message[]> => {

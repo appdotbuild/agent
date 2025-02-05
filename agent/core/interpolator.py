@@ -23,12 +23,10 @@ class Interpolator:
         return ''.join(['_' + c.lower() if c.isupper() else c for c in handler_name]).lstrip('_')
 
 
-    def _interpolate_handler(self, handler_name: str, handler: str, instructions: str, examples: str, typescript_schema_type_names: list[str]):
+    def _interpolate_handler(self, handler_name: str, handler: str, typescript_schema_type_names: list[str]):
         params = {
             "handler_name": handler_name,
             "handler": handler,
-            "instructions": instructions,
-            "examples": examples,
             "typescript_schema_type_names": typescript_schema_type_names,
         }
         handler_snake_name = self._interpolate_module_name(handler_name)
@@ -49,13 +47,11 @@ class Interpolator:
         }
         self._interpolate(params, "logic_router.tpl", "logic/router.ts")
 
-    def interpolate_all(self, pre_processors: dict, handlers: dict, typescript_schema_type_names: list[str], router: dict):
+    def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], router: dict):
         processed_handlers = {}
         for handler_name in handlers.keys():
             handler = handlers[handler_name]["handler"]
-            instructions = pre_processors[handler_name]["instructions"]
-            examples = pre_processors[handler_name]["examples"]
-            module = self._interpolate_handler(handler_name, handler, instructions, examples, typescript_schema_type_names)
+            module = self._interpolate_handler(handler_name, handler, typescript_schema_type_names)
             processed_handlers[handler_name] = {**handlers[handler_name], "module": module}
         
         self._interpolate_index(processed_handlers)

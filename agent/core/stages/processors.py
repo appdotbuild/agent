@@ -4,7 +4,7 @@ import re
 
 PROMPT_PRE = """
 Given TypeSpec application definition examine arguments of {{function_name}} function.
-Generate pairs of example user inputs and outputs matching the function signature.
+Generate 3 to 5 pairs of example user inputs and outputs matching the function signature.
 
 TypeSpec definition:
 <typespec>
@@ -17,15 +17,15 @@ Return output in the format:
 // Includes rules for imputing arguments that might be missing in the user input.
 </instructions>
 
-<examples>
-    <example>
-        <input>// Example user input. Plain text messages such as what is the time? bench press 80x6 etc.</input>
-        <output>
-            // Expected structured JSON output of the arguments.
-            // Follow proper JSON format, undefined values should be null.
-        </output>
-    </example>
-</examples>
+<example>
+<input>
+// Example user input. Plain text messages such as what is the time? bench press 80x6 etc.
+</input>
+<output>
+// Expected structured JSON output of the arguments.
+// Follow proper JSON format, undefined values should be null.
+</output>
+</example>
 """.strip()
 
 
@@ -40,13 +40,10 @@ class PreprocessorOutput(TypedDict):
 
 
 def parse_output(output: str) -> PreprocessorOutput:
-    pattern = re.compile(
-        r"<instructions>(.*?)</instructions>.*?<examples>(.*?)</examples>",
-        re.DOTALL,
-    )
+    pattern = re.compile(r"<instructions>(.*?)</instructions>", re.DOTALL)
     match = pattern.search(output)
     if match is None:
-        raise ValueError("Failed to parse output")
+        raise ValueError("Failed to parse output", output)
     instructions = match.group(1).strip()
-    examples = re.findall(r"<example>\s*<input>(.*?)</input>\s*<output>(.*?)</output>\s*</example>", match.group(2), re.DOTALL)
+    examples = re.findall(r"<example>\s*<input>(.*?)</input>\s*<output>(.*?)</output>\s*</example>", output, re.DOTALL)
     return PreprocessorOutput(instructions=instructions, examples=examples)
