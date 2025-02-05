@@ -1,5 +1,5 @@
 import { client } from "../common/llm";
-import { Message } from "../common/handler";
+import type { Message } from "../common/handler";
 const nunjucks = require("nunjucks");
 
 const router_prompt: string = `{% raw %}

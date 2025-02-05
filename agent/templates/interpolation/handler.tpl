@@ -2,7 +2,6 @@ import { type Message, GenericHandler } from "../common/handler";
 import { client } from "../common/llm";
 const nunjucks = require("nunjucks");
 import * as TJS from "typescript-json-schema";
-import { {% for type in typescript_schema_type_names %}type {{type}}, {% endfor %} } from "../common/schema";
 
 {{handler}}
 
