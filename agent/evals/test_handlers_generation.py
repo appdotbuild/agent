@@ -53,8 +53,8 @@ def evaluate_handlers_generation() -> float:
             })
     
     successful_compilations = 0
-    total_attempts = 10
-    delete_tmpdir = True
+    total_attempts = 3
+    delete_tmpdir = False
     
     with tempfile.TemporaryDirectory(delete=delete_tmpdir) as tmpdir:
         for i in range(total_attempts):

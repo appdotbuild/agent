@@ -95,8 +95,13 @@ Code style:
 1. Always use quotes "" not '' for strings,
 2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled,
 3. Use underscored names (i.e. _options) if they not used in the code (e.g. in function parameters).
+4. Make sure to consistently use nullability and never assign null to non-nullable types. For example:
+   - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
+   - If a field can be null, explicitly define it as `string | null` in the interface
+   - When working with arrays of objects, ensure each object property matches the interface type exactly
+   - Use optional properties with `?` instead of allowing null values where appropriate
 
-Drizzle guide:
+Drizzle style guide:
 
 <drizzle_guide>
 # Drizzle ORM Quick Reference
