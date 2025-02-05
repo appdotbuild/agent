@@ -53,6 +53,7 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 class TypescriptOutput:
     reasoning: str
     typescript_schema: str
+    type_names: list[str]
     feedback: CompileResult
 
 
@@ -90,11 +91,12 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, typescript_schema = TypescriptTaskNode.parse_output(response.content[0].text)
+            reasoning, typescript_schema, type_names = TypescriptTaskNode.parse_output(response.content[0].text)
             feedback = typescript_compiler.compile_typescript({"src/common/schema.ts": typescript_schema})
             output = TypescriptOutput(
                 reasoning=reasoning,
                 typescript_schema=typescript_schema,
+                type_names=type_names,
                 feedback=feedback,
             )
         except Exception as e:
@@ -126,7 +128,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             del typescript_jinja_env
     
     @staticmethod
-    def parse_output(output: str) -> tuple[str, str]:
+    def parse_output(output: str) -> tuple[str, str, list[str]]:
         pattern = re.compile(
             r"<reasoning>(.*?)</reasoning>.*?<typescript>(.*?)</typescript>",
             re.DOTALL,
@@ -136,4 +138,5 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <typescript> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        return reasoning, definitions
+        type_names: list[str] = re.findall(r"export interface (\w+)", definitions)
+        return reasoning, definitions, type_names

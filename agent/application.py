@@ -2,25 +2,18 @@ import os
 import jinja2
 import concurrent.futures
 from anthropic import AnthropicBedrock
-from core import stages
 from shutil import copytree, ignore_patterns
-from search import Node, SearchPolicy
-from services import CompilerService
+from compiler.core import Compiler
+from tracing_client import TracingClient
 from core.interpolator import Interpolator
 from langfuse.decorators import langfuse_context, observe
-from policies import handlers
+from policies import common, handlers, typespec, drizzle, typescript, router
 
 class Application:
-    def __init__(self, client: AnthropicBedrock, compiler: CompilerService, template_dir: str = "templates", output_dir: str = "app_output"):
-        self.client = client
-        self.policy = SearchPolicy(client, compiler)
+    def __init__(self, client: AnthropicBedrock, compiler: Compiler, template_dir: str = "templates", output_dir: str = "app_output"):
+        self.client = TracingClient(client)
+        self.compiler = compiler
         self.jinja_env = jinja2.Environment()
-        self.typespec_tpl = self.jinja_env.from_string(stages.typespec.PROMPT)
-        self.typescript_schema_tpl = self.jinja_env.from_string(stages.typescript.PROMPT)
-        self.drizzle_tpl = self.jinja_env.from_string(stages.drizzle.PROMPT)
-        self.router_tpl = self.jinja_env.from_string(stages.router.PROMPT)
-        self.handlers_tpl = self.jinja_env.from_string(stages.handlers.PROMPT)
-        self.preprocessors_tpl = self.jinja_env.from_string(stages.processors.PROMPT_PRE)
         self.template_dir = template_dir
         self.iteration = 0
         self.output_dir = os.path.join(output_dir, "generated")
@@ -36,24 +29,25 @@ class Application:
         typespec = self._make_typespec(application_description)
         if typespec.score != 1:
             raise Exception("Failed to generate typespec")
+        typespec_definitions = typespec.data.output.typespec_definitions
+        llm_functions = typespec.data.output.llm_functions
         print("Generating Typescript Schema Definitions...")
-        typescript_schema = self._make_typescript_schema(typespec.data["output"]["typespec_definitions"])
+        typescript_schema = self._make_typescript_schema(typespec_definitions)
         if typescript_schema.score != 1:
             raise Exception("Failed to generate typescript schema")
-        typescript_schema_definitions = typescript_schema.data["output"]["typescript_schema"]
-        print("Compiling Drizzle...")        
-        typespec_definitions = typespec.data["output"]["typespec_definitions"]
-        llm_functions = typespec.data["output"]["llm_functions"]
+        typescript_schema_definitions = typescript_schema.data.output.typescript_schema
+        typescript_type_names = typescript_schema.data.output.type_names
+        print("Compiling Drizzle...")
         drizzle = self._make_drizzle(typespec_definitions)
         if drizzle.score != 1:
             raise Exception("Failed to generate drizzle")
-        drizzle_schema = drizzle.data["output"]["drizzle_schema"]
+        drizzle_schema = drizzle.data.output.drizzle_schema
         print("Generating Router...")
-        router = self._make_router(application_description, typespec_definitions)
+        router = self._make_router(typespec_definitions)
         print("Generating Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         print("Generating Application...")
-        application = self._make_application(typespec_definitions, typescript_schema_definitions, drizzle_schema, router, handlers)
+        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.data.output.functions, handlers)
         return {
             "typespec": typespec.data,
             "drizzle": drizzle.data,
@@ -63,7 +57,7 @@ class Application:
             "application": application,
         }
 
-    def _make_application(self, typespec_definitions: str, typescript_schema_definitions: str, drizzle_schema: str, router: dict, handlers: dict):
+    def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, handlers.HandlerTaskNode]):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
 
@@ -83,105 +77,111 @@ class Application:
             f.write(drizzle_schema)
 
         with open(os.path.join(self.generation_dir, "app_schema/src/common", "schema.ts"), "a") as f:
-            f.write(typescript_schema_definitions)
-        
-        typescript_schema_type_names = stages.typescript.parse_typescript_schema_type_names(typescript_schema_definitions)
+            f.write(typescript_schema)
         
         interpolator = Interpolator(self.generation_dir)
-        
-        return interpolator.interpolate_all(handlers, typescript_schema_type_names, router)
+
+        raw_handlers = {k: v.data.output.handler for k, v in handlers.items()}
+
+        return interpolator.interpolate_all(raw_handlers, typescript_type_names, user_functions)
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
 
-        typespec_schema_prompt_params = {"typespec_definitions": typespec_definitions}
-        typespec_schema_prompt = self.typescript_schema_tpl.render(**typespec_schema_prompt_params)
-        init_typespec_schema = {"role": "user", "content": typespec_schema_prompt}
-        data_typespec_schema = self.policy.run_typescript([init_typespec_schema], self.policy.client, self.policy.compiler, self.policy._model)
-        root_typespec_schema = Node(data_typespec_schema, int(data_typespec_schema["feedback"]["stderr"] is None))
-        best_typespec_schema = self.policy.bfs_typescript(init_typespec_schema, root_typespec_schema, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
-        return best_typespec_schema
+        content = self.jinja_env.from_string(typescript.PROMPT).render(typespec_definitions=typespec_definitions)
+        message = {"role": "user", "content": content}
+        with typescript.TypescriptTaskNode.platform(self.client, self.compiler, self.jinja_env):
+            ts_data = typescript.TypescriptTaskNode.run([message])
+            ts_root = typescript.TypescriptTaskNode(ts_data)
+            ts_solution = common.bfs(ts_root, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
+        return ts_solution
    
     @observe(capture_input=False, capture_output=False)
     def _make_typespec(self, application_description: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
 
-        typespec_prompt_params = {"application_description": application_description}
-        prompt_typespec = self.typespec_tpl.render(**typespec_prompt_params)
-        init_typespec = {"role": "user", "content": prompt_typespec}
-        data_typespec = SearchPolicy.run_typespec([init_typespec], self.policy.client, self.policy.compiler, self.policy._model)
-        root_typespec = Node(data_typespec, data_typespec["feedback"]["exit_code"] == 0)
-        best_typespec = self.policy.bfs_typespec(init_typespec, root_typespec, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
-        return best_typespec
+        content = self.jinja_env.from_string(typespec.PROMPT).render(application_description=application_description)
+        message = {"role": "user", "content": content}
+        with typespec.TypespecTaskNode.platform(self.client, self.compiler, self.jinja_env):
+            tsp_data = typespec.TypespecTaskNode.run([message])
+            tsp_root = typespec.TypespecTaskNode(tsp_data)
+            tsp_solution = common.bfs(tsp_root, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
+        return tsp_solution
     
     @observe(capture_input=False, capture_output=False)
     def _make_drizzle(self, typespec_definitions: str):
         BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
 
-        drizzle_prompt_params = {"typespec_definitions": typespec_definitions}
-        prompt_drizzle = self.drizzle_tpl.render(**drizzle_prompt_params)
-        init_drizzle = {"role": "user", "content": prompt_drizzle}
-        data_drizzle = SearchPolicy.run_drizzle([init_drizzle], self.policy.client, self.policy.compiler, self.policy._model)
-        root_drizzle = Node(data_drizzle, int(data_drizzle["feedback"]["stderr"] is None))
-        best_drizzle = self.policy.bfs_drizzle(init_drizzle, root_drizzle, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
-        return best_drizzle
+        content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=typespec_definitions)
+        message = {"role": "user", "content": content}
+        with drizzle.DrizzleTaskNode.platform(self.client, self.compiler, self.jinja_env):
+            dzl_data = drizzle.DrizzleTaskNode.run([message])
+            dzl_root = drizzle.DrizzleTaskNode(dzl_data)
+            dzl_solution = common.bfs(dzl_root, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
+        return dzl_solution
 
     @observe(capture_input=False, capture_output=False)
-    def _make_router(self, application_description: str, typespec_definitions: str):
-        router_prompt_params = {"user_request": application_description, "typespec_definitions": typespec_definitions}
-        prompt_router = self.router_tpl.render(**router_prompt_params)
-        init_router = {"role": "user", "content": prompt_router}
-        return SearchPolicy.run_router([init_router], self.policy.client, self.policy._model)
+    def _make_router(self, typespec_definitions: str):
+        content = self.jinja_env.from_string(router.PROMPT).render(typespec_definitions=typespec_definitions)
+        message = {"role": "user", "content": content}
+        with router.RouterTaskNode.platform(self.client, self.jinja_env):
+            router_data = router.RouterTaskNode.run([message], typespec_definitions=typespec_definitions)
+            router_root = router.RouterTaskNode(router_data)
+            router_solution = common.bfs(router_root)
+        return router_solution
+    
+    @staticmethod
+    @observe(capture_input=False, capture_output=False)
+    def _make_handler(
+        content: str,
+        function_name: str,
+        typespec_definitions: str,
+        typescript_schema: str,
+        drizzle_schema: str,
+        *args,
+        **kwargs,
+    ) -> handlers.HandlerTaskNode:
+        prompt_params = {
+            "function_name": function_name,
+            "typespec_schema": typespec_definitions,
+            "typescript_schema": typescript_schema,
+            "drizzle_schema": drizzle_schema,
+        }
+        message = {"role": "user", "content": content}
+        output = handlers.HandlerTaskNode.run([message], **prompt_params)
+        root_node = handlers.HandlerTaskNode(output)
+        solution = common.bfs(root_node)
+        return solution
     
     @observe(capture_input=False, capture_output=False)
-    def _make_preprocessors(self, llm_functions: list[str], typespec_definitions: str):
+    def _make_handlers(self, llm_functions: list[str], typespec_definitions: str, typescript_schema: str, drizzle_schema: str):
         MAX_WORKERS = 5
         trace_id = langfuse_context.get_current_trace_id()
         observation_id = langfuse_context.get_current_observation_id()
-        preprocessors: dict[str, stages.processors.PreprocessorOutput] = {}
-        with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
-            future_to_preprocessor = {}
-            for function_name in llm_functions:
-                preprocessor_prompt_params = {"function_name": function_name, "typespec_definitions": typespec_definitions}
-                prompt_preprocessor = self.preprocessors_tpl.render(**preprocessor_prompt_params)
-                init_preprocessor = {"role": "user", "content": prompt_preprocessor}
-                future_to_preprocessor[executor.submit(
-                    SearchPolicy.run_preprocessor,
-                    [init_preprocessor],
-                    self.policy.client,
-                    self.policy._model,
-                    langfuse_parent_trace_id=trace_id,
-                    langfuse_parent_observation_id=observation_id,
-                )] = function_name
-            for future in concurrent.futures.as_completed(future_to_preprocessor):
-                function_name = future_to_preprocessor[future]
-                preprocessors[function_name] = future.result()
-        return preprocessors
-    
-    @observe(capture_input=False, capture_output=False)
-    def _make_handlers(self, llm_functions: list[str], typespec_definitions: str, typescript_schema_definitions: str, drizzle_schema: str):
-        MAX_WORKERS = 5
-        trace_id = langfuse_context.get_current_trace_id()
-        observation_id = langfuse_context.get_current_observation_id()
-        results: dict[str, stages.handlers.HandlerOutput] = {}
-        with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
-            future_to_handler = {}
-            for function_name in llm_functions:
-                #typescript_schema_type_names = stages.typescript.parse_typescript_schema_type_names(typescript_schema_definitions)
-                handler_prompt_params = {
-                    "function_name": function_name,
-                    "typespec_schema": typespec_definitions,
-                    "typescript_schema": typescript_schema_definitions,
-                    "drizzle_schema": drizzle_schema
-                }
-                prompt_handler = self.handlers_tpl.render(**handler_prompt_params)
-                message = {"role": "user", "content": prompt_handler}
-                # TODO: Add policy execution
-                with handlers.HandlerTaskNode.platform(self.policy.client, self.policy.compiler, self.jinja_env):
-                    output = handlers.HandlerTaskNode.run([message], function_name=function_name,
-                                          typespec_schema=typespec_definitions,
-                                          typescript_schema=typescript_schema_definitions,
-                                          drizzle_schema=drizzle_schema)
-                    results[function_name] = output
+        results: dict[str, handlers.HandlerTaskNode] = {}
+        with handlers.HandlerTaskNode.platform(self.client, self.compiler, self.jinja_env):
+            with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
+                future_to_handler = {}
+                for function_name in llm_functions:
+                    prompt_params = {
+                        "function_name": function_name,
+                        "typespec_schema": typespec_definitions,
+                        "typescript_schema": typescript_schema,
+                        "drizzle_schema": drizzle_schema,
+                    }
+                    content = self.jinja_env.from_string(handlers.PROMPT).render(**prompt_params)
+                    future_to_handler[executor.submit(
+                        Application._make_handler,
+                        content,
+                        function_name,
+                        typespec_definitions,
+                        typescript_schema,
+                        drizzle_schema,
+                        langfuse_parent_trace_id=trace_id,
+                        langfuse_parent_observation_id=observation_id,
+                    )] = function_name
+                for future in concurrent.futures.as_completed(future_to_handler):
+                    function_name, result = future_to_handler[future], future.result()
+                    results[function_name] = result
         return results

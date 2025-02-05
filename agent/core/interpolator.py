@@ -47,14 +47,14 @@ class Interpolator:
         }
         self._interpolate(params, "logic_router.tpl", "logic/router.ts")
 
-    def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], router: dict):
+    def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], functions: list[dict]):
         processed_handlers = {}
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
             module = self._interpolate_handler(handler_name, handler, typescript_schema_type_names)
-            processed_handlers[handler_name] = {**handlers[handler_name], "module": module}
+            processed_handlers[handler_name] = {"module": module}
         
         self._interpolate_index(processed_handlers)
-        self._interpolate_router(router["user_functions"])
+        self._interpolate_router(functions)
         
         return processed_handlers
