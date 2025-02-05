@@ -82,12 +82,12 @@ Generate only:
 2. Required table imports from drizzle schema (STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA): 'import { customTable } from "../db/schema/application"; // all drizzle tables are defined in this file',
 3. Statement if required: 'import { db } from "../db";',
 4. Relevant imports from Drizzle ORM if required: 'import { eq } from "drizzle-orm";',
-5. Required only imports from typespec schema (STRICTLY FOLLOW EXACT NAMES OF TYPES TO TYPESCRIPT SCHEMA): 'import { CarPoemBot } from "../common/schema";'.
+5. Required only imports from typespec schema (STRICTLY FOLLOW EXACT NAMES OF TYPES TO TYPESCRIPT SCHEMA): 'import { CarPoem } from "../common/schema";'.
 
 Omit in generated code:
-1. Pre- and Post-processors,
-2. Imports from any other other files,
-3. XXXBot types from TypeScript schema.
+1. Avoid generating Pre- and Post-processors,
+2. Avoid adding unused imports,
+3. Avoid importing any other other files.
 
 Handler function code should make use of TypeScript schema types and interfaces and drizzle schema types and interfaces and contain just explicit logic such as database operations, performing calculations etc.
 
