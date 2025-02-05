@@ -43,7 +43,7 @@ def evaluate_handlers_generation() -> float:
         if not all(key in schemas for key in SCHEMA_SUFFIXES.values()):
             print(f"Skipping {prefix} because it is missing one or more required schemas")
             continue
-        print(schemas["typescript_schema"])
+        #print(schemas["typescript_schema"])
         function_names = re.findall(r'\b(\w+)\s*\(', schemas["typescript_schema"])
         for function_name in function_names:
             test_cases.append({
