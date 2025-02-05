@@ -64,7 +64,7 @@ def evaluate_handlers_generation() -> float:
                 os.makedirs(os.path.join(tmpdir, db_schema_dir), exist_ok=True)
                 os.makedirs(os.path.join(tmpdir, common_dir), exist_ok=True)
             
-            tsc_handler_file = os.path.join(handlers_dir, f"{test_case['function_name']}-{i}.ts")
+            tsc_handler_file = os.path.join(handlers_dir, f"{test_case['function_name']}_{i}.ts")
             drizzle_schema_file = os.path.join(db_schema_dir, "application.ts")
             typespec_schema_file = os.path.join(common_dir, "schema.ts")
             
@@ -92,7 +92,7 @@ def evaluate_handlers_generation() -> float:
                 if result and result.get("handler"):
                     
                     if not delete_tmpdir:
-                        print(f"Writing handler to file {tsc_handler_file}")
+                        print(f"Writing handler to file {os.path.join(tmpdir, tsc_handler_file)}")
                         write_tsc_file(result["handler"], os.path.join(tmpdir, tsc_handler_file))
                         write_tsc_file(test_case["drizzle_schema"], os.path.join(tmpdir, drizzle_schema_file))
                         write_tsc_file(test_case["typescript_schema"], os.path.join(tmpdir, typespec_schema_file))

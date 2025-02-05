@@ -14,6 +14,6 @@ export interface CarPoem {
 }
 
 export interface CarPoemBot {
-    generateCarPoem(style: string, topic: string): Promise<CarPoem>;
+    generateCarPoem(options: { style: string, topic: string }): Promise<CarPoem>;
     listAvailableStyles(): Promise<PoemStyle[]>;
 }

@@ -11,7 +11,7 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Based on TypeSpec application definition and drizzle schema, generate a handler for {{function_name}} function.
+Based on TypeScript application definition and drizzle schema, generate a handler for {{function_name}} function.
 Handler always accepts single argument. It should be declared at the beginning as interface Options;
 Handler should satisfy following interface:
 
@@ -52,26 +52,48 @@ interface Options {
     content: string;
 };
 
-const handle = (options: Options): string => {
+export const handle = (options: Options): string => {
     await db.insert(customTable).values({ content: options.content }).execute();
     return input;
 };
+
 </handler>
-
-TypeSpec is extended with special decorator that indicates that this function
-is processed by language model parametrized with number of previous messages passed to the LLM.
-
-extern dec llm_func(target: unknown, history: valueof int32);
 
 Application Definitions:
 
-<typescript_schema>
+<typespec>
+{{typesspec_schema}}
+</typespec>
+
+<typescript>
 {{typescript_schema}}
-</typescript_schema>
+</typescript>
 
 <drizzle>
 {{drizzle_schema}}
 </drizzle>
+
+Handler to implement: {{function_name}}
+
+Return output within <handler> tag.
+
+Generate only:
+1. The handler export function with Options, Output interfaces,
+2. Required table imports from drizzle schema (STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA): 'import { customTable } from "../db/schema/application"; // all drizzle tables are defined in this file',
+3. Statement if required: 'import { db } from "../db";',
+4. Relevant imports from Drizzle ORM if required: 'import { eq } from "drizzle-orm";',
+5. Required only imports from typespec schema (STRICTLY FOLLOW EXACT NAMES OF TYPES TO TYPESCRIPT SCHEMA): 'import { CarPoemBot } from "../common/schema";'.
+
+Omit in generated code:
+1. Pre- and Post-processors,
+2. Imports from any other other files,
+3. XXXBot types from TypeScript schema.
+
+Handler function code should make use of TypeScript schema types and interfaces and drizzle schema types and interfaces and contain just explicit logic such as database operations, performing calculations etc.
+
+Code style:
+1. Always use quotes "" not '' for strings,
+2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled.
 
 Drizzle guide:
 
@@ -81,7 +103,6 @@ Drizzle guide:
 ## Essential Commands
 
 ### Query Operations
-```typescript
 // Select
 const all = await db.select().from(users);
 const one = await db.select().from(users).where(eq(users.id, 1));
@@ -104,10 +125,8 @@ await db.update(users)
 
 // Delete
 await db.delete(users).where(eq(users.id, 1));
-```
 
 ### Relations & Joins
-```typescript
 // Get related data
 const usersWithPosts = await db.query.users.findMany({
   with: { posts: true }
@@ -117,27 +136,14 @@ const usersWithPosts = await db.query.users.findMany({
 const joined = await db.select()
   .from(users)
   .leftJoin(posts, eq(users.id, posts.userId));
-```
 
 ### Transactions
-```typescript
 const result = await db.transaction(async (tx) => {
   const user = await tx.insert(users).values({ name: 'John' });
   await tx.insert(posts).values({ userId: user.id, title: 'Post' });
 });
-```
-
-### Migrations
-```bash
-# Create migration
-drizzle-kit generate:pg
-
-# Apply migration
-drizzle-kit push:pg
-```
 
 ### Common Filters
-```typescript
 where(eq(users.id, 1))           // equals
 where(ne(users.id, 1))           // not equals
 where(gt(users.age, 18))         // greater than
@@ -148,21 +154,17 @@ where(like(users.name, '%John%')) // LIKE
 where(ilike(users.name, '%john%')) // ILIKE
 where(and(...))                   // AND
 where(or(...))                    // OR
-```
 
 ## Troubleshooting Common TypeScript Errors
 
 ### 1. Operator Imports
-```typescript
 // Always import operators from drizzle-orm
 import { eq, and, or, like, gt, lt } from 'drizzle-orm';
 
 // For PostgreSQL specific operators
 import { eq } from 'drizzle-orm/pg-core';
-```
 
 ### 2. Proper Query Building
-```typescript
 // Correct way to build queries
 const query = db.select()
   .from(table)
@@ -173,10 +175,8 @@ let baseQuery = db.select().from(table);
 if (condition) {
   baseQuery = baseQuery.where(eq(table.column, value));
 }
-```
 
 ### 3. Array Operations
-```typescript
 // For array comparisons, use 'in' operator instead of 'eq'
 import { inArray } from "drizzle-orm";
 
@@ -189,10 +189,8 @@ const query = db.select()
 const query = db.select()
   .from(table)
   .where(sql`${table.id} = ANY(${ids})`);
-```
 
 ### 4. Type-Safe Pattern
-```typescript
 // Define proper types for your data
 interface QueryOptions {
   exercise?: string;
@@ -213,7 +211,6 @@ function buildQuery(options: QueryOptions) {
   
   return query;
 }
-```
 
 ### Common Fixes for TypeScript Errors
 
@@ -240,7 +237,6 @@ function buildQuery(options: QueryOptions) {
 #### 1. Missing 'where' and 'limit' Properties
 This common error occurs when TypeScript loses type inference in query chains:
 
-```typescript
 // ❌ Incorrect - Type inference is lost
 let query = db.select().from(table);
 if (condition) {
@@ -257,10 +253,9 @@ const finalQuery = whereQuery.limit(10);
 
 // ✅ Alternative - Type assertion
 let query = db.select().from(table) as typeof baseQuery;
-```
 
 #### 2. Proper Query Building Pattern
-```typescript
+import { db } from '../db';
 import { eq } from 'drizzle-orm';
 import { type PgSelect } from "drizzle-orm/pg-core";
 
@@ -272,7 +267,6 @@ interface QueryOptions {
 
 // Type-safe query builder function
 function buildWorkoutQuery(
-  db: Database,
   table: typeof progressTable,
   options: QueryOptions
 ): PgSelect {
@@ -292,13 +286,11 @@ function buildWorkoutQuery(
   
   return query;
 }
-```
 
 #### 3. Real-World Example: Progress Tracking
-```typescript
 import { eq } from "drizzle-orm";
-import { progressTable } from "./schema";
-import type { Database } from "./db";
+import { progressTable } from "../db/schema/application";
+import { db } from '../db';
 
 interface ProgressQueryOptions {
   exerciseName?: string;
@@ -306,7 +298,6 @@ interface ProgressQueryOptions {
 }
 
 export async function getProgress(
-  db: Database,
   options: ProgressQueryOptions
 ) {
   // ✅ Correct implementation
@@ -326,13 +317,11 @@ export async function getProgress(
     
   return await withLimit;
 }
-```
 
 #### 4. Real-World Example: Workout History
-```typescript
 import { eq } from "drizzle-orm";
-import { exerciseRecordsTable } from "./schema";
-import type { Database } from "./db";
+import { exerciseRecordsTable } from "../db/schema/application";
+import { db } from '../db';
 
 interface WorkoutHistoryOptions {
   exerciseId?: number;
@@ -340,7 +329,6 @@ interface WorkoutHistoryOptions {
 }
 
 export async function listWorkoutHistory(
-  db: Database,
   options: WorkoutHistoryOptions
 ) {
   // ✅ Correct implementation with type preservation
@@ -361,7 +349,6 @@ export async function listWorkoutHistory(
     
   return await withLimit;
 }
-```
 
 ### Common Type Error Fixes
 
@@ -371,18 +358,15 @@ export async function listWorkoutHistory(
    - Use `$dynamic()` for dynamic queries
 
 2. Import Issues:
-```typescript
 // ✅ Correct imports for PostgreSQL
 import { eq, and, or } from "drizzle-orm";
 import type { PgSelect } from "drizzle-orm/pg-core";
 
 // Types for type safety
 import type { InferSelectModel } from 'drizzle-orm';
-import type { Database } from './db';
-```
+import { db } from '../db';
 
 3. Type Definitions:
-```typescript
 // Define table types
 type Progress = InferSelectModel<typeof progressTable>;
 type ExerciseRecord = InferSelectModel<typeof exerciseRecordsTable>;
@@ -392,7 +376,6 @@ interface QueryOptions<T> {
   where?: Partial<T>;
   limit?: number;
 }
-```
 
 4. Error Prevention Checklist:
    - Import operators explicitly (`eq`, `and`, etc.)
@@ -405,12 +388,6 @@ interface QueryOptions<T> {
 These patterns will help prevent common TypeScript errors while working with Drizzle ORM, especially in workout tracking and progress monitoring systems.
 </drizzle_guide>
 
-Handler to implement: {{function_name}}
-
-Return output within <handler> tag.
-Generate only the handler function and table imports from drizzle schema, imports from drizzle orm.
-Omit pre- and post-processors.
-Handler code should contain just explicit logic such as database operations, performing calculations etc.
 """.strip()
 
 
@@ -466,7 +443,9 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             handler = HandlerTaskNode.parse_output(response.content[0].text)
             #feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler})
             handler_filename = str(uuid.uuid4())
-            feedback = typescript_compiler.compile_typescript({f"src/handlers/{handler_filename}.ts": handler})
+            feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler, 
+                                                               "src/common/schema.ts": kwargs['typescript_schema'], 
+                                                               "src/db/schema/application.ts": kwargs['drizzle_schema']})
             output = HandlerOutput(
                 handler=handler,
                 feedback=feedback,
