@@ -10,11 +10,11 @@ from pydantic import BaseModel, model_validator
 
 from anthropic import AnthropicBedrock
 from application import Application
-from services import CompilerService
+from compiler.core import Compiler
 
 
 client = AnthropicBedrock(aws_region="us-west-2")
-compiler = CompilerService()
+compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
 
 
 app = FastAPI()
@@ -65,5 +65,5 @@ def compile(request: BuildRequest):
                 data=f.read(),
             )
             upload_result.raise_for_status()
-        metadata = {"functions": bot["router"]["user_functions"]}
+        metadata = {"functions": bot["router"].data.output.functions}
     return BuildResponse(status="success", message="done", metadata=metadata)

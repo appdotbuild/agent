@@ -79,10 +79,10 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
             match node.data.output:
                 case DrizzleOutput(feedback={"stderr": stderr}) if stderr is not None:
                     content = fix_template.render(errors=stderr)
+                case DrizzleOutput():
+                    continue
                 case Exception() as e:
                     content = fix_template.render(errors=str(e))
-                case catch_all:
-                    raise RuntimeError(f"Received non-matched case: {catch_all}")
             if content:
                 messages.append({"role": "user", "content": content})
         return messages            

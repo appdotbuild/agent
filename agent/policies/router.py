@@ -130,8 +130,6 @@ class RouterTaskNode(TaskNode[RouterData, list[MessageParam]]):
                     continue
                 case Exception() as e:
                     content = fix_template.render(errors=str(e))
-                case catch_all:
-                    raise RuntimeError(f"Received non-matched case: {catch_all}")
             if content:
                 messages.append({"role": "user", "content": content})
         return messages            

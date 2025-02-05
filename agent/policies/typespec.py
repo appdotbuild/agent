@@ -129,10 +129,10 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             match node.data.output:
                 case TypespecOutput(feedback={"exit_code": exit_code, "stdout": stdout}) if exit_code != 0:
                     content = fix_template.render(errors=stdout)
+                case TypespecOutput():
+                    continue
                 case Exception() as e:
                     content = fix_template.render(errors=str(e))
-                case catch_all:
-                    raise RuntimeError(f"Received non-matched case: {catch_all}")
             if content:
                 messages.append({"role": "user", "content": content})
         return messages            
