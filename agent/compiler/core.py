@@ -1,6 +1,7 @@
 from typing import TypedDict
 import time
 import uuid
+import shlex
 from contextlib import contextmanager
 import docker
 from docker.errors import APIError
@@ -24,11 +25,11 @@ class Compiler:
             command=["sleep", "10"],
             detach=True,
         )
-        schema_path, schema = "schema.tsp", schema.replace("'", "\'")
+        schema_path, schema = "schema.tsp", shlex.quote(schema)
         command = [
             "sh",
             "-c",
-            f"echo '{schema}' > {schema_path} && tsp compile {schema_path} --no-emit"
+            f"echo {schema} > {schema_path} && tsp compile {schema_path} --no-emit"
         ]
         exit_code, (stdout, stderr) = container.exec_run(
             command,
@@ -55,7 +56,7 @@ class Compiler:
             command = [
                 "sh",
                 "-c",
-                f"echo '{schema}' > {schema_path} && npx drizzle-kit push"
+                f"echo {shlex.quote(schema)} > {schema_path} && npx drizzle-kit push"
             ]
             exit_code, (stdout, stderr) = container.exec_run(
                 command,
@@ -76,16 +77,20 @@ class Compiler:
             detach=True,
         )
         for path, content in files.items():
+            path, content = shlex.quote(path), shlex.quote(content)
             content = content.replace("'", "\'")
             command = [
                 "sh",
                 "-c",
-                f"echo '{content}' > {path}"
+                f"echo {content} > {path}"
             ]
-            container.exec_run(
+            exit_code, _ = container.exec_run(
                 command,
+                demux=True,
                 environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
             )
+            if exit_code != 0:
+                raise ValueError(f"Failed to write file {path}")
         exit_code, (stdout, stderr) = container.exec_run(
             ["npx", "tsc", "--noEmit"],
             demux=True,
