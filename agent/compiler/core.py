@@ -56,7 +56,7 @@ class Compiler:
             command = [
                 "sh",
                 "-c",
-                f"echo {shlex.quote(schema)} > {schema_path} && npx drizzle-kit push"
+                f"echo {shlex.quote(schema)} > {schema_path} && npx drizzle-kit push --config=drizzle.config.ts"
             ]
             exit_code, (stdout, stderr) = container.exec_run(
                 command,
