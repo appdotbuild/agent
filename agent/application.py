@@ -8,6 +8,7 @@ from search import Node, SearchPolicy
 from services import CompilerService
 from core.interpolator import Interpolator
 from langfuse.decorators import langfuse_context, observe
+from policies import handlers
 
 class Application:
     def __init__(self, client: AnthropicBedrock, compiler: CompilerService, template_dir: str = "templates", output_dir: str = "app_output"):
@@ -163,23 +164,24 @@ class Application:
         MAX_WORKERS = 5
         trace_id = langfuse_context.get_current_trace_id()
         observation_id = langfuse_context.get_current_observation_id()
-        handlers: dict[str, stages.handlers.HandlerOutput] = {}
+        results: dict[str, stages.handlers.HandlerOutput] = {}
         with concurrent.futures.ThreadPoolExecutor(MAX_WORKERS) as executor:
             future_to_handler = {}
             for function_name in llm_functions:
-                typescript_schema_type_names = stages.typescript.parse_typescript_schema_type_names(typescript_schema_definitions)
-                handler_prompt_params = {"function_name": function_name, "typespec_definitions": typespec_definitions, "typescript_schema_type_names": typescript_schema_type_names, "drizzle_schema": drizzle_schema}
+                #typescript_schema_type_names = stages.typescript.parse_typescript_schema_type_names(typescript_schema_definitions)
+                handler_prompt_params = {
+                    "function_name": function_name,
+                    "typespec_schema": typespec_definitions,
+                    "typescript_schema": typescript_schema_definitions,
+                    "drizzle_schema": drizzle_schema
+                }
                 prompt_handler = self.handlers_tpl.render(**handler_prompt_params)
-                init_handler = {"role": "user", "content": prompt_handler}
-                future_to_handler[executor.submit(
-                    SearchPolicy.run_handler,
-                    [init_handler],
-                    self.policy.client,
-                    self.policy._model,
-                    langfuse_parent_trace_id=trace_id,
-                    langfuse_parent_observation_id=observation_id,
-                )] = function_name
-            for future in concurrent.futures.as_completed(future_to_handler):
-                function_name = future_to_handler[future]
-                handlers[function_name] = future.result()
-        return handlers
+                message = {"role": "user", "content": prompt_handler}
+                # TODO: Add policy execution
+                with handlers.HandlerTaskNode.platform(self.policy.client, self.policy.compiler, self.jinja_env):
+                    output = handlers.HandlerTaskNode.run([message], function_name=function_name,
+                                          typespec_schema=typespec_definitions,
+                                          typescript_schema=typescript_schema_definitions,
+                                          drizzle_schema=drizzle_schema)
+                    results[function_name] = output
+        return results

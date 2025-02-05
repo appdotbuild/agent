@@ -50,7 +50,7 @@ class Interpolator:
     def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], router: dict):
         processed_handlers = {}
         for handler_name in handlers.keys():
-            handler = handlers[handler_name]["handler"]
+            handler = handlers[handler_name]
             module = self._interpolate_handler(handler_name, handler, typescript_schema_type_names)
             processed_handlers[handler_name] = {**handlers[handler_name], "module": module}
         
