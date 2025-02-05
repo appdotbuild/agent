@@ -93,7 +93,8 @@ Handler function code should make use of TypeScript schema types and interfaces 
 
 Code style:
 1. Always use quotes "" not '' for strings,
-2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled.
+2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled,
+3. Use underscored names (i.e. _options) if they not used in the code (e.g. in function parameters).
 
 Drizzle guide:
 

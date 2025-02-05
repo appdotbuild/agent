@@ -96,7 +96,7 @@ def evaluate_handlers_generation() -> float:
                     
                 if result and result.get("handler"):
                     
-                    print(result["handler"])
+                    #print(result["handler"])
                     
                     if not delete_tmpdir:
                         print(f"Writing handler to file {os.path.join(tmpdir, tsc_handler_file)}")
