@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import re
 import jinja2
 from anthropic.types import MessageParam
-from langfuse.decorators import observe
+from langfuse.decorators import observe, langfuse_context
 from .common import TaskNode
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
@@ -162,6 +162,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         except Exception as e:
             output = e
         messages = [{"role": "assistant", "content": response.content[0].text}]
+        langfuse_context.update_current_observation(output=output)
         return TypespecData(messages=messages, output=output)
     
     @property

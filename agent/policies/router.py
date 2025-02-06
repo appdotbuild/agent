@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import jinja2
 from anthropic.types import MessageParam, ContentBlock
-from langfuse.decorators import observe
+from langfuse.decorators import observe, langfuse_context
 from .common import TaskNode
 from tracing_client import TracingClient
 
@@ -150,6 +150,7 @@ class RouterTaskNode(TaskNode[RouterData, list[MessageParam]]):
         except Exception as e:
             output = e
         messages = [{"role": "assistant", "content": response.content}]
+        langfuse_context.update_current_observation(output=output)
         return RouterData(messages=messages, output=output)
     
     @property

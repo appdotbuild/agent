@@ -4,7 +4,7 @@ import re
 import uuid
 import jinja2
 from anthropic.types import MessageParam
-from langfuse.decorators import observe
+from langfuse.decorators import observe, langfuse_context
 from .common import TaskNode
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
@@ -415,7 +415,7 @@ Make sure to address following TypeScript compilation errors:
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
-Return fixed complete TypeScript definition encompassed with <typescript> tag.
+Return fixed complete TypeScript definition encompassed with <handler> tag.
 """
 
 @dataclass
@@ -475,7 +475,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         except Exception as e:
             output = e
         messages = [{"role": "assistant", "content": response.content[0].text}]
-        #return HandlerData(messages=messages, output=output, function_name=kwargs['function_name'])
+        langfuse_context.update_current_observation(output=output)
         return HandlerData(messages=messages, output=output)
     @property
     def is_successful(self) -> bool:
