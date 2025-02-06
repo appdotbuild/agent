@@ -65,5 +65,5 @@ def compile(request: BuildRequest):
                 data=f.read(),
             )
             upload_result.raise_for_status()
-        metadata = {"functions": bot["router"].data.output.functions}
+        metadata = {"functions": bot.router.functions}
     return BuildResponse(status="success", message="done", metadata=metadata)

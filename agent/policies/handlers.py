@@ -412,6 +412,11 @@ class HandlerOutput:
     handler: str
     feedback: CompileResult
 
+    @property
+    def error_or_none(self) -> str | None:
+        return self.feedback["stdout"] if self.feedback["exit_code"] != 0 else None
+
+
 @dataclass
 class HandlerData:
     messages: list[MessageParam]

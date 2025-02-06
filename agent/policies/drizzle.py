@@ -61,6 +61,10 @@ class DrizzleOutput:
     drizzle_schema: str
     feedback: CompileResult
 
+    @property
+    def error_or_none(self) -> str | None:
+        return self.feedback["stderr"] or None
+
 
 @dataclass
 class DrizzleData:
