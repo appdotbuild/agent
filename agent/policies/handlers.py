@@ -79,7 +79,7 @@ Return output within <handler> tag.
 
 Generate only:
 1. The handler export function with Options, Output interfaces,
-2. Required table imports from drizzle schema (STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA): 'import { customTable } from "../db/schema/application"; // all drizzle tables are defined in this file',
+2. Required table imports from "../db/schema/application" from drizzle schema (STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA): 'import { customTable } from "../db/schema/application";',
 3. Statement if required: 'import { db } from "../db";',
 4. Relevant imports from Drizzle ORM if required: 'import { eq } from "drizzle-orm";',
 5. Required only imports from typespec schema (STRICTLY FOLLOW EXACT NAMES OF TYPES TO TYPESCRIPT SCHEMA): 'import { CarPoem } from "../common/schema";'.
@@ -100,7 +100,7 @@ Code style:
    - If a field can be null, explicitly define it as `string | null` in the interface
    - When working with arrays of objects, ensure each object property matches the interface type exactly
    - Use optional properties with `?` instead of allowing null values where appropriate
-
+   
 Drizzle style guide:
 
 <drizzle_guide>
