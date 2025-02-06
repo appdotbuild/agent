@@ -84,7 +84,9 @@ def bfs[T: TaskNode](
     max_depth: int = 3,
     branch_factor: int = 3,
     max_workers: int = 5,
+    **kwargs,
 ) -> T:
+    """Breadth-first search with parallelized expansion. KWARGS are passed to run method."""
     trace_id = langfuse_context.get_current_trace_id()
     observation_id = langfuse_context.get_current_observation_id()
     while True:
@@ -104,6 +106,7 @@ def bfs[T: TaskNode](
                     future_to_node[executor.submit(
                         node.run,
                         args,
+                        **kwargs,
                         langfuse_parent_trace_id=trace_id,
                         langfuse_parent_observation_id=observation_id,
                     )] = node

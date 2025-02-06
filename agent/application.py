@@ -238,7 +238,7 @@ class Application:
         message = {"role": "user", "content": content}
         output = handlers.HandlerTaskNode.run([message], **prompt_params)
         root_node = handlers.HandlerTaskNode(output)
-        solution = common.bfs(root_node, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
+        solution = common.bfs(root_node, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS, **prompt_params)
         return solution
     
     @observe(capture_input=False, capture_output=False)
