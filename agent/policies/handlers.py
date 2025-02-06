@@ -404,7 +404,7 @@ Make sure to address following TypeScript compilation errors:
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
-Return fixed complete TypeScript definition encompassed with <typescript> tag.
+Return fixed complete TypeScript definition encompassed with <handler> tag.
 """
 
 @dataclass
