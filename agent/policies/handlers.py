@@ -100,7 +100,13 @@ Code style:
    - If a field can be null, explicitly define it as `string | null` in the interface
    - When working with arrays of objects, ensure each object property matches the interface type exactly
    - Use optional properties with `?` instead of allowing null values where appropriate
-   
+5. Use PascalCase for all type names (e.g. `UserProfile`, `WorkoutRoutine`, `ProgressMetrics`) and camelCase for variables/properties. For example:
+    - Interface names should be PascalCase: `interface UserProfile`
+    - Type aliases should be PascalCase: `type ResponseData`
+    - Generic type parameters should be PascalCase: `Array<UserData>`
+    - Enum names should be PascalCase: `enum UserRole`
+
+  
 Drizzle style guide:
 
 <drizzle_guide>
