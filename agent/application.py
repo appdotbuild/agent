@@ -102,8 +102,27 @@ class Application:
         router = self._make_router(typespec_definitions)
         if router.error_output is not None:
             raise Exception(f"Failed to generate router: {router.error_output}")
+
         print("Compiling Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, typescript_schema_definitions, drizzle_schema)
+
+        langfuse_context.update_current_observation(
+            output = {
+                "typespec": typespec.__dict__,
+                "typescript_schema": typescript_schema.__dict__,
+                "drizzle": drizzle.__dict__,
+                "router": router.__dict__,
+                "handlers": {k: v.__dict__ for k, v in handlers.items()},
+            },
+            metadata = {
+                "typespec_ok": typespec.error_output is None,
+                "typescript_schema_ok": typescript_schema.error_output is None,
+                "drizzle_ok": drizzle.error_output is None,
+                "router_ok": router.error_output is None,
+                "all_handlers_ok": all(handler.error_output is None for handler in handlers.values()),
+            },
+        )
+
         print("Generating Application...")
         application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers)
         return ApplicationOut(typespec, drizzle, router, handlers, typescript_schema, application)
