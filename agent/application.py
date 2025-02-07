@@ -157,7 +157,7 @@ class Application:
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):
-        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
+        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 2, 4, 5
 
         content = self.jinja_env.from_string(typescript.PROMPT).render(typespec_definitions=typespec_definitions)
         message = {"role": "user", "content": content}
@@ -173,7 +173,7 @@ class Application:
    
     @observe(capture_input=False, capture_output=False)
     def _make_typespec(self, application_description: str):
-        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
+        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 2, 4, 5
 
         content = self.jinja_env.from_string(typespec.PROMPT).render(application_description=application_description)
         message = {"role": "user", "content": content}
@@ -189,7 +189,7 @@ class Application:
     
     @observe(capture_input=False, capture_output=False)
     def _make_drizzle(self, typespec_definitions: str):
-        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
+        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 2, 4, 5
 
         content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=typespec_definitions)
         message = {"role": "user", "content": content}
@@ -228,7 +228,7 @@ class Application:
         *args,
         **kwargs,
     ) -> handlers.HandlerTaskNode:
-        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 3, 3, 5
+        BRANCH_FACTOR, MAX_DEPTH, MAX_WORKERS = 2, 4, 5
         prompt_params = {
             "function_name": function_name,
             "typespec_schema": typespec_definitions,

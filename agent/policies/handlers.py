@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from contextlib import contextmanager
+import os
 import re
 import uuid
 import jinja2
@@ -424,6 +425,12 @@ Verify absence of reserved keywords in property names, type names, and function 
 Return fixed complete TypeScript definition encompassed with <handler> tag.
 """
 
+# TODO: Fix this terrible hack
+_current_dir = os.path.dirname(os.path.realpath(__file__))
+_handler_tpl_path = os.path.abspath(os.path.join(_current_dir, "../templates/interpolation/handler.tpl"))
+with open(_handler_tpl_path, "r", encoding="utf-8") as f:
+    HANDLER_TPL = f.read()
+
 @dataclass
 class HandlerOutput:
     handler: str
@@ -469,9 +476,8 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         )
         try:
             handler = HandlerTaskNode.parse_output(response.content[0].text)
-            #feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler})
-            handler_filename = str(uuid.uuid4())
-            feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler, 
+            handler_check = typescript_jinja_env.from_string(HANDLER_TPL).render(handler=handler, handler_name=kwargs['function_name'])
+            feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler_check, 
                                                                "src/common/schema.ts": kwargs['typescript_schema'], 
                                                                "src/db/schema/application.ts": kwargs['drizzle_schema']})
             output = HandlerOutput(
@@ -483,6 +489,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         messages = [{"role": "assistant", "content": response.content[0].text}]
         langfuse_context.update_current_observation(output=output)
         return HandlerData(messages=messages, output=output)
+
     @property
     def is_successful(self) -> bool:
         return (
