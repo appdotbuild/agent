@@ -46,7 +46,7 @@ class Compiler:
     def compile_drizzle(self, schema: str):
         with self.tmp_network() as network, self.tmp_postgres() as postgres:
             network.connect(postgres)
-            schema_path, schema = "src/db/schema/application.ts", schema.replace("'", "\'")
+            schema_path = "src/db/schema/application.ts"
             container = self.client.containers.run(
                 self.app_image,
                 command=["sleep", "10"],
@@ -78,7 +78,6 @@ class Compiler:
         )
         for path, content in files.items():
             path, content = shlex.quote(path), shlex.quote(content)
-            content = content.replace("'", "\'")
             command = [
                 "sh",
                 "-c",
