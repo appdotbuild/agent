@@ -47,18 +47,20 @@ Example handler implementation:
 
 <handler>
 import { db } from "../db";
-import type { Message } from "../db/schema/baseEntities";
+import type { Greeting } from "../db/schema/application";
+import { messagesTable } from "../db/schema/common";
 
 interface Options {
     user_id: string;
     message: string;
+    greeting: Greeting;
 }
 
 interface Output {
-    greeting: string;
+    greetingMessage: string;
 }
 
-export const handle = async (options: Options): Promise<Output> => {
+export const handle = (options: Options): Output => {
     // Store user message
     await db.insert(messagesTable).values({
         user_id: options.user_id,
@@ -67,7 +69,9 @@ export const handle = async (options: Options): Promise<Output> => {
     });
 
     // Generate greeting based on message
-    const greeting = `Hello! You said: ${options.message}`;
+    const greeting = Greeting.create({
+        message: `Hello! You said: ${options.message}`
+    });
 
     // Store bot response
     await db.insert(messagesTable).values({
@@ -77,7 +81,7 @@ export const handle = async (options: Options): Promise<Output> => {
     });
 
     return {
-        greeting
+        greetingMessage: greeting.message
     };
 };
 
