@@ -438,7 +438,9 @@ class HandlerOutput:
 
     @property
     def error_or_none(self) -> str | None:
-        return self.feedback["stdout"] if self.feedback["exit_code"] != 0 else None
+        if self.feedback["exit_code"] != 0:
+            return self.feedback["stdout"] or f"Exit code: {self.feedback['exit_code']}"
+        return None
 
 
 @dataclass
