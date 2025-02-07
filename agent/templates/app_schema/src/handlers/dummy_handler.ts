@@ -3,14 +3,17 @@ import { client } from "../common/llm";
 const nunjucks = require('nunjucks');
 import * as TJS from "typescript-json-schema";
 
-interface Options {
+interface GreetUserParams {
     name: string;
     age: number;
 }
 
-const handle = (options: Options): string => {
+const handle = (options: GreetUserParams): string => {
+    console.log(options);
     return options.name + ' is ' + options.age + ' years old';
 };
+
+type HandleArg = Parameters<typeof handle>[0];
 
 const preProcessorPrompt = `
 Conversation:
@@ -37,7 +40,7 @@ const getJSONSchema = () => {
         [__filename],
         compilerOptions,
     );
-    return TJS.generateSchema(program, "Options", settings)
+    return TJS.generateSchema(program, "HandleArg", settings)
 }
 
 const postProcessorPrompt = `
@@ -51,7 +54,7 @@ Conversation:
 {% endfor %}
 `
 
-const preProcessor = async (input: Message[]): Promise<Options> => {
+const preProcessor = async (input: Message[]): Promise<HandleArg> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
     const schema = getJSONSchema()!;
     const response = await client.messages.create({
@@ -74,7 +77,7 @@ const preProcessor = async (input: Message[]): Promise<Options> => {
     });
     switch (response.content[0].type) {
         case "tool_use":
-            return response.content[0].input as Options;
+            return response.content[0].input as HandleArg;
         default:
             throw new Error("Unexpected response type");
     }
@@ -95,4 +98,4 @@ const postProcessor = async (output: string, input: Message[]): Promise<Message[
     }
 };
 
-export const dummyHandler = new GenericHandler<Options, string>(handle, preProcessor, postProcessor);
+export const dummyHandler = new GenericHandler(handle, preProcessor, postProcessor);

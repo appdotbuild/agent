@@ -5,6 +5,8 @@ import * as TJS from "typescript-json-schema";
 
 {{handler}}
 
+type HandleOptArg = Parameters<typeof handle>[0];
+
 const preProcessorPrompt = `
 Conversation:{% raw %}
 {% for message in messages %}
@@ -30,10 +32,10 @@ const getJSONSchema = () => {
         [__filename],
         compilerOptions,
     );
-    return TJS.generateSchema(program, "Options", settings)
+    return TJS.generateSchema(program, "HandleOptArg", settings)
 }
 
-const preProcessor = async (input: Message[]): Promise<Options> => {
+const preProcessor = async (input: Message[]): Promise<HandleOptArg> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
     const schema = getJSONSchema()!;
     const response = await client.messages.create({
@@ -56,7 +58,7 @@ const preProcessor = async (input: Message[]): Promise<Options> => {
     });
     switch (response.content[0].type) {
         case "tool_use":
-            return response.content[0].input as Options;
+            return response.content[0].input as HandleOptArg;
         default:
             throw new Error("Unexpected response type");
     }
