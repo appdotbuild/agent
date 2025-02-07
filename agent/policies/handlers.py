@@ -47,15 +47,38 @@ Example handler implementation:
 
 <handler>
 import { db } from "../db";
-import { customTable } from "../db/schema/application"; // all drizzle tables are defined in this file
+import type { Message } from "../db/schema/baseEntities";
 
 interface Options {
-    content: string;
-};
+    user_id: string;
+    message: string;
+}
 
-export const handle = (options: Options): string => {
-    await db.insert(customTable).values({ content: options.content }).execute();
-    return input;
+interface Output {
+    greeting: string;
+}
+
+export const handle = async (options: Options): Promise<Output> => {
+    // Store user message
+    await db.insert(messagesTable).values({
+        user_id: options.user_id,
+        role: "user",
+        content: options.message
+    });
+
+    // Generate greeting based on message
+    const greeting = `Hello! You said: ${options.message}`;
+
+    // Store bot response
+    await db.insert(messagesTable).values({
+        user_id: options.user_id,
+        role: "assistant", 
+        content: greeting
+    });
+
+    return {
+        greeting
+    };
 };
 
 </handler>
@@ -79,10 +102,13 @@ Handler to implement: {{function_name}}
 Return output within <handler> tag.
 
 Generate only:
-1. handler export function with Options, Output interfaces.
+1. handler export function with Options, Output interfaces,
+2. Options interface with properties required by the handler function,
+3. Output interface with properties returned by the handler function.
 
 Omit in generated code:
-1. Avoid generating Pre- and Post-processors.
+1. Avoid generating Pre- and
+2. Avoid generating Post-processors.
 
 Handler function code should make use of:
 1. TypeScript schema types and
