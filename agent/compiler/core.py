@@ -43,6 +43,31 @@ class Compiler:
             stderr=stderr.decode("utf-8") if stderr else None,
         )
     
+    def compile_gherkin(self, testcases: str):
+        container = self.client.containers.run(
+            self.app_image,
+            command=["sleep", "10"],
+            detach=True,
+        )
+        schema_path, schema = "testcases.feature", shlex.quote(testcases)
+        command = [
+            "sh",
+            "-c", 
+            f"echo {schema} > {schema_path} && npx gherkin-lint {schema_path} -c gherkin-lint.config.json"
+        ]
+        exit_code, (stdout, stderr) = container.exec_run(
+            command,
+            demux=True,
+            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+        )
+        container.remove(force=True)
+        return CompileResult(
+            exit_code=exit_code,
+            stdout=stdout.decode("utf-8") if stdout else None,
+            stderr=stderr.decode("utf-8") if stderr else None,
+        )
+    
+    
     def compile_drizzle(self, schema: str):
         with self.tmp_network() as network, self.tmp_postgres() as postgres:
             network.connect(postgres)

@@ -13,7 +13,8 @@
     "@types/bun": "^1.2.1",
     "@types/pg": "^8.11.10",
     "drizzle-kit": "^0.30.1",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "gherkin-lint": "^4.2.4"
   },
   "scripts": {
     "start": "bun run src/helpers/reset.ts && bun run db:push && bun src/main.ts",

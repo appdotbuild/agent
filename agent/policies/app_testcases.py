@@ -12,7 +12,33 @@ from compiler.core import Compiler, CompileResult
 PROMPT = """
 Based on TypeSpec models and interfaces, generate Gherkin test cases for the application.
 Ensure that the output follows the Gherkin syntax.
+Provide reasoning within <reasoning> tag.
 Encompass output with <gherkin> tag.
+
+Make sure to follow gherkin-lint rules:
+{
+  "no-files-without-scenarios": "on",
+  "no-unnamed-features": "on",
+  "no-unnamed-scenarios": "on",
+  "no-dupe-scenario-names": "on",
+  "no-dupe-feature-names": "on",
+  "no-empty-file": "on",
+  "no-trailing-spaces": "on",
+  "new-line-at-eof": ["on", "yes"],
+  "no-multiple-empty-lines": "on",
+  "no-empty-background": "on",
+  "indentation": [
+    "on", 
+    {
+      "Feature": 0,
+      "Background": 2,
+      "Scenario": 2,
+      "Step": 4,
+      "Examples": 4,
+      "example": 6
+    }
+  ]
+}
 
 Example output:
 
@@ -67,7 +93,7 @@ Feature: Car Poetry Bot
 
 Application TypeSpec:
 
-{{typespec_definitions}}
+{{typespec_schema}}
 """.strip()
 
 
@@ -127,11 +153,11 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
         )
         try:
             reasoning, gherkin = GherkinTaskNode.parse_output(response.content[0].text)
-            feedback = gherkin_compiler.compile_gherkin({"src/common/schema.ts": gherkin})
+            feedback = gherkin_compiler.compile_gherkin(gherkin)
             output = GherkinOutput(
                 reasoning=reasoning,
                 gherkin=gherkin,
-                feedback=feedback,
+                feedback=feedback
             )
         except Exception as e:
             output = e
@@ -165,7 +191,7 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
     @staticmethod
     def parse_output(output: str) -> tuple[str, str, list[str]]:
         pattern = re.compile(
-            r"<reasoning>(.*?)</reasoning>.*?<typescript>(.*?)</gherkin>",
+            r"<reasoning>(.*?)</reasoning>.*?<gherkin>(.*?)</gherkin>",
             re.DOTALL,
         )
         match = pattern.search(output)
@@ -173,5 +199,5 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <gherkin> tags")
         reasoning = match.group(1).strip()
         gherkin = match.group(2).strip()
-        test_cases = re.findall(r"Scenario: (.*?)\n(.*?)\n", gherkin, re.DOTALL)
-        return reasoning, gherkin, test_cases
+        #test_cases = re.findall(r"Scenario: (.*?)\n(.*?)\n", gherkin, re.DOTALL)
+        return reasoning, gherkin #, test_cases
