@@ -1,7 +1,6 @@
 import os
 import jinja2
 
-
 class Interpolator:
     def __init__(self, root_dir: str):
         self.template_dir = os.path.join(root_dir, 'interpolation')
@@ -17,11 +16,9 @@ class Interpolator:
         with open(os.path.join(self.workdir, output_name), 'w') as f:
             f.write(file_content)
 
-
     def _interpolate_module_name(self, handler_name: str):
         # Convert PascalCase to snake_case for file naming
         return ''.join(['_' + c.lower() if c.isupper() else c for c in handler_name]).lstrip('_')
-
 
     def _interpolate_handler(self, handler_name: str, handler: str, typescript_schema_type_names: list[str]):
         params = {
@@ -33,21 +30,25 @@ class Interpolator:
         self._interpolate(params, "handler.tpl", f"handlers/{handler_snake_name}.ts")
         return handler_snake_name
     
-    
     def _interpolate_index(self, handlers: dict):
         params = {
             "handlers": handlers,
         }
         self._interpolate(params, "logic_index.tpl", "logic/index.ts")
 
-
     def _interpolate_router(self, functions: list[dict]):
         params = {
             "functions": functions,
         }
         self._interpolate(params, "logic_router.tpl", "logic/router.ts")
+   
+    def _interpolate_testcases(self, gherkin: str):
+        params = {
+            "gherkin": gherkin,
+        }
+        self._interpolate(params, "testcases.tpl", "tests/features/application.feature")
 
-    def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], functions: list[dict]):
+    def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], functions: list[dict], gherkin: str):
         processed_handlers = {}
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
@@ -56,5 +57,6 @@ class Interpolator:
         
         self._interpolate_index(processed_handlers)
         self._interpolate_router(functions)
+        self._interpolate_testcases(gherkin)
         
         return processed_handlers

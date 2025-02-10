@@ -9,7 +9,7 @@ from compiler.core import Compiler
 from tracing_client import TracingClient
 from core.interpolator import Interpolator
 from langfuse.decorators import langfuse_context, observe
-from policies import common, handlers, typespec, drizzle, typescript, router
+from policies import common, handlers, typespec, drizzle, typescript, router, app_testcases
 
 
 @dataclass
@@ -27,6 +27,11 @@ class TypescriptOut:
     type_names: list[str] | None
     error_output: str | None
 
+@dataclass
+class GherkinOut:
+    reasoning: str | None
+    gherkin: str | None
+    error_output: str | None
 
 @dataclass
 class DrizzleOut:
@@ -60,6 +65,7 @@ class ApplicationOut:
     router: RouterOut
     handlers: dict[str, HandlerOut]
     typescript_schema: TypescriptOut
+    gherkin: GherkinOut
     application: dict[str, dict]
 
 
@@ -89,6 +95,12 @@ class Application:
         typespec_definitions = typespec.typespec_definitions
         llm_functions = typespec.llm_functions
 
+        print("Compiling Gherkin Test Cases...")
+        gherkin = self._make_testcases(typespec_definitions)
+        if gherkin.error_output is not None:
+            raise Exception(f"Failed to generate gherkin test cases: {gherkin.error_output}")
+        #gherkin_definitions = gherkin.gherkin
+
         print("Compiling Typescript Schema Definitions...")
         typescript_schema = self._make_typescript_schema(typespec_definitions)
         if typescript_schema.error_output is not None:
@@ -107,6 +119,7 @@ class Application:
         if router.error_output is not None:
             raise Exception(f"Failed to generate router: {router.error_output}")
 
+        # TODO: pass gherkin to handlers to generate tests
         print("Compiling Handlers...")
         handlers = self._make_handlers(llm_functions, typespec_definitions, typescript_schema_definitions, drizzle_schema)
 
@@ -117,6 +130,7 @@ class Application:
                 "drizzle": drizzle.__dict__,
                 "router": router.__dict__,
                 "handlers": {k: v.__dict__ for k, v in handlers.items()},
+                "gherkin": gherkin.__dict__,
             },
             metadata = {
                 "typespec_ok": typespec.error_output is None,
@@ -124,14 +138,15 @@ class Application:
                 "drizzle_ok": drizzle.error_output is None,
                 "router_ok": router.error_output is None,
                 "all_handlers_ok": all(handler.error_output is None for handler in handlers.values()),
+                "gherkin_ok": gherkin.error_output is None,
             },
         )
 
         print("Generating Application...")
-        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers)
-        return ApplicationOut(typespec, drizzle, router, handlers, typescript_schema, application)
+        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers, gherkin.gherkin)
+        return ApplicationOut(typespec, drizzle, router, handlers, typescript_schema, gherkin, application)
 
-    def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, HandlerOut]):
+    def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, HandlerOut], gherkin: str):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
 
@@ -157,7 +172,7 @@ class Application:
 
         raw_handlers = {k: v.handler for k, v in handlers.items()}
 
-        return interpolator.interpolate_all(raw_handlers, typescript_type_names, user_functions)
+        return interpolator.interpolate_all(raw_handlers, typescript_type_names, user_functions, gherkin)
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):
@@ -172,6 +187,20 @@ class Application:
                 return TypescriptOut(None, None, None, str(e))
             case output:
                 return TypescriptOut(output.reasoning, output.typescript_schema, output.type_names, output.error_or_none)
+
+    @observe(capture_input=False, capture_output=False)
+    def _make_testcases(self, typespec_definitions: str):
+        content = self.jinja_env.from_string(app_testcases.PROMPT).render(typespec_schema=typespec_definitions)
+        message = {"role": "user", "content": content}
+        with app_testcases.GherkinTaskNode.platform(self.client, self.compiler, self.jinja_env):
+            tc_data = app_testcases.GherkinTaskNode.run([message])
+            tc_root = app_testcases.GherkinTaskNode(tc_data)
+            tc_solution = common.bfs(tc_root, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS)
+        match tc_solution.data.output:
+            case Exception() as e:
+                return GherkinOut(None, None, str(e))
+            case output:
+                return GherkinOut(output.reasoning, output.gherkin, output.error_or_none)
    
     @observe(capture_input=False, capture_output=False)
     def _make_typespec(self, application_description: str):
@@ -191,7 +220,7 @@ class Application:
     
     @observe(capture_input=False, capture_output=False)
     def _make_drizzle(self, typespec_definitions: str):
-        content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=typespec_definitions)
+        content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_schema=typespec_definitions)
         message = {"role": "user", "content": content}
         with drizzle.DrizzleTaskNode.platform(self.client, self.compiler, self.jinja_env):
             dzl_data = drizzle.DrizzleTaskNode.run([message])
