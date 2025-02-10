@@ -10,6 +10,7 @@ from tracing_client import TracingClient
 from core.interpolator import Interpolator
 from langfuse.decorators import langfuse_context, observe
 from policies import common, handlers, typespec, drizzle, typescript, router, app_testcases
+from core import feature_flags
 
 
 @dataclass
@@ -95,11 +96,13 @@ class Application:
         typespec_definitions = typespec.typespec_definitions
         llm_functions = typespec.llm_functions
 
-        print("Compiling Gherkin Test Cases...")
-        gherkin = self._make_testcases(typespec_definitions)
-        if gherkin.error_output is not None:
-            raise Exception(f"Failed to generate gherkin test cases: {gherkin.error_output}")
-        #gherkin_definitions = gherkin.gherkin
+        if feature_flags.gherkin:
+            print("Compiling Gherkin Test Cases...")
+            gherkin = self._make_testcases(typespec_definitions)
+            if gherkin.error_output is not None:
+                raise Exception(f"Failed to generate gherkin test cases: {gherkin.error_output}")
+        else:
+            gherkin = GherkinOut(None, None, None)
 
         print("Compiling Typescript Schema Definitions...")
         typescript_schema = self._make_typescript_schema(typespec_definitions)
