@@ -1,6 +1,8 @@
 import os
 import jinja2
 
+from core import feature_flags
+
 class Interpolator:
     def __init__(self, root_dir: str):
         self.template_dir = os.path.join(root_dir, 'interpolation')
@@ -63,8 +65,9 @@ class Interpolator:
         
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
-            handler_test_suite = handler_tests[handler_name]
-            module = self._interpolate_handler_test(handler_name, handler_test_suite, typescript_schema_type_names)
+            if feature_flags.gherkin:
+                handler_test_suite = handler_tests[handler_name]
+                module = self._interpolate_handler_test(handler_name, handler_test_suite, typescript_schema_type_names)
         
         for handler_name in handlers.keys():
             handler = handlers[handler_name]

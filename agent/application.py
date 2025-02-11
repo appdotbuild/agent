@@ -127,6 +127,7 @@ class Application:
         else:
             handler_tests = {}
             handler_interfaces = {}
+            
         print("Compiling Handlers...")
         handlers = self._make_handlers(llm_functions, handler_interfaces, handler_tests, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         
@@ -152,7 +153,7 @@ class Application:
         )
 
         print("Generating Application...")
-        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers, hander_tests, gherkin.gherkin)
+        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers, handler_tests, gherkin.gherkin)
         return ApplicationOut(typespec, drizzle, router, handlers, typescript_schema, gherkin, application)
 
     def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, HandlerOut], handler_tests: dict[str, HandlerOut], gherkin: str):
@@ -323,7 +324,7 @@ class Application:
         return results
     
     @observe(capture_input=False, capture_output=False)
-    def _make_handlers(self, llm_functions: list[str], handler_interfaces: list[str], handler_tests: list[str], typespec_definitions: str, typescript_schema: str, drizzle_schema: str):
+    def _make_handlers(self, llm_functions: list[str], handler_interfaces: dict[str], handler_tests: dict[str], typespec_definitions: str, typescript_schema: str, drizzle_schema: str):
         trace_id = langfuse_context.get_current_trace_id()
         observation_id = langfuse_context.get_current_observation_id()
         results: dict[str, HandlerOut] = {}
@@ -331,12 +332,12 @@ class Application:
             with concurrent.futures.ThreadPoolExecutor(self.MAX_WORKERS) as executor:
                 future_to_handler: dict[concurrent.futures.Future[handlers.HandlerTaskNode], str] = {}
                 for function_name in llm_functions:
-                    handler_interfaces = handler_interfaces.get(function_name, None)
-                    handler_tests = handler_tests.get(function_name, None)
+                    handler_interface_set = handler_interfaces.get(function_name, None)
+                    handler_test_suite = handler_tests.get(function_name, None)
                     handler_prompt_params = {
                         "function_name": function_name,
-                        "handler_interfaces": handler_interfaces,
-                        "handler_tests": handler_tests,
+                        "handler_interfaces": handler_interface_set,
+                        "handler_tests": handler_test_suite,
                         "typespec_schema": typespec_definitions,
                         "typescript_schema": typescript_schema,
                         "drizzle_schema": drizzle_schema,
