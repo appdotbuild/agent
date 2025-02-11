@@ -30,10 +30,10 @@ class Interpolator:
         self._interpolate(params, "handler.tpl", f"handlers/{handler_snake_name}.ts")
         return handler_snake_name
     
-    def _interpolate_handler_test(self, handler_name: str, handler_test: str):
+    def _interpolate_handler_test(self, handler_name: str, handler_tests: str):
         params = {
             "handler_name": handler_name,
-            "handler_test": handler_test
+            "handler_tests": handler_tests
         }
         handler_snake_name = self._interpolate_module_name(handler_name)
         handler_test_name = f"{handler_snake_name}.test"
@@ -63,8 +63,8 @@ class Interpolator:
         
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
-            handler_test = handler_tests[handler_name]
-            module = self._interpolate_handler_test(handler_name, handler_test, typescript_schema_type_names)
+            handler_test_suite = handler_tests[handler_name]
+            module = self._interpolate_handler_test(handler_name, handler_test_suite, typescript_schema_type_names)
         
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
