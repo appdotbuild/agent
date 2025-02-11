@@ -3,6 +3,8 @@ import { client } from "../common/llm";
 const nunjucks = require("nunjucks");
 import * as TJS from "typescript-json-schema";
 
+{{handler_interfaces}}
+
 {{handler}}
 
 type HandleOptArg = Parameters<typeof handle>[0];

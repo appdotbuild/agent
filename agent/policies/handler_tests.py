@@ -12,8 +12,8 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Based on TypeScript application definition and drizzle schema, generate a handler for {{function_name}} function.
-Handler always accepts single argument.
+Based on TypeScript application definition and gherkin test cases, generate a unit test suite for {{function_name}} function.
+Handler always accepts single argument. 
 Handler should satisfy following interface:
 
 <handler>
@@ -43,7 +43,12 @@ class GenericHandler<Options, Output> implements Handler<Options, Output> {
 }
 </handler>
 
-Example handler implementation for "greetUser" function and following interfaces:
+Example test suite implementation for "greetUser" function and following interfaces:
+
+<tests>
+import { db } from "../db";
+import type { Greeting } from "../db/schema/application";
+import { messagesTable } from "../db/schema/common";
 
 interface Options {
     user_id: string;
@@ -55,36 +60,9 @@ interface Output {
     greetingMessage: string;
 }
 
-<handler>
-import { db } from "../db";
-import type { Greeting } from "../db/schema/application";
-import { messagesTable } from "../db/schema/common";
 
-export const handle = (options: Options): Output => {
-    // Store user message
-    await db.insert(messagesTable).values({
-        user_id: options.user_id,
-        role: "user",
-        content: options.message
-    });
 
-    // Generate greeting based on message
-    const greeting = Greeting.create({
-        message: `Hello! You said: ${options.message}`
-    });
-
-    // Store bot response
-    await db.insert(messagesTable).values({
-        user_id: options.user_id,
-        role: "assistant", 
-        content: greeting
-    });
-
-    return {
-        greetingMessage: greeting.message
-    };
-};
-</handler>
+</tests>
 
 Application Definitions:
 
@@ -100,34 +78,21 @@ Application Definitions:
 {{drizzle_schema}}
 </drizzle>
 
-Handler interfaces:
-
-<interfaces>
-{{handler_interfaces}}
-</interfaces>
+<gherkin>
+{{test_cases}}
+</gherkin>
 
 Handler to implement: {{function_name}}
 
-Return output within <handler> tag.
+Return Options and Output interfaces and test suite within <tests> tag.
 
 Generate only:
-1. handler export function,
+1. handler input Options interface,
+2. handler Output interface,
+3. test suite implementation referencing handler Options and Output interfaces according to test cases,
 
 Omit in generated code:
-1. Avoid generating Pre- and
-2. Avoid generating Post-processors.
-3. Avoid generating Options interface,
-4. Avoid generating Output interface.
-
-Handler function code should make use of:
-1. TypeScript schema types and interfaces,
-2. Handler input and interfaces and
-3. drizzle schema types and interfaces and
-must contain to handle user input:
-1. explicit business logic
-such as:
-1. database operations, 
-2. performing calculations etc.
+1. Avoid generating handler code.
 
 Code style:
 1. Always use quotes "" not '' for strings,
@@ -450,13 +415,13 @@ These patterns will help prevent common TypeScript errors while working with Dri
 
 
 FIX_PROMPT = """
-Make sure to address following TypeScript compilation errors:
+Make sure to address following TypeScript compilation and runtime errors:
 <errors>
 {{errors}}
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
-Return fixed complete TypeScript definition encompassed with <handler> tag.
+Return fixed complete TypeScript definition encompassed with <tests> tags.
 """
 
 # TODO: Fix this terrible hack

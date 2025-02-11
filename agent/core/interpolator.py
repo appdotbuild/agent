@@ -30,6 +30,16 @@ class Interpolator:
         self._interpolate(params, "handler.tpl", f"handlers/{handler_snake_name}.ts")
         return handler_snake_name
     
+    def _interpolate_handler_test(self, handler_name: str, handler_test: str):
+        params = {
+            "handler_name": handler_name,
+            "handler_test": handler_test
+        }
+        handler_snake_name = self._interpolate_module_name(handler_name)
+        handler_test_name = f"{handler_snake_name}.test"
+        self._interpolate(params, "handler_test.tpl", f"tests/handlers/{handler_test_name}.ts")
+        return handler_test_name
+    
     def _interpolate_index(self, handlers: dict):
         params = {
             "handlers": handlers,
@@ -48,8 +58,14 @@ class Interpolator:
         }
         self._interpolate(params, "testcases.tpl", "tests/features/application.feature")
 
-    def interpolate_all(self, handlers: dict, typescript_schema_type_names: list[str], functions: list[dict], gherkin: str):
+    def interpolate_all(self, handlers: dict, handler_tests: dict, typescript_schema_type_names: list[str], functions: list[dict], gherkin: str):
         processed_handlers = {}
+        
+        for handler_name in handlers.keys():
+            handler = handlers[handler_name]
+            handler_test = handler_tests[handler_name]
+            module = self._interpolate_handler_test(handler_name, handler_test, typescript_schema_type_names)
+        
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
             module = self._interpolate_handler(handler_name, handler, typescript_schema_type_names)
