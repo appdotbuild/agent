@@ -162,19 +162,22 @@ class Application:
 
         copytree(self.template_dir, self.generation_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'))
         
+        #TODO: redo with interpolation, for now appending the generated typespec to the existing typespec with 'a'
         with open(os.path.join(self.generation_dir, "tsp_schema", "main.tsp"), "a") as f:
             f.write("\n")
             f.write(typespec_definitions)
         
-
+        #TODO: redo with interpolation, for now appending the generated typespec to the existing typespec with 'a'
         with open(os.path.join(self.generation_dir, "tsp_schema", "main.tsp"), "a") as f:
             f.write("\n")
             f.write(typespec_definitions)
         
+        #TODO: redo with interpolation, for now appending the generated typespec to the existing typespec with 'a'
         with open(os.path.join(self.generation_dir, "app_schema/src/db/schema", "application.ts"), "a") as f:
             f.write("\n")
             f.write(drizzle_schema)
 
+        #TODO: redo with interpolation, for now appending the generated typespec to the existing typespec with 'a'
         with open(os.path.join(self.generation_dir, "app_schema/src/common", "schema.ts"), "a") as f:
             f.write(typescript_schema)
         

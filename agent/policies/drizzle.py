@@ -12,17 +12,12 @@ from compiler.core import Compiler, CompileResult
 PROMPT = """
 Based on TypeSpec models and interfaces, generate Drizzle schema for the application.
 Ensure that the schema is compatible with PostgreSQL database.
+Leverage existing schema that is already present (avoid repeating it):
 Encompass output with <drizzle> tag.
 
-Example output:
+Example of existing schema:
 
-<reasoning>
-    The application operates on users and messages and processes them with LLM.
-    The users are identified by their ids.
-    The messages have roles and content.
-</reasoning>
-
-<drizzle>
+<existing-schema>
 import { integer, pgTable, pgEnum, text } from "drizzle-orm/pg-core";
 
 export const usersTable = pgTable("users", {
@@ -37,6 +32,27 @@ export const messagesTable = pgTable("messages", {
   role: msgRolesEnum(),
   content: text(),
 });
+</existing-schema>
+
+Example output:
+
+<reasoning>
+    The application operates on users and messages and processes them with LLM - already present in the existing schema.
+    The users are identified by their ids - already present in the existing schema.
+    The messages have roles and content - already present in the existing schema.
+    The application also needs to store birthdays of users - outputting the table below.
+</reasoning>
+
+<drizzle>
+// assuming that the usersTable is already present in the existing schema
+export const birthdaysTable = pgTable("birthdays", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  user_id: text().references(() => usersTable.id).notNull(),
+  date: date("date").notNull(),
+  description: text("description"),
+}, (table) => ({
+  userIdx: index("birthdays_user_idx").on(table.user_id)
+}));
 </drizzle>
 
 Application TypeSpec:
@@ -145,7 +161,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
         )
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output, expected <reasoning> and <typespec> tags")
+            raise ValueError("Failed to parse output, expected <reasoning> and <drizzle> tags")
         reasoning = match.group(1).strip()
         drizzle_schema = match.group(2).strip()
         return reasoning, drizzle_schema

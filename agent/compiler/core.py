@@ -78,10 +78,11 @@ class Compiler:
                 detach=True,
                 network=network.name,
             )
+            # appending the generated existing schema with >> to common schema in the same file
             command = [
                 "sh",
                 "-c",
-                f"echo {shlex.quote(schema)} > {schema_path} && npx drizzle-kit push --force --config=drizzle.config.ts"
+                f"echo {shlex.quote(schema)} >> {schema_path} && npx drizzle-kit push --force --config=drizzle.config.ts"
             ]
             exit_code, (stdout, stderr) = container.exec_run(
                 command,
