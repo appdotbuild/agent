@@ -1,10 +1,12 @@
-from typing import TypedDict
+from typing import TypedDict, overload
 import time
 import uuid
 import shlex
 from contextlib import contextmanager
 import docker
+import docker.models
 from docker.errors import APIError
+import docker.models.containers
 
 
 class CompileResult(TypedDict):
@@ -31,84 +33,57 @@ class Compiler:
             "-c",
             f"echo {schema} > {schema_path} && tsp compile {schema_path} --no-emit"
         ]
-        exit_code, (stdout, stderr) = container.exec_run(
-            command,
-            demux=True,
-            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
-        )
+        result = self.exec_demux(container, command)
         container.remove(force=True)
-        return CompileResult(
-            exit_code=exit_code,
-            stdout=stdout.decode("utf-8") if stdout else None,
-            stderr=stderr.decode("utf-8") if stderr else None,
-        )
+        return result
     
     def compile_gherkin(self, testcases: str):
-        container = self.client.containers.run(
-            self.app_image,
-            command=["sleep", "10"],
-            detach=True,
-        )
-        schema_path, schema = "testcases.feature", shlex.quote(testcases)
-        command = [
-            "sh",
-            "-c", 
-            f"echo {schema} > {schema_path} && npx gherkin-lint {schema_path} -c gherkin-lint.config.json"
-        ]
-        exit_code, (stdout, stderr) = container.exec_run(
-            command,
-            demux=True,
-            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
-        )
-        container.remove(force=True)
-        return CompileResult(
-            exit_code=exit_code,
-            stdout=stdout.decode("utf-8") if stdout else None,
-            stderr=stderr.decode("utf-8") if stderr else None,
-        )
-    
+        with self.app_container() as container:
+            schema_path, schema = "testcases.feature", shlex.quote(testcases)
+            command = [
+                "sh",
+                "-c", 
+                f"echo {schema} > {schema_path} && npx gherkin-lint {schema_path} -c gherkin-lint.config.json"
+            ]
+            return self.exec_demux(container, command)
     
     def compile_drizzle(self, schema: str):
-        with self.tmp_network() as network, self.tmp_postgres() as postgres:
+        with self.tmp_network() as network, self.tmp_postgres() as postgres, self.app_container() as container:
             network.connect(postgres)
+            network.connect(container)
             schema_path = "src/db/schema/application.ts"
-            container = self.client.containers.run(
-                self.app_image,
-                command=["sleep", "10"],
-                detach=True,
-                network=network.name,
-            )
             # appending the generated existing schema with >> to common schema in the same file
             command = [
                 "sh",
                 "-c",
                 f"echo {shlex.quote(schema)} >> {schema_path} && npx drizzle-kit push --force --config=drizzle.config.ts"
             ]
-            exit_code, (stdout, stderr) = container.exec_run(
-                command,
-                demux=True,
-                environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
-            )
-            container.remove(force=True)
-            return CompileResult(
-                exit_code=exit_code,
-                stdout=stdout.decode("utf-8") if stdout else None,
-                stderr=stderr.decode("utf-8") if stderr else None,
-            )
+            return self.exec_demux(container, command)
         
-    def compile_typescript(self, files: dict[str, str]):
-        container = self.client.containers.run(
-            self.app_image,
-            command=["sleep", "10"],
-            detach=True,
-        )
+    @overload
+    def compile_typescript(self, files: dict[str, str]) -> CompileResult:
+        ...
+    
+    @overload
+    def compile_typescript(self, files: dict[str, str], cmds: list[list[str]]) -> list[CompileResult]:
+        ...
+    
+    def compile_typescript(self, files: dict[str, str], cmds: list[list[str]] = None) -> CompileResult | list[CompileResult]:
+        with self.tmp_network() as network, self.tmp_postgres() as postgres, self.app_container() as container:
+            network.connect(postgres)
+            network.connect(container)
+            Compiler.copy_files(container, files)
+            result = self.exec_demux(container, ["npx", "tsc", "--noEmit"])
+            if cmds is None:
+                return result
+            cmds = [self.exec_demux(container, cmd) for cmd in cmds]
+            return [result, *cmds]
+    
+    @staticmethod
+    def copy_files(container: docker.models.containers.Container, files: dict[str, str]):
         for path, content in files.items():
             path, content = shlex.quote(path), shlex.quote(content)
-            command = [
-                "sh",
-                "-c",
-                f"echo {content} > {path}"
-            ]
+            command = ["sh", "-c", f"echo {content} > {path}"]
             exit_code, _ = container.exec_run(
                 command,
                 demux=True,
@@ -116,17 +91,31 @@ class Compiler:
             )
             if exit_code != 0:
                 raise ValueError(f"Failed to write file {path}")
+    
+    @staticmethod
+    def exec_demux(container: docker.models.containers.Container, command: list[str]) -> CompileResult:
         exit_code, (stdout, stderr) = container.exec_run(
-            ["npx", "tsc", "--noEmit"],
+            command,
             demux=True,
             environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
         )
-        container.remove(force=True)
         return CompileResult(
             exit_code=exit_code,
             stdout=stdout.decode("utf-8") if stdout else None,
             stderr=stderr.decode("utf-8") if stderr else None,
         )
+    
+    @contextmanager
+    def app_container(self):
+        container = self.client.containers.run(
+            self.app_image,
+            command=["sleep", "10"],
+            detach=True,
+        )
+        try:
+            yield container
+        finally:
+            container.remove(force=True)
     
     @contextmanager
     def tmp_network(self, network_name: str | None = None, driver: str = "bridge"):

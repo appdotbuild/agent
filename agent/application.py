@@ -233,7 +233,7 @@ class Application:
     
     @observe(capture_input=False, capture_output=False)
     def _make_drizzle(self, typespec_definitions: str):
-        content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_schema=typespec_definitions)
+        content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=typespec_definitions)
         message = {"role": "user", "content": content}
         with drizzle.DrizzleTaskNode.platform(self.client, self.compiler, self.jinja_env):
             dzl_data = drizzle.DrizzleTaskNode.run([message])
