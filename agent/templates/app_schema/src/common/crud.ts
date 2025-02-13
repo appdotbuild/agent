@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { messagesTable, usersTable } from '../db/schema/application';
+import { messagesTable, usersTable } from '../db/schema/common';
 import { and, desc, eq } from 'drizzle-orm';
 
 export const putMessage = async (user_id: string, role: 'user' | 'assistant', content: string) => {

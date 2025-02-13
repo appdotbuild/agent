@@ -58,6 +58,7 @@ interface Output {
 <handler>
 import { db } from "../db";
 import type { Greeting } from "../db/schema/application";
+import { messagesTable } from "../db/schema/common";
 
 export const handle = (options: Options): Output => {
     // Store user message
