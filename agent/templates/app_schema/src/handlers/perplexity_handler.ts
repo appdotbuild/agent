@@ -1,5 +1,4 @@
 import { GenericHandler, type Message } from "../common/handler";
-import { Perplexity } from "perplexity-js";
 
 interface DomainFilter {
     include?: string[];
@@ -11,7 +10,7 @@ interface SearchConfig {
     recency_filter?: string;
 }
 
-interface PerplexitySearchParams {
+export interface PerplexitySearchParams {
     query: string;
     search_type: 'news' | 'market' | 'weather' | 'web';
     model_size?: string;
@@ -45,11 +44,6 @@ const searchConfigs: Record<string, SearchConfig> = {
 const handle = async (params: PerplexitySearchParams): Promise<SearchResponse> => {
     const config = searchConfigs[params.search_type] || {};
     
-    const mergedConfig = {
-        domain_filter: params.domain_filter || config.domain_filter,
-        recency_filter: params.recency_filter || config.recency_filter
-    };
-
     let searchQuery: string;
     switch (params.search_type) {
         case 'news':
@@ -64,22 +58,46 @@ const handle = async (params: PerplexitySearchParams): Promise<SearchResponse> =
         default:
             searchQuery = params.query;
     }
-    
-    const perplexity = new Perplexity({
-        apiKey: process.env['PERPLEXITY_API_KEY'] || ''
-    });
 
-    const response = await perplexity.search({
-        query: searchQuery,
-        maxResults: params.max_results || 2000,
-        domainFilter: mergedConfig.domain_filter,
-        searchRecencyFilter: mergedConfig.recency_filter
-    });
+    const options = {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${process.env["PERPLEXITY_API_KEY"]}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'sonar',
+            messages: [
+                { role: 'user', content: searchQuery }
+            ],
+            temperature: 0.7,
+            max_tokens: 1024
+        })
+    };
+
+    //console.log('Request options:', {
+    //    url: 'https://api.perplexity.ai/chat/completions',
+    //    headers: options.headers,
+    //    body: JSON.parse(options.body)
+    //});
+
+    const response = await fetch('https://api.perplexity.ai/chat/completions', options);
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Perplexity API error: ${response.status}\nDetails: ${errorText}\nRequest: ${options.body}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data?.choices?.[0]?.message?.content) {
+        throw new Error('Invalid response from Perplexity API');
+    }
 
     return {
         query: searchQuery,
         type: params.search_type,
-        result: response.content[0].text
+        result: data.choices[0].message.content
     };
 };
 
@@ -111,23 +129,23 @@ const preProcessor = async (messages: Message[]): Promise<PerplexitySearchParams
 };
 
 const postProcessor = async (output: SearchResponse, messages: Message[]): Promise<Message[]> => {
-    let response: string;
+    let responseText: string;
 
     switch (output.type) {
         case 'news':
-            response = `Here are the latest news updates:\n\n${output.result}`;
+            responseText = `Here are the latest news updates:\n\n${output.result}`;
             break;
         case 'market':
-            response = `Current market information:\n\n${output.result}`;
+            responseText = `Current market information:\n\n${output.result}`;
             break;
         case 'weather':
-            response = `Weather information:\n\n${output.result}`;
+            responseText = `Weather information:\n\n${output.result}`;
             break;
         default:
-            response = `Search results:\n\n${output.result}`;
+            responseText = `Search results:\n\n${output.result}`;
     }
     
-    return [{ role: 'assistant', content: response }];
+    return [{ role: 'assistant', content: responseText }];
 };
 
 export const perplexityHandler = new GenericHandler(
