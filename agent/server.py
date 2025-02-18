@@ -50,28 +50,24 @@ class BuildResponse(BaseModel):
     metadata: dict = {}
 
 
-@observe(name="compile")
 @app.post("/compile", response_model=BuildResponse)
 def compile(request: BuildRequest):
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            application = Application(client, compiler, output_dir=tmpdir)
-            bot = application.create_bot(request.prompt, request.botId)
-            zipfile = shutil.make_archive(
-                f"{tmpdir}/app_schema",
-                "zip",
-                f"{application.generation_dir}/app_schema",
+    with tempfile.TemporaryDirectory() as tmpdir:
+        application = Application(client, compiler, output_dir=tmpdir)
+        bot = application.create_bot(request.prompt, request.botId)
+        zipfile = shutil.make_archive(
+            f"{tmpdir}/app_schema",
+            "zip",
+            f"{application.generation_dir}/app_schema",
+        )
+        with open(zipfile, "rb") as f:
+            upload_result = requests.put(
+                request.writeUrl,
+                data=f.read(),
             )
-            with open(zipfile, "rb") as f:
-                upload_result = requests.put(
-                    request.writeUrl,
-                    data=f.read(),
-                )
-                upload_result.raise_for_status()
-            metadata = {"functions": bot.router.functions}
-            return BuildResponse(status="success", message="done", trace_id=bot.trace_id, metadata=metadata)
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+            upload_result.raise_for_status()
+        metadata = {"functions": bot.router.functions}
+        return BuildResponse(status="success", message="done", trace_id=bot.trace_id, metadata=metadata)
 
 
 @app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
