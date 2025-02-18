@@ -83,6 +83,7 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 class FunctionDeclaration:
     name: str
     argument_type: str
+    return_type: str
 
 
 @dataclass
@@ -182,13 +183,14 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
         pattern = re.compile(
-            r"declare\s+function\s+(?P<functionName>\w+)\s*\(\s*\w+\s*:\s*(?P<argumentType>\w+)\s*\)",
+            r"declare\s+function\s+(?P<functionName>\w+)\s*\(\s*\w+\s*:\s*(?P<argumentType>\w+)\s*\)\s*:\s*(?P<returnType>\w+.*)\s*;",
             re.MULTILINE
         )
         functions = [
             FunctionDeclaration(
                 name=match.group("functionName"),
                 argument_type=match.group("argumentType"),
+                return_type=match.group("returnType"),
             ) for match in pattern.finditer(definitions)
         ]
         pattern = re.compile(
@@ -199,5 +201,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             match.group("typeName"): match.group("schemaName")
             for match in pattern.finditer(definitions)
         }
-        #functions = re.findall(r"declare function (\w+)", definitions)
+        for function in functions:
+            if function.argument_type not in type_to_zod:
+                raise ValueError(f"Missing schema for argument type {function.argument_type}")
         return reasoning, definitions, functions, type_to_zod
