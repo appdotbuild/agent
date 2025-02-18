@@ -10,32 +10,62 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Based on TypeSpec models and interfaces, generate TypeScript data types for the application.
+Based on TypeSpec models and interfaces, generate Zod TypeScript data types for the application.
 Ensure that the data types follow the TypeScript syntax.
+For each function in the <typespec> interfaces generate function declarations in the TypeScript output.
 Encompass output with <typescript> tag.
 
-Example output:
+Rules:
+- Always use coerce of Zod date and time types.
+
+Example:
+<typespec>
+model User {
+    id: string;
+}
+
+model Message {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+interface GreeterBot {
+    @llm_func(2)
+    greetUser(user: User): Message;
+}
+</typespec>
 
 <reasoning>
     The application operates on users and messages and processes them with LLM.
     The users are identified by their ids.
     The messages have roles and content.
+    Application greets user and responds with a message.
 </reasoning>
 
 <typescript>
-export interface User {
-    id: string;
-}
+import { z } from 'zod';
 
-export interface Message {
-    role: 'user' | 'assistant';
-    content: string;
-}
+const userSchema = z.object({
+    id: z.string(),
+});
+
+export type User = z.infer<typeof userSchema>;
+
+const messageSchema = z.object({
+    role: z.literal('user').or(z.literal('assistant')),
+    content: z.string(),
+});
+
+export type Message = z.infer<typeof messageSchema>;
+
+declare function greetUser(user: User): Message;
 </typescript>
 
 Application TypeSpec:
 
+<typespec>
 {{typespec_definitions}}
+</typespec<>
 """.strip()
 
 
@@ -53,7 +83,8 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 class TypescriptOutput:
     reasoning: str
     typescript_schema: str
-    type_names: list[str]
+    #type_names: list[str]
+    func_names: list[str]
     feedback: CompileResult
 
     @property
@@ -95,12 +126,12 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, typescript_schema, type_names = TypescriptTaskNode.parse_output(response.content[0].text)
+            reasoning, typescript_schema, func_names = TypescriptTaskNode.parse_output(response.content[0].text)
             feedback = typescript_compiler.compile_typescript({"src/common/schema.ts": typescript_schema})
             output = TypescriptOutput(
                 reasoning=reasoning,
                 typescript_schema=typescript_schema,
-                type_names=type_names,
+                func_names=func_names,
                 feedback=feedback,
             )
         except Exception as e:
@@ -143,5 +174,6 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <typescript> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        type_names: list[str] = re.findall(r"export interface (\w+)", definitions)
-        return reasoning, definitions, type_names
+        func_names = re.findall(r"declare function (\w+)", definitions)
+        #type_names: list[str] = re.findall(r"export interface (\w+)", definitions)
+        return reasoning, definitions, func_names #type_names, func_names
