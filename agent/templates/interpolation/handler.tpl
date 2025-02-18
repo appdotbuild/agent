@@ -1,13 +1,11 @@
 import { type Message, GenericHandler } from "../common/handler";
 import { client } from "../common/llm";
 const nunjucks = require("nunjucks");
-import * as TJS from "typescript-json-schema";
-
-{{handler_interfaces}}
+import { type JSONSchema7 } from "json-schema";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { {{argument_schema}} } from "../common/schema";
 
 {{handler}}
-
-type HandleOptArg = Parameters<typeof handle>[0];
 
 const preProcessorPrompt = `
 Conversation:{% raw %}
@@ -16,30 +14,9 @@ Conversation:{% raw %}
 {% endfor %}{% endraw %}
 `;
 
-const getJSONSchema = () => {
-    const settings: TJS.PartialArgs = {
-        required: true,
-    };
-    
-    const compilerOptions: TJS.CompilerOptions = {
-        strictNullChecks: true,
-        allowJs: true,
-        allowImportingTsExtensions: true,
-        noEmit: true,
-        strict: true,
-        skipLibCheck: true,
-    };
-    
-    const program = TJS.getProgramFromFiles(
-        [__filename],
-        compilerOptions,
-    );
-    return TJS.generateSchema(program, "HandleOptArg", settings)
-}
-
-const preProcessor = async (input: Message[]): Promise<HandleOptArg> => {
+const preProcessor = async (input: Message[]): Promise<{{argument_type}}> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
-    const schema = getJSONSchema()!;
+    const schema = zodToJsonSchema({{argument_schema}}, { target: 'jsonSchema7', $refStrategy: 'root'}) as JSONSchema7;
     const response = await client.messages.create({
         model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
         max_tokens: 2048,
@@ -60,7 +37,7 @@ const preProcessor = async (input: Message[]): Promise<HandleOptArg> => {
     });
     switch (response.content[0].type) {
         case "tool_use":
-            return response.content[0].input as HandleOptArg;
+            return {{argument_schema}}.parse(response.content[0].input);
         default:
             throw new Error("Unexpected response type");
     }

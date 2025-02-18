@@ -18,8 +18,6 @@ const handle = (options: GreetUserParams): string => {
     return options.name + ' is ' + options.age + ' years old';
 };
 
-type HandleArg = Parameters<typeof handle>[0];
-
 const preProcessorPrompt = `
 Conversation:
 {% for message in messages %}
@@ -38,7 +36,7 @@ Conversation:
 {% endfor %}
 `
 
-const preProcessor = async (input: Message[]): Promise<HandleArg> => {
+const preProcessor = async (input: Message[]): Promise<GreetUserParams> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
     const schema = zodToJsonSchema(greetUserParamsSchema, { target: 'jsonSchema7', $refStrategy: 'root'}) as JSONSchema7;
     const response = await client.messages.create({

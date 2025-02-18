@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import os
 import re
-import uuid
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
@@ -13,111 +12,62 @@ from compiler.core import Compiler, CompileResult
 
 PROMPT = """
 Based on TypeScript application definition and drizzle schema, generate a handler for {{function_name}} function.
-Handler always accepts single argument.
-Handler should satisfy following interface:
 
-<handler>
-interface Message {
-    role: 'user' | 'assistant';
-    content: string;
-};
-
-interface Handler<Options, Output> {
-    preProcessor: (input: Message[]) => Options | Promise<Options>;
-    handle: (options: Options) => Output | Promise<Output>;
-    postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>;
-}
-
-class GenericHandler<Options, Output> implements Handler<Options, Output> {
-    constructor(
-        public handle: (options: Options) => Output | Promise<Output>,
-        public preProcessor: (input: Message[]) => Options | Promise<Options>,
-        public postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>
-    ) {}
-
-    async execute(input: Message[]): Promise<Message[] | Output> {
-        const options = await this.preProcessor(input);
-        const result = await this.handle(options);
-        return this.postProcessor ? await this.postProcessor(result, input) : result;
-    }
-}
-</handler>
-
-Example handler implementation for "greetUser" function and following interfaces:
-
-interface Options {
-    user_id: string;
-    message: string;
-    greeting: Greeting;
-}
-
-interface Output {
-    greetingMessage: string;
-}
-
-<handler>
-import { db } from "../db";
-import type { Greeting } from "../db/schema/application";
-import { messagesTable } from "../db/schema/common";
-
-export const handle = (options: Options): Output => {
-    // Store user message
-    await db.insert(messagesTable).values({
-        user_id: options.user_id,
-        role: "user",
-        content: options.message
-    });
-
-    // Generate greeting based on message
-    const greeting = Greeting.create({
-        message: `Hello! You said: ${options.message}`
-    });
-
-    // Store bot response
-    await db.insert(messagesTable).values({
-        user_id: options.user_id,
-        role: "assistant", 
-        content: greeting
-    });
-
-    return {
-        greetingMessage: greeting.message
-    };
-};
-</handler>
-
-Application Definitions:
-
+Example:
 <typespec>
-{{typesspec_schema}}
+model GreetRequest {
+    name: string;
+}
+
+interface GreetBot {
+    @llm_func(1)
+    greet(options: GreetRequest): string;
+}
 </typespec>
 
 <typescript>
-{{typescript_schema}}
+import { z } from 'zod';
+
+const greetRequestSchema = z.object({
+    name: z.string(),
+});
+
+export type GreetRequest = z.infer<typeof greetRequestSchema>;
+
+declare function greet(options: GreetRequest): string;
 </typescript>
 
 <drizzle>
-{{drizzle_schema}}
+import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const greetRequestsTable = pgTable("greet_requests", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  name: text().notNull(),
+  created_at: timestamp().notNull().defaultNow(),
+});
+
+export const greetResponsesTable = pgTable("greet_responses", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  request_id: integer().references(() => greetRequestsTable.id),
+  response_text: text().notNull(),
+  created_at: timestamp().notNull().defaultNow(),
+});
 </drizzle>
 
-Handler interfaces:
+<handler>
+import { db } from "../db";
+import { greetUser, type GreetRequest } from "../common/schema";
+import { greetingsTable } from "../db/schema/application";
 
-<interfaces>
-{{handler_interfaces}}
-</interfaces>
+const handle: typeof greetUser = async (options: GreetRequest): Promise<string> => {
+    await db.insert(greetingsTable).values({
+        name: options.name,
+        response: `Hello, ${options.name}!`,
+    }).execute();
 
-Handler to implement: {{function_name}}
-
-Return output within <handler> tag.
-
-Generate only:
-1. handler export function,
-
-Omit in generated code:
-1. Avoid generating Pre- and
-2. Avoid generating Post-processors.
-3. Avoid generating Options interface,
-4. Avoid generating Output interface.
+    return `Hello, ${options.name}!`;
+}
+</handler>
 
 Handler function code should make use of:
 1. TypeScript schema types and interfaces,
@@ -446,6 +396,22 @@ interface QueryOptions<T> {
 These patterns will help prevent common TypeScript errors while working with Drizzle ORM, especially in workout tracking and progress monitoring systems.
 </drizzle_guide>
 
+Application Definitions:
+
+<typespec>
+{{typesspec_schema}}
+</typespec>
+
+<typescript>
+{{typescript_schema}}
+</typescript>
+
+<drizzle>
+{{drizzle_schema}}
+</drizzle>
+
+Generate handler code for the function {{function_name}} based on the provided TypeSpec, TypeScript and Drizzle schema.
+Return complete handler code encompassed with <handler> tag.
 """.strip()
 
 
@@ -480,7 +446,6 @@ class HandlerOutput:
 @dataclass
 class HandlerData:
     messages: list[MessageParam]
-    #function_name: str
     output: HandlerOutput | Exception
 
 class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
@@ -500,7 +465,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages #, self.data.function_name            
+        return messages          
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
@@ -515,8 +480,8 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             handler_check = typescript_jinja_env.from_string(HANDLER_TPL).render(
                 handler=handler,
                 handler_name=kwargs['function_name'],
-                handler_interfaces=kwargs['handler_interfaces'],
-                handler_tests=kwargs['handler_tests'],
+                argument_type=kwargs['argument_type'],
+                argument_schema=kwargs['argument_schema'],
                 typespec_schema=kwargs['typespec_schema'],
                 typescript_schema=kwargs['typescript_schema'],
                 drizzle_schema=kwargs['drizzle_schema'])

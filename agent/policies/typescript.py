@@ -45,20 +45,20 @@ interface GreeterBot {
 <typescript>
 import { z } from 'zod';
 
-const userSchema = z.object({
+export const userSchema = z.object({
     id: z.string(),
 });
 
 export type User = z.infer<typeof userSchema>;
 
-const messageSchema = z.object({
+export const messageSchema = z.object({
     role: z.literal('user').or(z.literal('assistant')),
     content: z.string(),
 });
 
 export type Message = z.infer<typeof messageSchema>;
 
-declare function greetUser(user: User): Message;
+export declare function greetUser(user: User): Promise<Message>;
 </typescript>
 
 Application TypeSpec:
@@ -83,6 +83,7 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 class FunctionDeclaration:
     name: str
     argument_type: str
+    argument_schema: str
     return_type: str
 
 
@@ -182,17 +183,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <typescript> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        pattern = re.compile(
-            r"declare\s+function\s+(?P<functionName>\w+)\s*\(\s*\w+\s*:\s*(?P<argumentType>\w+)\s*\)\s*:\s*(?P<returnType>\w+.*)\s*;",
-            re.MULTILINE
-        )
-        functions = [
-            FunctionDeclaration(
-                name=match.group("functionName"),
-                argument_type=match.group("argumentType"),
-                return_type=match.group("returnType"),
-            ) for match in pattern.finditer(definitions)
-        ]
+
         pattern = re.compile(
             r"export\s+type\s+(?P<typeName>\w+)\s*=\s*z\.infer\s*<\s*typeof\s+(?P<schemaName>\w+)\s*>",
             re.MULTILINE
@@ -201,7 +192,30 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             match.group("typeName"): match.group("schemaName")
             for match in pattern.finditer(definitions)
         }
-        for function in functions:
-            if function.argument_type not in type_to_zod:
-                raise ValueError(f"Missing schema for argument type {function.argument_type}")
+        pattern = re.compile(
+            r"declare\s+function\s+(?P<functionName>\w+)\s*\(\s*\w+\s*:\s*(?P<argumentType>\w+)\s*\)\s*:\s*(?P<returnType>\w+.*)\s*;",
+            re.MULTILINE
+        )
+        functions = []
+        for match in pattern.finditer(definitions):
+            argument_type = match.group("argumentType")
+            if argument_type not in type_to_zod:
+                raise ValueError(f"Missing schema for argument type {argument_type}")
+            functions.append(FunctionDeclaration(
+                name=match.group("functionName"),
+                argument_type=argument_type,
+                argument_schema=type_to_zod[argument_type],
+                return_type=match.group("returnType"),
+            ))
         return reasoning, definitions, functions, type_to_zod
+        #functions = [
+        #    FunctionDeclaration(
+        #        name=match.group("functionName"),
+        #        argument_type=match.group("argumentType"),
+        #        return_type=match.group("returnType"),
+        #    ) for match in pattern.finditer(definitions)
+        #]
+        #for function in functions:
+        #    if function.argument_type not in type_to_zod:
+        #        raise ValueError(f"Missing schema for argument type {function.argument_type}")
+        #return reasoning, definitions, functions, type_to_zod
