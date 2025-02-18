@@ -80,11 +80,17 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 
 
 @dataclass
+class FunctionDeclaration:
+    name: str
+    argument_type: str
+
+
+@dataclass
 class TypescriptOutput:
     reasoning: str
     typescript_schema: str
-    #type_names: list[str]
-    func_names: list[str]
+    functions: list[FunctionDeclaration]
+    type_to_zod: dict[str, str]
     feedback: CompileResult
 
     @property
@@ -126,12 +132,13 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, typescript_schema, func_names = TypescriptTaskNode.parse_output(response.content[0].text)
+            reasoning, typescript_schema, functions, type_to_zod = TypescriptTaskNode.parse_output(response.content[0].text)
             feedback = typescript_compiler.compile_typescript({"src/common/schema.ts": typescript_schema})
             output = TypescriptOutput(
                 reasoning=reasoning,
                 typescript_schema=typescript_schema,
-                func_names=func_names,
+                functions=functions,
+                type_to_zod=type_to_zod,
                 feedback=feedback,
             )
         except Exception as e:
@@ -174,6 +181,23 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <typescript> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        func_names = re.findall(r"declare function (\w+)", definitions)
-        #type_names: list[str] = re.findall(r"export interface (\w+)", definitions)
-        return reasoning, definitions, func_names #type_names, func_names
+        pattern = re.compile(
+            r"declare\s+function\s+(?P<functionName>\w+)\s*\(\s*\w+\s*:\s*(?P<argumentType>\w+)\s*\)",
+            re.MULTILINE
+        )
+        functions = [
+            FunctionDeclaration(
+                name=match.group("functionName"),
+                argument_type=match.group("argumentType"),
+            ) for match in pattern.finditer(definitions)
+        ]
+        pattern = re.compile(
+            r"export\s+type\s+(?P<typeName>\w+)\s*=\s*z\.infer\s*<\s*typeof\s+(?P<schemaName>\w+)\s*>",
+            re.MULTILINE
+        )
+        type_to_zod = {
+            match.group("typeName"): match.group("schemaName")
+            for match in pattern.finditer(definitions)
+        }
+        #functions = re.findall(r"declare function (\w+)", definitions)
+        return reasoning, definitions, functions, type_to_zod
