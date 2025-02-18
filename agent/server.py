@@ -11,7 +11,7 @@ from pydantic import BaseModel, model_validator
 from anthropic import AnthropicBedrock
 from application import Application
 from compiler.core import Compiler
-
+from langfuse.decorators import langfuse_context, observe
 
 client = AnthropicBedrock(aws_region="us-west-2")
 compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
@@ -46,28 +46,30 @@ class BuildRequest(BaseModel):
 class BuildResponse(BaseModel):
     status: str
     message: str
+    trace_id: str
     metadata: dict = {}
 
 
+@observe(name="compile")
 @app.post("/compile", response_model=BuildResponse)
 def compile(request: BuildRequest):
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             application = Application(client, compiler, output_dir=tmpdir)
             bot = application.create_bot(request.prompt, request.botId)
-        zipfile = shutil.make_archive(
-            f"{tmpdir}/app_schema",
-            "zip",
-            f"{application.generation_dir}/app_schema",
-        )
-        with open(zipfile, "rb") as f:
-            upload_result = requests.put(
-                request.writeUrl,
-                data=f.read(),
+            zipfile = shutil.make_archive(
+                f"{tmpdir}/app_schema",
+                "zip",
+                f"{application.generation_dir}/app_schema",
             )
-            upload_result.raise_for_status()
-        metadata = {"functions": bot.router.functions}
-        return BuildResponse(status="success", message="done", metadata=metadata)
+            with open(zipfile, "rb") as f:
+                upload_result = requests.put(
+                    request.writeUrl,
+                    data=f.read(),
+                )
+                upload_result.raise_for_status()
+            metadata = {"functions": bot.router.functions}
+            return BuildResponse(status="success", message="done", trace_id=bot.trace_id, metadata=metadata)
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
