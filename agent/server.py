@@ -51,9 +51,10 @@ class BuildResponse(BaseModel):
 
 @app.post("/compile", response_model=BuildResponse)
 def compile(request: BuildRequest):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        application = Application(client, compiler, output_dir=tmpdir)
-        bot = application.create_bot(request.prompt, request.botId)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            application = Application(client, compiler, output_dir=tmpdir)
+            bot = application.create_bot(request.prompt, request.botId)
         zipfile = shutil.make_archive(
             f"{tmpdir}/app_schema",
             "zip",
@@ -66,4 +67,11 @@ def compile(request: BuildRequest):
             )
             upload_result.raise_for_status()
         metadata = {"functions": bot.router.functions}
-    return BuildResponse(status="success", message="done", metadata=metadata)
+        return BuildResponse(status="success", message="done", metadata=metadata)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
+def healthcheck():
+    return BuildResponse(status="success", message="ok")
