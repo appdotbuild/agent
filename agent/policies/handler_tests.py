@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import os
 import re
-import uuid
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context

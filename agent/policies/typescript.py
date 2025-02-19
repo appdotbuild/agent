@@ -208,14 +208,3 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
                 return_type=match.group("returnType"),
             ))
         return reasoning, definitions, functions, type_to_zod
-        #functions = [
-        #    FunctionDeclaration(
-        #        name=match.group("functionName"),
-        #        argument_type=match.group("argumentType"),
-        #        return_type=match.group("returnType"),
-        #    ) for match in pattern.finditer(definitions)
-        #]
-        #for function in functions:
-        #    if function.argument_type not in type_to_zod:
-        #        raise ValueError(f"Missing schema for argument type {function.argument_type}")
-        #return reasoning, definitions, functions, type_to_zod
