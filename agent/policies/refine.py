@@ -23,7 +23,7 @@ Example input:
 Bot that records my diet and calculates calories.
 </requirements>
 
-<think>
+<reasoning>
 Okay, so the user wants to refine their prompt into requirements for an MVP of a diet-recording, calorie-calculating chatbot. Let me start by understanding the original idea. The core features are recording diet and calculating calories using an LLM. The user mentioned not focusing on technical stuff, just the user requirements.
 
 First, I need to outline the main user interactions. The MVP should be minimal, so only essential features. The chatbot needs to let users input their diet entries. Maybe through text or voice, since LLMs can handle that. But wait, the user said not to overcomplicate. So maybe just text input for now.
@@ -43,7 +43,7 @@ Error handling for unclear inputs.
 Data persistence.
 But need to make sure they're concise and not ambiguous. Let me check each point. Input methods: specify that the bot allows both. Logging entries: user can specify food, quantity, meal time. The bot parses this. Calorie calculation: uses a standard database, mention common items but allow custom entries. Daily summary: total calories, per meal. Correction: simple commands. Error handling: prompt user for missing info. Data: stored between sessions.
 Yes, that covers the MVP without technical details. Keep each requirement brief and focused on user actions and outcomes.
-</think>
+</reasoning>
 <requirements>
 An application to track user's diet and calculate calories using an LLM.
 Input Methods:
