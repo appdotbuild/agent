@@ -17,5 +17,3 @@ export const createDB = async () => {
     );
     await db.execute(migrationStatements.join('\n'));
 };
-
-// resetDB().then(() => console.log("DB reset successfully"));

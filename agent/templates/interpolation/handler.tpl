@@ -69,4 +69,4 @@ const postProcessor = async (output: object, input: Message[]): Promise<Message[
     }
 };
 
-export const {{handler_name}} = new GenericHandler(handle, preProcessor, postProcessor);
+export const {{handler_name}}Handler = new GenericHandler(handle, preProcessor, postProcessor);

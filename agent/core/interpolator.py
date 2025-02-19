@@ -22,11 +22,12 @@ class Interpolator:
         # Convert PascalCase to snake_case for file naming
         return ''.join(['_' + c.lower() if c.isupper() else c for c in handler_name]).lstrip('_')
 
-    def _interpolate_handler(self, handler_name: str, handler: str, typescript_schema_type_names: list[str]):
+    def _interpolate_handler(self, handler_name: str, handler: str, argument_type: str, argument_schema: str):
         params = {
             "handler_name": handler_name,
             "handler": handler,
-            "typescript_schema_type_names": typescript_schema_type_names,
+            "argument_type": argument_type,
+            "argument_schema": argument_schema,
         }
         handler_snake_name = self._interpolate_module_name(handler_name)
         self._interpolate(params, "handler.tpl", f"handlers/{handler_snake_name}.ts")
@@ -60,19 +61,19 @@ class Interpolator:
         }
         self._interpolate(params, "testcases.tpl", "tests/features/application.feature")
 
-    def interpolate_all(self, handlers: dict, handler_tests: dict, typescript_schema_type_names: list[str], functions: list[dict], gherkin: str):
+    def interpolate_all(self, handlers: dict, handler_tests: dict, functions: list[dict], gherkin: str):
         processed_handlers = {}
         
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
             if feature_flags.gherkin:
                 handler_test_suite = handler_tests[handler_name]
-                module = self._interpolate_handler_test(handler_name, handler_test_suite, typescript_schema_type_names)
+                module = self._interpolate_handler_test(handler_name, handler_test_suite)
         
         for handler_name in handlers.keys():
             handler = handlers[handler_name]
-            module = self._interpolate_handler(handler_name, handler, typescript_schema_type_names)
-            processed_handlers[handler_name] = {"module": module}
+            module = self._interpolate_handler(handler_name, handler["code"], handler["argument_type"], handler["argument_schema"])
+            processed_handlers[handler_name] = {"module": module, "name": handler["name"]}
         
         self._interpolate_index(processed_handlers)
         self._interpolate_router(functions)

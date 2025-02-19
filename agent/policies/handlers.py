@@ -59,7 +59,7 @@ import { db } from "../db";
 import { greetUser, type GreetRequest } from "../common/schema";
 import { greetingsTable } from "../db/schema/application";
 
-const handle: typeof greetUser = async (options: GreetRequest): Promise<string> => {
+export const handle: typeof greetUser = async (options: GreetRequest): Promise<string> => {
     await db.insert(greetingsTable).values({
         name: options.name,
         response: `Hello, ${options.name}!`,
@@ -411,6 +411,7 @@ Application Definitions:
 </drizzle>
 
 Generate handler code for the function {{function_name}} based on the provided TypeSpec, TypeScript and Drizzle schema.
+Include ```import { {{function_name}} } from "../common/schema";``` in the handler code. Ensure that handle is : typeof {{function_name}}.
 Return complete handler code encompassed with <handler> tag.
 """.strip()
 
@@ -433,6 +434,7 @@ with open(_handler_tpl_path, "r", encoding="utf-8") as f:
 
 @dataclass
 class HandlerOutput:
+    name: str
     handler: str
     feedback: CompileResult
 
@@ -489,6 +491,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                                                                "src/common/schema.ts": kwargs['typescript_schema'], 
                                                                "src/db/schema/application.ts": kwargs['drizzle_schema']})
             output = HandlerOutput(
+                name=f"{kwargs['function_name']}Handler",
                 handler=handler,
                 feedback=feedback,
             )
