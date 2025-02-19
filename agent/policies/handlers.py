@@ -473,6 +473,8 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             match node.data.output:
                 case HandlerOutput(feedback={"exit_code": exit_code, "stdout": stdout}) if exit_code != 0:
                     content = fix_template.render(errors=stdout)
+                case HandlerOutput(test_feedback={"exit_code": exit_code, "stderr": stderr}) if exit_code != 0:
+                    content = fix_template.render(errors=stderr)
                 case HandlerOutput():
                     continue
                 case Exception() as e:
@@ -483,7 +485,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> HandlerData:
+    def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> HandlerData:
         response = typescript_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
@@ -522,7 +524,8 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return HandlerData(messages=messages, output=output)
 

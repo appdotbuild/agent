@@ -416,7 +416,7 @@ Make sure to address following TypeScript compilation and runtime errors:
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
-Return fixed complete TypeScript definition encompassed with <tests> tags.
+Follow original formatting, return <imports> and corrected complete test suite with each test encompassed within <test> tag.
 """
 
 # TODO: Fix this terrible hack
@@ -466,7 +466,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> HandlerTestData:
+    def run(input: list[MessageParam], *args, init: bool = False,  **kwargs) -> HandlerTestData:
         response = typescript_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
@@ -492,7 +492,8 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return HandlerTestData(messages=messages, output=output)
 

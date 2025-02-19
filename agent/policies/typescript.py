@@ -66,7 +66,9 @@ Application TypeSpec:
 
 <typespec>
 {{typespec_definitions}}
-</typespec<>
+</typespec>
+
+Return <reasoning> and TypeSpec definition encompassed with <typescript> tag.
 """.strip()
 
 
@@ -128,7 +130,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> TypescriptData:
+    def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> TypescriptData:
         response = typescript_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
@@ -146,7 +148,8 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return TypescriptData(messages=messages, output=output)
     

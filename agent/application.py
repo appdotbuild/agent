@@ -59,6 +59,13 @@ class RouterOut:
 
 
 @dataclass
+class HandlerTestsOut:
+    name: str | None
+    content: str | None
+    error_output: str | None
+
+
+@dataclass
 class HandlerOut:
     name: str | None
     handler: str | None
@@ -127,15 +134,12 @@ class Application:
         if router.error_output is not None:
             raise Exception(f"Failed to generate router: {router.error_output}")
 
-        if feature_flags.gherkin:
+        if feature_flags.handler_tests:
             print("Compiling Handler Tests...")
-            #handler_interfaces, handler_tests = self._make_handler_tests(llm_functions, typespec_definitions, gherkin.gherkin, typescript_schema_definitions, drizzle_schema)
-        else:
-            handler_tests = {}
-            handler_interfaces = {}
+            handler_tests = self._make_handler_tests(typescript_functions, typescript_schema_definitions, drizzle_schema)
             
         print("Compiling Handlers...")
-        handlers = self._make_handlers(typescript_functions, handler_interfaces, handler_tests, typespec_definitions, typescript_schema_definitions, drizzle_schema)
+        handlers = self._make_handlers(typescript_functions, handler_tests, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         
         langfuse_context.update_current_observation(
             output = {
@@ -194,7 +198,6 @@ class Application:
             "argument_schema": fn_map[k].argument_schema,
             } for k, v in handlers.items()
         }
-        handler_tests = {k: v.handler_tests for k, v in handler_tests.items()}
         return interpolator.interpolate_all(raw_handlers, handler_tests, user_functions, gherkin)
 
     @observe(capture_input=False, capture_output=False)
@@ -202,7 +205,7 @@ class Application:
         content = self.jinja_env.from_string(typescript.PROMPT).render(typespec_definitions=typespec_definitions)
         message = {"role": "user", "content": content}
         with typescript.TypescriptTaskNode.platform(self.client, self.compiler, self.jinja_env):
-            ts_data = typescript.TypescriptTaskNode.run([message])
+            ts_data = typescript.TypescriptTaskNode.run([message], init=True)
             ts_root = typescript.TypescriptTaskNode(ts_data)
             ts_solution = common.bfs(ts_root, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS)
         match ts_solution.data.output:
@@ -233,7 +236,7 @@ class Application:
         content = self.jinja_env.from_string(typespec.PROMPT).render(application_description=application_description)
         message = {"role": "user", "content": content}
         with typespec.TypespecTaskNode.platform(self.client, self.compiler, self.jinja_env):
-            tsp_data = typespec.TypespecTaskNode.run([message])
+            tsp_data = typespec.TypespecTaskNode.run([message], init=True)
             tsp_root = typespec.TypespecTaskNode(tsp_data)
             tsp_solution = common.bfs(tsp_root, MAX_DEPTH, BRANCH_FACTOR, MAX_WORKERS)
         match tsp_solution.data.output:
@@ -247,7 +250,7 @@ class Application:
         content = self.jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=typespec_definitions)
         message = {"role": "user", "content": content}
         with drizzle.DrizzleTaskNode.platform(self.client, self.compiler, self.jinja_env):
-            dzl_data = drizzle.DrizzleTaskNode.run([message])
+            dzl_data = drizzle.DrizzleTaskNode.run([message], init=True)
             dzl_root = drizzle.DrizzleTaskNode(dzl_data)
             dzl_solution = common.bfs(dzl_root, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS)
         match dzl_solution.data.output:
@@ -261,7 +264,7 @@ class Application:
         content = self.jinja_env.from_string(router.PROMPT).render(typespec_definitions=typespec_definitions)
         message = {"role": "user", "content": content}
         with router.RouterTaskNode.platform(self.client, self.jinja_env):
-            router_data = router.RouterTaskNode.run([message], typespec_definitions=typespec_definitions)
+            router_data = router.RouterTaskNode.run([message], typespec_definitions=typespec_definitions, init=True)
             router_root = router.RouterTaskNode(router_data)
             router_solution = common.bfs(router_root)
         match router_solution.data.output:
@@ -269,6 +272,72 @@ class Application:
                 return RouterOut(None, str(e))
             case output:
                 return RouterOut(output.functions, None)
+    
+    @observe(capture_input=False, capture_output=False)
+    def _make_handler_test(
+        self,
+        content: str,
+        function_name: str,
+        typescript_schema: str,
+        drizzle_schema: str,
+        *args,
+        **kwargs,
+    ) -> handler_tests.HandlerTestTaskNode:
+        prompt_params = {
+            "function_name": function_name,
+            "typescript_schema": typescript_schema,
+            "drizzle_schema": drizzle_schema,
+        }
+        message = {"role": "user", "content": content}
+        test_data = handler_tests.HandlerTestTaskNode.run([message], init=True, **prompt_params)
+        test_root = handler_tests.HandlerTestTaskNode(test_data)
+        test_solution = common.bfs(test_root, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS, **prompt_params)
+        return test_solution
+    
+    @observe(capture_input=False, capture_output=False)
+    def _make_handler_tests(
+        self,
+        llm_functions: list[typescript.FunctionDeclaration],
+        typescript_schema: str,
+        drizzle_schema: str,
+    ) -> dict[str, HandlerTestsOut]:
+        trace_id = langfuse_context.get_current_trace_id()
+        observation_id = langfuse_context.get_current_observation_id()
+        render_tpl = self.jinja_env.from_string(handler_tests.HANDLER_TEST_TPL)
+        results: dict[str, HandlerTestsOut] = {}
+        with handler_tests.HandlerTestTaskNode.platform(self.client, self.compiler, self.jinja_env):
+            with concurrent.futures.ThreadPoolExecutor(self.MAX_WORKERS) as executor:
+                future_to_handler: dict[concurrent.futures.Future[handler_tests.HandlerTestTaskNode], str] = {}
+                for function in llm_functions:
+                    test_prompt_params = {
+                        "function_name": function.name,
+                        "typescript_schema": typescript_schema,
+                        "drizzle_schema": drizzle_schema,
+                    }
+                    content = self.jinja_env.from_string(handler_tests.PROMPT).render(**test_prompt_params)
+                    future_to_handler[executor.submit(
+                        self._make_handler_test,
+                        content,
+                        function.name,
+                        typescript_schema,
+                        drizzle_schema,
+                        langfuse_parent_trace_id=trace_id,
+                        langfuse_parent_observation_id=observation_id,
+                    )] = function.name
+                for future in concurrent.futures.as_completed(future_to_handler):
+                    function_name, result = future_to_handler[future], future.result()
+                    match result.data.output:
+                        case Exception() as e:
+                            results[function_name] = HandlerTestsOut(None, None, str(e))
+                        case output:
+                            content = render_tpl.render(
+                                handler_name=function_name,
+                                handler_function_import=f'import {{ handle as {function_name} }} from "../../handlers/{function_name}.ts";',
+                                imports=output.imports,
+                                tests=output.tests,
+                            )
+                            results[function_name] = HandlerTestsOut(function_name, content, None)
+        return results
     
     @observe(capture_input=False, capture_output=False)
     def _make_handler(
@@ -280,6 +349,7 @@ class Application:
         typespec_definitions: str,
         typescript_schema: str,
         drizzle_schema: str,
+        test_suite: str | None,
         *args,
         **kwargs,
     ) -> handlers.HandlerTaskNode:
@@ -290,55 +360,16 @@ class Application:
             "typespec_schema": typespec_definitions,
             "typescript_schema": typescript_schema,
             "drizzle_schema": drizzle_schema,
+            "test_suite": test_suite,
         }
         message = {"role": "user", "content": content}
-        output = handlers.HandlerTaskNode.run([message], **prompt_params)
+        output = handlers.HandlerTaskNode.run([message], init=True, **prompt_params)
         root_node = handlers.HandlerTaskNode(output)
         solution = common.bfs(root_node, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS, **prompt_params)
         return solution
     
     @observe(capture_input=False, capture_output=False)
-    def _make_handler_tests_and_interfaces(self, llm_functions: list[str], test_cases: str, typescript_schema: str, drizzle_schema: str):
-        raise NotImplementedError("Not implemented")
-
-    @observe(capture_input=False, capture_output=False)
-    def _make_handler_tests(self, llm_functions: list[str], typespec_definitions: str, test_cases: str, typescript_schema: str, drizzle_schema: str):
-        trace_id = langfuse_context.get_current_trace_id()
-        observation_id = langfuse_context.get_current_observation_id()
-        results: dict[str, HandlerOut] = {}
-        with handlers.HandlerTaskNode.platform(self.client, self.compiler, self.jinja_env):
-            with concurrent.futures.ThreadPoolExecutor(self.MAX_WORKERS) as executor:
-                future_to_handler: dict[concurrent.futures.Future[handlers.HandlerTaskNode], str] = {}
-                for function_name in llm_functions:
-
-                    test_prompt_params = {
-                        "function_name": function_name,
-                        "typespec_schema": typespec_definitions,
-                        "typescript_schema": typescript_schema,
-                        "drizzle_schema": drizzle_schema,
-                    }
-                    content = self.jinja_env.from_string(handler_tests.PROMPT).render(**test_prompt_params)
-                    future_to_handler[executor.submit(
-                        self._make_handler_tests_and_interfaces,
-                        content,
-                        function_name,
-                        test_cases,
-                        typescript_schema,
-                        drizzle_schema,
-                        langfuse_parent_trace_id=trace_id,
-                        langfuse_parent_observation_id=observation_id,
-                    )] = function_name
-                for future in concurrent.futures.as_completed(future_to_handler):
-                    function_name, result = future_to_handler[future], future.result()
-                    match result.data.output:
-                        case Exception() as e:
-                            results[function_name] = HandlerOut(None, str(e))
-                        case output:
-                            results[function_name] = HandlerOut(output.handler_tests, output.handler_interfaces, None)
-        return results
-    
-    @observe(capture_input=False, capture_output=False)
-    def _make_handlers(self, llm_functions: list[typescript.FunctionDeclaration], handler_interfaces: dict[str], handler_tests: dict[str], typespec_definitions: str, typescript_schema: str, drizzle_schema: str):
+    def _make_handlers(self, llm_functions: list[typescript.FunctionDeclaration], handler_tests: dict[str, HandlerTestsOut], typespec_definitions: str, typescript_schema: str, drizzle_schema: str):
         trace_id = langfuse_context.get_current_trace_id()
         observation_id = langfuse_context.get_current_observation_id()
         results: dict[str, HandlerOut] = {}
@@ -346,30 +377,31 @@ class Application:
             with concurrent.futures.ThreadPoolExecutor(self.MAX_WORKERS) as executor:
                 future_to_handler: dict[concurrent.futures.Future[handlers.HandlerTaskNode], str] = {}
                 for function in llm_functions:
-                    #handler_interface_set = handler_interfaces.get(function_name, None)
-                    #handler_test_suite = handler_tests.get(function_name, None)
+                    match handler_tests.get(function.name):
+                        case HandlerTestsOut(_, test_content, None) if test_content is not None:
+                            test_suite = test_content
+                        case _:
+                            test_suite = None
                     handler_prompt_params = {
                         "function_name": function.name,
-                        #"handler_interfaces": handler_interface_set,
-                        #"handler_tests": handler_test_suite,
                         "argument_type": function.argument_type,
                         "argument_schema": function.argument_schema,
                         "typespec_schema": typespec_definitions,
                         "typescript_schema": typescript_schema,
                         "drizzle_schema": drizzle_schema,
+                        "test_suite": test_suite,
                     }
                     content = self.jinja_env.from_string(handlers.PROMPT).render(**handler_prompt_params)
                     future_to_handler[executor.submit(
                         self._make_handler,
                         content,
                         function.name,
-                        #handler_interfaces,
-                        #handler_tests,
                         function.argument_type,
                         function.argument_schema,
                         typespec_definitions,
                         typescript_schema,
                         drizzle_schema,
+                        test_suite,
                         langfuse_parent_trace_id=trace_id,
                         langfuse_parent_observation_id=observation_id,
                     )] = function.name
