@@ -48,7 +48,7 @@ const handle = async (params: PerplexitySearchParams): Promise<SearchResponse> =
                 { role: 'user', content: searchQuery }
             ],
             temperature: 0.7,
-            max_tokens: 100,
+            max_tokens: 250,
             max_results: 10
         })
     };
