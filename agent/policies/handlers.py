@@ -483,10 +483,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                 handler=handler,
                 handler_name=kwargs['function_name'],
                 argument_type=kwargs['argument_type'],
-                argument_schema=kwargs['argument_schema'],
-                typespec_schema=kwargs['typespec_schema'],
-                typescript_schema=kwargs['typescript_schema'],
-                drizzle_schema=kwargs['drizzle_schema'])
+                argument_schema=kwargs['argument_schema'])
             feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler_check, 
                                                                "src/common/schema.ts": kwargs['typescript_schema'], 
                                                                "src/db/schema/application.ts": kwargs['drizzle_schema']})

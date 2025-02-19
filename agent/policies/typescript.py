@@ -17,6 +17,7 @@ Encompass output with <typescript> tag.
 
 Rules:
 - Always use coerce of Zod date and time types.
+- For functions emit declarations only, omit function bodies ```export declare function funtionName(parameter: SomeType): Promise<SomeOutput>;```
 
 Example:
 <typespec>

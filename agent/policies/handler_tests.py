@@ -12,110 +12,93 @@ from compiler.core import Compiler, CompileResult
 
 PROMPT = """
 Based on TypeScript application definition and gherkin test cases, generate a unit test suite for {{function_name}} function.
-Handler always accepts single argument. 
-Handler should satisfy following interface:
 
-<handler>
-interface Message {
-    role: 'user' | 'assistant';
-    content: string;
-};
-
-interface Handler<Options, Output> {
-    preProcessor: (input: Message[]) => Options | Promise<Options>;
-    handle: (options: Options) => Output | Promise<Output>;
-    postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>;
-}
-
-class GenericHandler<Options, Output> implements Handler<Options, Output> {
-    constructor(
-        public handle: (options: Options) => Output | Promise<Output>,
-        public preProcessor: (input: Message[]) => Options | Promise<Options>,
-        public postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>
-    ) {}
-
-    async execute(input: Message[]): Promise<Message[] | Output> {
-        const options = await this.preProcessor(input);
-        const result = await this.handle(options);
-        return this.postProcessor ? await this.postProcessor(result, input) : result;
-    }
-}
-</handler>
-
-Example test suite implementation for "greetUser" function and following interfaces:
-
-<tests>
-import { db } from "../db";
-import type { Greeting } from "../db/schema/application";
-import { messagesTable } from "../db/schema/common";
-
-interface Options {
-    user_id: string;
-    message: string;
-    greeting: Greeting;
-}
-
-interface Output {
-    greetingMessage: string;
-}
-
-
-
-</tests>
-
-Application Definitions:
-
-<typespec>
-{{typesspec_schema}}
-</typespec>
+Example:
 
 <typescript>
-{{typescript_schema}}
+import { z } from 'zod';
+
+export const greetingRequestSchema = z.object({
+  name: z.string(),
+  greeting: z.string(),
+});
+
+export type GreetingRequest = z.infer<typeof greetingRequestSchema>;
+
+export declare function greet(options: GreetingRequest): Promise<string>;
 </typescript>
 
 <drizzle>
-{{drizzle_schema}}
+import { serial, text, pgTable, timestamp } from "drizzle-orm/pg-core";
+
+export const greetingRequestsTable = pgTable("greeting_requests", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  greeting: text("greeting").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull()
+});
+
+export const greetingResponsesTable = pgTable("greeting_responses", {
+  id: serial("id").primaryKey(),
+  request_id: serial("request_id")
+    .references(() => greetingRequestsTable.id)
+    .notNull(),
+  response_text: text("response_text").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull()
+});
 </drizzle>
 
-<gherkin>
-{{test_cases}}
-</gherkin>
+Output:
 
-Handler to implement: {{function_name}}
+<imports>
+import { expect, it } from "bun:test";
+import { db } from "../../db";
+import { greetingRequestsTable } from "../../db/schema/application";
+import { type GreetingRequest } from "../../common/schema";
+</imports>
 
-Return Options and Output interfaces and test suite within <tests> tag.
+<test>
+it("should return a greeting", async () => {
+  const input: GreetingRequest = { name: "Alice", greeting: "Hello" };
+  const greeting = await greet(input);
+  expect(greeting).toEqual("Hello, Alice!");
+});
+</test>
 
-Generate only:
-1. handler input Options interface,
-2. handler Output interface,
-3. test suite implementation referencing handler Options and Output interfaces according to test cases,
-
-Omit in generated code:
-1. Avoid generating handler code.
+<test>
+it("should store the greeting request", async () => {
+  const input: GreetingRequest = { name: "Alice", greeting: "Hello" };
+  await greet(input);
+  const requests = await db.select().from(greetingRequestsTable).execute();
+  expect(requests).toHaveLength(1);
+  expect(requests[0].name).toEqual("Alice");
+  expect(requests[0].greeting).toEqual("Hello");
+});
+</test>
 
 Code style:
 1. Always use quotes "" not '' for strings,
 2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled,
 3. Use underscored names (i.e. _options) if they not used in the code (e.g. in function parameters).
 4. Make sure to consistently use nullability and never assign null to non-nullable types. For example:
-   - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
-   - If a field can be null, explicitly define it as `string | null` in the interface
-   - When working with arrays of objects, ensure each object property matches the interface type exactly
-   - Use optional properties with `?` instead of allowing null values where appropriate
+  - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
+  - If a field can be null, explicitly define it as `string | null` in the interface
+  - When working with arrays of objects, ensure each object property matches the interface type exactly
+  - Use optional properties with `?` instead of allowing null values where appropriate
 5. Use PascalCase for all type names (e.g. `UserProfile`, `WorkoutRoutine`, `ProgressMetrics`) and camelCase for variables/properties. For example:
-    - Interface names should be PascalCase: `interface UserProfile`
-    - Type aliases should be PascalCase: `type ResponseData`
-    - Generic type parameters should be PascalCase: `Array<UserData>`
-    - Enum names should be PascalCase: `enum UserRole`
+  - Interface names should be PascalCase: `interface UserProfile`
+  - Type aliases should be PascalCase: `type ResponseData`
+  - Generic type parameters should be PascalCase: `Array<UserData>`
+  - Enum names should be PascalCase: `enum UserRole`
 
   
 Note on imports:
 * Use only required imports, reread the code to make sure you are importing only required files,
 * STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA, TYPE NAMES FROM TYPESPEC SCHEMA,
-* Drizzle schema imports must always be from "../db/schema/application", for example: import { customTable } from "../db/schema/application";,
-* Typespec schema imports must always be from "../common/schema", for example: import { CarPoem } from "../common/schema";,
+* Drizzle schema imports must always be from "../../db/schema/application", for example: import { customTable } from "../../db/schema/application";,
+* Typespec schema imports must always be from "../../common/schema", for example: import { CarPoem } from "../../common/schema";,
 * Drizzle ORM operators imports must come from "drizzle-orm" if required: import { eq } from "drizzle-orm";
-* If using db instance, use: import { db } from "../db";,
+* If using db instance, use: import { db } from "../../db";,
 
 Drizzle style guide:
 
@@ -237,20 +220,20 @@ function buildQuery(options: QueryOptions) {
 ### Common Fixes for TypeScript Errors
 
 1. Missing Operators:
-   - Always import operators explicitly
-   - Use correct import path for your database
+  - Always import operators explicitly
+  - Use correct import path for your database
 
 2. Query Chain Breaks:
-   - Maintain proper query chain
-   - Store intermediate query in variable for conditionals
+  - Maintain proper query chain
+  - Store intermediate query in variable for conditionals
 
 3. Array Operations:
-   - Use `inArray` for array comparisons
-   - Consider using SQL template literals for complex cases
+  - Use `inArray` for array comparisons
+  - Consider using SQL template literals for complex cases
 
 4. Type Safety:
-   - Define interfaces for query options
-   - Use TypeScript's type inference with proper imports
+  - Define interfaces for query options
+  - Use TypeScript's type inference with proper imports
 
 ## Advanced Troubleshooting
 
@@ -444,7 +427,6 @@ class HandlerOutput:
 @dataclass
 class HandlerData:
     messages: list[MessageParam]
-    #function_name: str
     output: HandlerOutput | Exception
 
 class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
@@ -464,7 +446,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages #, self.data.function_name            
+        return messages          
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
