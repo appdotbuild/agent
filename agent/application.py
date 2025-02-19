@@ -390,13 +390,9 @@ class Application:
         with refine.RefinementTaskNode.platform(self.client, self.jinja_env):
             refinement_data = refine.RefinementTaskNode.run([{"role": "user",
                 "content": self.jinja_env.from_string(refine.PROMPT).render(application_description=initial_description)
-            }],
-            langfuse_parent_trace_id=trace_id, langfuse_parent_observation_id=observation_id)
-            root_node = refine.RefinementTaskNode(refinement_data)
-            solution = common.bfs(root_node, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS)
-
-        match solution.data.output:
-            case Exception() as e:
-                return RefineOut(initial_description, str(e))
-            case output:
-                return RefineOut(output.requirements, None)
+            }])
+            match refinement_data.output:
+                case Exception() as e:
+                    return RefineOut(initial_description, str(e))
+                case output:
+                    return RefineOut(output.requirements, output.error_or_none)

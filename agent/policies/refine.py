@@ -68,20 +68,6 @@ Please provide detailed requirements for:
 Return requirements encompassed with <requirements> tag.
 """.strip()
 
-FIX_PROMPT = """
-Please address the following issues in the requirements:
-<feedback>
-{{feedback}}
-</feedback>
-
-Ensure requirements are:
-- Specific and measurable
-- Technically feasible
-- Consistent with user needs
-
-Return complete refined requirements encompassed with <requirements> tag.
-"""
-
 @dataclass
 class RefinementOutput:
     requirements: str
@@ -99,21 +85,7 @@ class RefinementData:
 class RefinementTaskNode(TaskNode[RefinementData, list[MessageParam]]):
     @property
     def run_args(self) -> list[MessageParam]:
-        fix_template = refinement_jinja_env.from_string(FIX_PROMPT)
-        messages = []
-        for node in self.get_trajectory():
-            messages.extend(node.data.messages)
-            content = None
-            match node.data.output:
-                case RefinementOutput(feedback={"errors": errors}) if errors:
-                    content = fix_template.render(feedback=errors)
-                case RefinementOutput():
-                    continue
-                case Exception() as e:
-                    content = fix_template.render(feedback=str(e))
-            if content:
-                messages.append({"role": "user", "content": content})
-        return messages
+        raise RuntimeError("Should never happen")
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
