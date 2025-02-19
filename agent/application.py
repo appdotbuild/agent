@@ -78,7 +78,7 @@ class ApplicationOut:
 
 class Application:
     def __init__(self, client: AnthropicBedrock, compiler: Compiler, template_dir: str = "templates", output_dir: str = "app_output",
-                 branch_factor: int = 2, max_depth: int = 4, max_workers: int = 1):
+                 branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5):
         self.client = TracingClient(client)
         self.compiler = compiler
         self.jinja_env = jinja2.Environment()

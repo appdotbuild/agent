@@ -104,7 +104,7 @@ typespec = stages.typespec.parse_output(tsp_response.content[0].text)
 [profile dev]
 sso_session = dev_agent
 sso_account_id = 361769577597
-sso_role_name = AIPowerUserAccess97
+sso_role_name = Sandbox
 region = us-west-2
 output = json
 
@@ -132,7 +132,9 @@ export AWS_PROFILE=dev
 ```
 DockerSandboxTest python notebook contains sample usage.
 
-## Notebook Usage
+## Basic Usage
+
+### Jupyter version
 
 The Scratchpad notebook in `agent/` demonstrates the framework's capabilities:
 
@@ -165,6 +167,15 @@ pre_processors = {...}
 
 # Generate Handlers
 handlers = {...}
+```
+
+### Python script version
+
+Those who prefer using Python scripts directly to use the debugger and other fancy features can use the following script:
+
+```bash
+cd agent
+python debug.py "your app description" /optional/path/to/final_output
 ```
 
 ## Generated Application

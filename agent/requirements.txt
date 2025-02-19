@@ -5,6 +5,7 @@ asttokens==3.0.0
 boto3==1.35.99
 botocore==1.35.99
 certifi==2024.12.14
+coloredlogs==15.0.1
 comm==0.2.2
 debugpy==1.8.12
 decorator==5.1.1
@@ -12,6 +13,7 @@ distro==1.9.0
 docker==7.1.0
 executing==2.1.0
 fastapi==0.115.7
+fire==0.7.0
 h11==0.14.0
 httpcore==1.0.7
 httpx==0.28.1
