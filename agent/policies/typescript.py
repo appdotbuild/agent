@@ -174,7 +174,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             del typescript_jinja_env
     
     @staticmethod
-    def parse_output(output: str) -> tuple[str, str, list[str]]:
+    def parse_output(output: str) -> tuple[str, str, list[FunctionDeclaration], dict[str, str]]:
         pattern = re.compile(
             r"<reasoning>(.*?)</reasoning>.*?<typescript>(.*?)</typescript>",
             re.DOTALL,

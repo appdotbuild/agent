@@ -1,4 +1,4 @@
-import { afterEach, beforeEach } from "bun:test";
+import { afterEach, beforeEach, describe } from "bun:test";
 import { resetDB, createDB } from "../../helpers";
 {{handler_function_import}}
 {{imports}}

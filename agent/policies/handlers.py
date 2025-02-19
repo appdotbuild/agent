@@ -84,10 +84,10 @@ Code style:
 2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled,
 3. Use underscored names (i.e. _options) if they not used in the code (e.g. in function parameters).
 4. Make sure to consistently use nullability and never assign null to non-nullable types. For example:
-   - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
-   - If a field can be null, explicitly define it as `string | null` in the interface
-   - When working with arrays of objects, ensure each object property matches the interface type exactly
-   - Use optional properties with `?` instead of allowing null values where appropriate
+    - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
+    - If a field can be null, explicitly define it as `string | null` in the interface
+    - When working with arrays of objects, ensure each object property matches the interface type exactly
+    - Use optional properties with `?` instead of allowing null values where appropriate
 5. Use PascalCase for all type names (e.g. `UserProfile`, `WorkoutRoutine`, `ProgressMetrics`) and camelCase for variables/properties. For example:
     - Interface names should be PascalCase: `interface UserProfile`
     - Type aliases should be PascalCase: `type ResponseData`
@@ -409,6 +409,11 @@ Application Definitions:
 <drizzle>
 {{drizzle_schema}}
 </drizzle>
+{% if test_suite %}
+<tests>
+{{test_suite}}
+</tests>
+{% endif %}
 
 Generate handler code for the function {{function_name}} based on the provided TypeSpec, TypeScript and Drizzle schema.
 Include ```import { {{function_name}} } from "../common/schema";``` in the handler code. Ensure that handle is : typeof {{function_name}}.
@@ -417,7 +422,8 @@ Return complete handler code encompassed with <handler> tag.
 
 
 FIX_PROMPT = """
-Make sure to address following TypeScript compilation errors:
+Make sure to address following errors:
+
 <errors>
 {{errors}}
 </errors>
@@ -426,22 +432,27 @@ Verify absence of reserved keywords in property names, type names, and function 
 Return fixed complete TypeScript definition encompassed with <handler> tag.
 """
 
+
 # TODO: Fix this terrible hack
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 _handler_tpl_path = os.path.abspath(os.path.join(_current_dir, "../templates/interpolation/handler.tpl"))
 with open(_handler_tpl_path, "r", encoding="utf-8") as f:
     HANDLER_TPL = f.read()
 
+
 @dataclass
 class HandlerOutput:
     name: str
     handler: str
     feedback: CompileResult
+    test_feedback: CompileResult | None = None
 
     @property
     def error_or_none(self) -> str | None:
         if self.feedback["exit_code"] != 0:
             return self.feedback["stdout"] or f"Exit code: {self.feedback['exit_code']}"
+        if self.test_feedback is not None and self.test_feedback["exit_code"] != 0:
+            return self.test_feedback["stderr"] or f"Tests exit code: {self.test_feedback['exit_code']}"
         return None
 
 
@@ -449,6 +460,7 @@ class HandlerOutput:
 class HandlerData:
     messages: list[MessageParam]
     output: HandlerOutput | Exception
+
 
 class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
     @property
@@ -477,20 +489,36 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             max_tokens=8192,
             messages=input,
         )
+        test_suite: str | None = kwargs.get("test_suite", None)
         try:
             handler = HandlerTaskNode.parse_output(response.content[0].text)
             handler_check = typescript_jinja_env.from_string(HANDLER_TPL).render(
                 handler=handler,
                 handler_name=kwargs['function_name'],
                 argument_type=kwargs['argument_type'],
-                argument_schema=kwargs['argument_schema'])
-            feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler_check, 
-                                                               "src/common/schema.ts": kwargs['typescript_schema'], 
-                                                               "src/db/schema/application.ts": kwargs['drizzle_schema']})
+                argument_schema=kwargs['argument_schema'],
+                test_suite=test_suite,
+            )
+            files = {
+                f"src/handlers/{kwargs['function_name']}.ts": handler_check,
+                "src/common/schema.ts": kwargs['typescript_schema'],
+                "src/db/schema/application.ts": kwargs['drizzle_schema'],
+            }
+            match test_suite:
+                case None:
+                    [feedback] = typescript_compiler.compile_typescript(files)
+                    test_feedback = None
+                case str(content):
+                    test_path = f"src/tests/handlers/{kwargs['function_name']}.test.ts"
+                    files[test_path] = content
+                    [feedback, test_feedback] = typescript_compiler.compile_typescript(files, cmds=[["bun", "test", test_path]])
+                case _:
+                    raise ValueError(F"Invalid test suite class {test_suite}")
             output = HandlerOutput(
-                name=f"{kwargs['function_name']}Handler",
+                name=f"{kwargs['function_name']}Handler", # TODO: Fix, NASTY (to avoid name conflict when importing declaration)
                 handler=handler,
                 feedback=feedback,
+                test_feedback=test_feedback,
             )
         except Exception as e:
             output = e
@@ -503,6 +531,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         return (
             not isinstance(self.data.output, Exception)
             and self.data.output.feedback["exit_code"] == 0
+            and (self.data.output.test_feedback is None or self.data.output.test_feedback["exit_code"] == 0)
         )
     
     @staticmethod
@@ -522,7 +551,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             del typescript_jinja_env
     
     @staticmethod
-    def parse_output(output: str) -> HandlerOutput:
+    def parse_output(output: str) -> str:
         pattern = re.compile(r"<handler>(.*?)</handler>", re.DOTALL)
         match = pattern.search(output)
         if match is None:
