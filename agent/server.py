@@ -11,7 +11,7 @@ from pydantic import BaseModel, model_validator
 from anthropic import AnthropicBedrock
 from application import Application
 from compiler.core import Compiler
-
+from langfuse.decorators import langfuse_context, observe
 
 client = AnthropicBedrock(aws_region="us-west-2")
 compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
@@ -46,6 +46,7 @@ class BuildRequest(BaseModel):
 class BuildResponse(BaseModel):
     status: str
     message: str
+    trace_id: str
     metadata: dict = {}
 
 
@@ -66,4 +67,9 @@ def compile(request: BuildRequest):
             )
             upload_result.raise_for_status()
         metadata = {"functions": bot.router.functions}
-    return BuildResponse(status="success", message="done", metadata=metadata)
+        return BuildResponse(status="success", message="done", trace_id=bot.trace_id, metadata=metadata)
+
+
+@app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
+def healthcheck():
+    return BuildResponse(status="success", message="ok")

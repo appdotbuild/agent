@@ -74,6 +74,7 @@ class ApplicationOut:
     typescript_schema: TypescriptOut
     gherkin: GherkinOut
     application: dict[str, dict]
+    trace_id: str
 
 
 class Application:
@@ -170,7 +171,8 @@ class Application:
 
         print("Generating Application...")
         application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers, handler_tests, gherkin.gherkin)
-        return ApplicationOut(app_prompt, typespec, drizzle, router, handlers, typescript_schema, gherkin, application)
+        trace_id = langfuse_context.get_current_trace_id()
+        return ApplicationOut(app_prompt, typespec, drizzle, router, handlers, typescript_schema, gherkin, application, trace_id)
 
     def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, HandlerOut], handler_tests: dict[str, HandlerOut], gherkin: str):
         self.iteration += 1
