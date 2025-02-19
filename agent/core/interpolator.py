@@ -42,9 +42,11 @@ class Interpolator:
         self._interpolate(params, "handler_test.tpl", f"tests/handlers/{handler_test_name}.ts")
         return handler_test_name
     
-    def _interpolate_index(self, handlers: dict):
+    def _interpolate_index(self, handlers: dict, custom_handlers: dict[str, str] | None):
         params = {
             "handlers": handlers,
+            "custom_handlers": custom_handlers,
+            "use_perplexity": feature_flags.perplexity,
         }
         self._interpolate(params, "logic_index.tpl", "logic/index.ts")
 
@@ -60,7 +62,7 @@ class Interpolator:
         }
         self._interpolate(params, "testcases.tpl", "tests/features/application.feature")
 
-    def interpolate_all(self, handlers: dict, handler_tests: dict, typescript_schema_type_names: list[str], functions: list[dict], gherkin: str):
+    def interpolate_all(self, handlers: dict, handler_tests: dict, typescript_schema_type_names: list[str], functions: list[dict], gherkin: str, custom_handlers: list[str]):
         processed_handlers = {}
         
         for handler_name in handlers.keys():
@@ -73,8 +75,8 @@ class Interpolator:
             handler = handlers[handler_name]
             module = self._interpolate_handler(handler_name, handler, typescript_schema_type_names)
             processed_handlers[handler_name] = {"module": module}
-        
-        self._interpolate_index(processed_handlers)
+                
+        self._interpolate_index(processed_handlers, custom_handlers)
         self._interpolate_router(functions)
         self._interpolate_testcases(gherkin)
         

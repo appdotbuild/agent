@@ -19,6 +19,10 @@ class TypespecOut:
     llm_functions: list[str] | None
     error_output: str | None
 
+@dataclass
+class CustomTypespecOut:
+    custom_typespec_definitions: str | None
+    custom_functions: dict[str, str] | None
 
 @dataclass
 class TypescriptOut:
@@ -94,7 +98,10 @@ class Application:
         if typespec.error_output is not None:
             raise Exception(f"Failed to generate typespec: {typespec.error_output}")
         typespec_definitions = typespec.typespec_definitions
-        llm_functions = typespec.llm_functions
+        
+        custom_handlers = CustomTypespecOut(None, None)
+        if feature_flags.perplexity:
+            custom_handlers = self._make_custom_handlers()
 
         if feature_flags.gherkin:
             print("Compiling Gherkin Test Cases...")
@@ -118,19 +125,22 @@ class Application:
         drizzle_schema = drizzle.drizzle_schema
 
         print("Generating Router...")
-        router = self._make_router(typespec_definitions)
+        if custom_handlers.custom_typespec_definitions is not None:
+            router = self._make_router(f"{typespec_definitions}\n\n{custom_handlers.custom_typespec_definitions}")
+        else:
+            router = self._make_router(typespec_definitions)
         if router.error_output is not None:
             raise Exception(f"Failed to generate router: {router.error_output}")
 
         if feature_flags.gherkin:
             print("Compiling Handler Tests...")
-            handler_interfaces, handler_tests = self._make_handler_tests(llm_functions, typespec_definitions, gherkin.gherkin, typescript_schema_definitions, drizzle_schema)
+            handler_interfaces, handler_tests = self._make_handler_tests(typespec.llm_functions, typespec_definitions, gherkin.gherkin, typescript_schema_definitions, drizzle_schema)
         else:
             handler_tests = {}
             handler_interfaces = {}
             
         print("Compiling Handlers...")
-        handlers = self._make_handlers(llm_functions, handler_interfaces, handler_tests, typespec_definitions, typescript_schema_definitions, drizzle_schema)
+        handlers = self._make_handlers(typespec.llm_functions, handler_interfaces, handler_tests, typespec_definitions, typescript_schema_definitions, drizzle_schema)
         
         langfuse_context.update_current_observation(
             output = {
@@ -154,11 +164,11 @@ class Application:
         )
 
         print("Generating Application...")
-        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers, handler_tests, gherkin.gherkin)
+        application = self._make_application(typespec_definitions, typescript_schema_definitions, typescript_type_names, drizzle_schema, router.functions, handlers, handler_tests, gherkin.gherkin, custom_handlers.custom_functions)
         trace_id = langfuse_context.get_current_trace_id()
         return ApplicationOut(typespec, drizzle, router, handlers, typescript_schema, gherkin, application, trace_id)
 
-    def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, HandlerOut], handler_tests: dict[str, HandlerOut], gherkin: str):
+    def _make_application(self, typespec_definitions: str, typescript_schema: str, typescript_type_names: list[str], drizzle_schema: str, user_functions: list[dict], handlers: dict[str, HandlerOut], handler_tests: dict[str, HandlerOut], gherkin: str, custom_handlers: list[str]):
         self.iteration += 1
         self.generation_dir = os.path.join(self.output_dir, f"generation-{self.iteration}")
 
@@ -184,7 +194,7 @@ class Application:
 
         raw_handlers = {k: v.handler for k, v in handlers.items()}
         handler_tests = {k: v.handler_tests for k, v in handler_tests.items()}
-        return interpolator.interpolate_all(raw_handlers, handler_tests, typescript_type_names, user_functions, gherkin)
+        return interpolator.interpolate_all(raw_handlers, handler_tests, typescript_type_names, user_functions, gherkin, custom_handlers)
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):
@@ -199,6 +209,18 @@ class Application:
                 return TypescriptOut(None, None, None, str(e))
             case output:
                 return TypescriptOut(output.reasoning, output.typescript_schema, output.type_names, output.error_or_none)
+
+    @observe(capture_input=False, capture_output=False)
+    def _make_custom_handlers(self):
+        custom_typespec_definitions = []
+        for root, _, files in os.walk(os.path.join(self.template_dir, "tsp_schema")):
+            for file in files:
+                if file not in ["main.tsp"] and file.endswith(".tsp"):
+                    with open(os.path.join(root, file), "r") as f:
+                        custom_typespec_definitions.append(f.read())
+        custom_typespec_definitions = "\n".join(custom_typespec_definitions)
+        custom_functions = typespec.TypespecTaskNode.parse_custom_output(custom_typespec_definitions)
+        return CustomTypespecOut(custom_typespec_definitions, custom_functions)
 
     @observe(capture_input=False, capture_output=False)
     def _make_testcases(self, typespec_definitions: str):

@@ -20,23 +20,15 @@ model SearchParams {
 }
 
 interface Perplexity {
-  @llm_func(2)
-  @handler("perplexityHandler")
-  search(params: SearchParams): SearchResponse;
-
-  @llm_func(2)
-  @handler("perplexityWebSearchHandler")
+  @custom_func(1, "perplexityWebSearchHandler")
   webSearch(query: string): SearchResponse;
 
-  @llm_func(2)
-  @handler("perplexityNewsSearchHandler")
+  @custom_func(1, "perplexityNewsSearchHandler")
   newsSearch(query: string): SearchResponse;
 
-  @llm_func(2)
-  @handler("perplexityMarketSearchHandler")
+  @custom_func(1, "perplexityMarketSearchHandler")
   marketSearch(query: string): SearchResponse;
 
-  @llm_func(2)
-  @handler("perplexityWeatherSearchHandler")
+  @custom_func(1, "perplexityWeatherSearchHandler")
   weatherSearch(query: string): SearchResponse;
 }

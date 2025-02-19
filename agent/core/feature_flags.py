@@ -5,3 +5,4 @@
 # 4. if flag is set and feature deployed, remove the flag check and remove the flag from the code
 
 gherkin: bool = False 
+perplexity: bool = False

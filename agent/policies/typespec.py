@@ -202,3 +202,11 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         pattern = re.compile(r'@llm_func\(\d+\)\s*(\w+)\s*\(', re.DOTALL)
         functions = pattern.findall(output)
         return reasoning, definitions, functions
+
+    @staticmethod
+    def parse_custom_output(output: str) -> tuple[str, list[str]]:
+        # @custom_func(1, "perplexitySearch")
+        # webSearch(query: string): string;
+        pattern = re.compile(r'@custom_func\(\d+,\s*["\'](?P<handler_name>\w+)["\']\)\s*\n\s*(?P<func_name>\w+)\s*\(', re.DOTALL)
+        functions = pattern.findall(output)
+        return {handler_name: func_name for handler_name, func_name in functions}

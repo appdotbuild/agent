@@ -158,10 +158,3 @@ export const perplexityWeatherSearchHandler = new GenericHandler(
     preProcessor,
     postProcessor
 );
-
-export const PERPLEXITY_HANDLERS = {
-    'webSearch': 'perplexityWebSearchHandler',
-    'newsSearch': 'perplexityNewsSearchHandler',
-    'marketSearch': 'perplexityMarketSearchHandler',
-    'weatherSearch': 'perplexityWeatherSearchHandler',
-}

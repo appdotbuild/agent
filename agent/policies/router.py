@@ -12,10 +12,10 @@ EXTRACT_USER_FUNCTIONS_TOOL_NAME = "extract_user_functions"
 
 
 PROMPT = """
-Given TypeSpec application definition for all functions decorated with @llm_func
+Given TypeSpec application definition for all functions decorated with @llm_func or @custom_func
 generate prompt for the LLM to classify which function should handle user request.
 
-Structure your response according to the schema, with each @llm_func function having:
+Structure your response according to the schema, with each @llm_func or @custom_func function having:
 - name: The function name
 - description: A clear description of its purpose and description of user intent
 - examples: Example user requests that should route to this function
@@ -36,10 +36,12 @@ model Ingredient {
 }
 
 interface DietBot {
-    @llm_func("pre", 1)
+    @llm_func(1)
     recordDish(dish: Dish): void;
-    @llm_func("wrap", 1)
+    @llm_func(2)
     listDishes(from: Date, to: Date): Dish[];
+    @custom_func(1, "perplexityWebSearchHandler")
+    webSearchForCalories(dish: Dish): string;
 }
 </typespec>
 
@@ -52,9 +54,16 @@ Example output:
       "examples": [
         "I ate a burger.",
         "I had a salad for lunch.",
-        "Chili con carne"]
+        "Chili con carne"
+      ],
+    },
+    {
+      "name": "webSearchForCalories",
+      "description": "Search the web for the calories of a dish.",
+      "examples": [
+        "What is the calorie count of a burger?"
       ]
-    }
+    }    
   ]
 }
 
