@@ -32,6 +32,9 @@ const handle = async (params: PerplexitySearchParams): Promise<SearchResponse> =
         case 'weather':
             searchQuery = `Current weather conditions in: ${params.query}`;
             break;
+        case 'web':
+            searchQuery = `Search the web for: ${params.query}`;
+            break;
         default:
             searchQuery = params.query;
     }
@@ -122,8 +125,11 @@ const postProcessor = async (output: SearchResponse, messages: Message[]): Promi
         case 'weather':
             responseText = `Weather information:\n\n${output.result}`;
             break;
-        default:
+        case 'web':
             responseText = `Search results:\n\n${output.result}`;
+            break;
+        default:
+            responseText = `Cannot reply to this query.`;
     }
     
     return [{ role: 'assistant', content: responseText }];
