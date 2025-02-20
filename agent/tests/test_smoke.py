@@ -4,7 +4,7 @@ import logging
 from unittest.mock import MagicMock
 from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
-from application import Application
+from application import Application, langfuse_context
 from compiler.core import Compiler
 
 logging.basicConfig(level=logging.INFO)
@@ -150,6 +150,7 @@ def _anthropic_client(text: str):
 def test_end2end():
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = _anthropic_client("some response")
+    langfuse_context.configure(enabled=False)
 
     with tempfile.TemporaryDirectory() as tempdir:
         application = Application(client, compiler, "templates", tempdir)
