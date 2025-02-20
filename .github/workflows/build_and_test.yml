@@ -25,11 +25,10 @@ jobs:
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
-          # we can cache python dependencies as well if we want, but it's not necessary for now
           restore-keys: |
             ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
 
-      - name: Build Docker image
+      - name: Build TypeSpec Docker image
         uses: docker/build-push-action@v4
         with:
           context: ./agent
@@ -56,15 +55,13 @@ jobs:
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install dependencies
+        # we can cache the virtualenv, but it's not necessary for now
         run: |
-          python -m pip install --upgrade pip
-          pip install -r agent/requirements.txt
+          uv pip install --require-virtualenv -r agent/requirements.txt
 
       - name: Run tests
         env:
@@ -72,7 +69,7 @@ jobs:
         run: |
           # Give the current user access to docker socket
           sudo chmod 666 /var/run/docker.sock
-          PYTHONPATH=$PYTHONPATH:./agent/ python -m pytest agent/tests/
+          PYTHONPATH=$PYTHONPATH:./agent/ uv run pytest -vs agent/tests
 
       - name: Clean up
         if: always()

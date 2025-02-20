@@ -121,7 +121,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
             and self.data.output.feedback["stderr"] is None
         )
         if not res:
-            print(f"DrizzleTaskNode failed: {self.data.output}")
+            print(f"DrizzleTaskNode failed: {self.data.output} {self.data.output.feedback}")
         # FixMe: clean up after debugging
         return res
 
