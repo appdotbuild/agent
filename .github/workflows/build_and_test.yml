@@ -61,7 +61,8 @@ jobs:
       - name: Install dependencies
         # we can cache the virtualenv, but it's not necessary for now
         run: |
-          uv pip install --require-virtualenv -r agent/requirements.txt
+          uv venv
+          uv pip install -r agent/requirements.txt
 
       - name: Run tests
         env:
