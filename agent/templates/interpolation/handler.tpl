@@ -55,7 +55,7 @@ Conversation:{% raw %}
 `
 
 const postProcessor = async (output: object, input: Message[]): Promise<Message[]> => {
-    const assistantPrompt = nunjucks.renderString(postProcessorPrompt, { output, messages: input });
+    const assistantPrompt = nunjucks.renderString(postProcessorPrompt, { output: JSON.stringify(output), messages: input });
     const response = await client.messages.create({
         model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
         max_tokens: 2048,
