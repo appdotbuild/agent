@@ -58,7 +58,7 @@ class Compiler:
             if result["exit_code"] != 0:
                 return result
             return self.exec_demux(container, ["npx", "drizzle-kit", "push", "--force"])
-        
+
     @overload
     def compile_typescript(self, files: dict[str, str]) -> CompileResult:
         ...
@@ -99,7 +99,7 @@ class Compiler:
         exit_code, (stdout, stderr) = container.exec_run(
             command,
             demux=True,
-            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+            environment={"NO_COLOR": "1", "FORCE_COLOR": "0", "APP_DATABASE_UR": "postgres://postgres:postgres@postgres:5432/postgres"},
         )
         return CompileResult(
             exit_code=exit_code,
