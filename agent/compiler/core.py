@@ -1,4 +1,5 @@
 from typing import TypedDict, overload
+import os
 import time
 import uuid
 import shlex
@@ -99,7 +100,7 @@ class Compiler:
         exit_code, (stdout, stderr) = container.exec_run(
             command,
             demux=True,
-            environment={"NO_COLOR": "1", "FORCE_COLOR": "0", "APP_DATABASE_URL": "postgres://postgres:postgres@postgres:5432/postgres"},
+            environment={"NO_COLOR": "1", "FORCE_COLOR": "0", **dict(os.environ)},
         )
         return CompileResult(
             exit_code=exit_code,

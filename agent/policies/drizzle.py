@@ -118,15 +118,11 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
 
     @property
     def is_successful(self) -> bool:
-        res = (
+        return (
             not isinstance(self.data.output, Exception)
             and self.data.output.feedback["exit_code"] == 0
             and self.data.output.feedback["stderr"] is None
         )
-        if not res:
-            print(f"DrizzleTaskNode failed: {self.data.output} {self.data.output.feedback}")
-        # FixMe: clean up after debugging
-        return res
 
     @staticmethod
     @contextmanager
