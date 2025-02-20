@@ -81,12 +81,14 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
             messages.extend(node.data.messages)
             content = None
             match node.data.output:
-                case DrizzleOutput(feedback={"stderr": stderr}) if stderr is not None:
-                    content = fix_template.render(errors=stderr)
-                case DrizzleOutput():
-                    continue
                 case Exception() as e:
                     content = fix_template.render(errors=str(e))
+                case DrizzleOutput(feedback={"stderr": stderr}) if stderr is not None:
+                    content = fix_template.render(errors=stderr)
+                case DrizzleOutput(feedback={"exit_code": exit_code, "stdout": stdout, "stderr": None}) if exit_code != 0:
+                    content = fix_template.render(errors=stdout)
+                case _:
+                    continue
             if content:
                 messages.append({"role": "user", "content": content})
         return messages            

@@ -409,11 +409,6 @@ Application Definitions:
 <drizzle>
 {{drizzle_schema}}
 </drizzle>
-{% if test_suite %}
-<tests>
-{{test_suite}}
-</tests>
-{% endif %}
 
 Generate handler code for the function {{function_name}} based on the provided TypeSpec, TypeScript and Drizzle schema.
 Include ```import { {{function_name}} } from "../common/schema";``` in the handler code. Ensure that handle is : typeof {{function_name}}.
@@ -448,7 +443,41 @@ class HandlerOutput:
     test_feedback: CompileResult | None = None
 
     @property
+    def score(self) -> float:
+        if self.test_feedback is None:
+            return 1.0 if self.feedback["exit_code"] == 0 else 0.0
+        if self.test_feedback["exit_code"] == 0:
+            return 1.0
+        test_score = self.parse_test_output(self.test_feedback["stderr"])
+        if test_score is None:
+            return 0.0
+        pass_count, fail_count = test_score
+        return pass_count / (pass_count + fail_count)
+    
+    @staticmethod
+    def parse_test_output(output: str) -> tuple[float, float] | None:
+        pattern = re.compile(r"(\d+) pass\s+(\d+) fail", re.MULTILINE)
+        match pattern.search(output):
+            case None:
+                return None
+            case match:
+                return float(match.group(1)), float(match.group(2))
+        return None
+    
+    @property
+    def is_successful(self) -> bool:
+        if self.feedback["exit_code"] != 0:
+            return False
+        is_tests_ok = (
+            self.test_feedback is None
+            or self.test_feedback["exit_code"] == 0
+        )
+        return is_tests_ok
+
+    @property
     def error_or_none(self) -> str | None:
+        if self.is_successful:
+            return None
         if self.feedback["exit_code"] != 0:
             return self.feedback["stdout"] or f"Exit code: {self.feedback['exit_code']}"
         if self.test_feedback is not None and self.test_feedback["exit_code"] != 0:
@@ -528,14 +557,18 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return HandlerData(messages=messages, output=output)
+    
+    @property
+    def score(self):
+        if isinstance(self.data.output, Exception):
+            return 0.0
+        return self.data.output.score
 
     @property
     def is_successful(self) -> bool:
-        return (
-            not isinstance(self.data.output, Exception)
-            and self.data.output.feedback["exit_code"] == 0
-            and (self.data.output.test_feedback is None or self.data.output.test_feedback["exit_code"] == 0)
-        )
+        if isinstance(self.data.output, Exception):
+            return False
+        return self.data.output.is_successful or self.depth > 1 and self.score > 0
     
     @staticmethod
     @contextmanager
