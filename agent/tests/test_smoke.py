@@ -1,10 +1,11 @@
 import tempfile
 import logging
+import os
 
 from unittest.mock import MagicMock
 from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
-from application import Application, langfuse_context
+from application import Application, langfuse_context, feature_flags
 from compiler.core import Compiler
 
 logging.basicConfig(level=logging.INFO)
@@ -190,7 +191,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
               ]
         }
 
-    elif "generate a unit test suite for" in prompt:
+    elif "generate a unit test suite" in prompt:
         print("\tLLM: generate a unit test suite for")
         text = """
         I'll help generate unit tests for the processInput function based on the provided schemas. Here's the test suite:
@@ -354,17 +355,22 @@ def test_end2end():
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = _anthropic_client("some response")
     langfuse_context.configure(enabled=False)
+    feature_flags.refine_initial_prompt = True
 
     with tempfile.TemporaryDirectory() as tempdir:
-        application = Application(client, compiler, "templates", tempdir)
+        current_path = os.path.dirname(os.path.abspath(__file__))
+        templates_path = os.path.join(current_path, "../templates")
+        application = Application(client, compiler, templates_path, tempdir)
         my_bot = application.create_bot("Create a bot that does something please")
 
-        assert client.messages.create.call_count == 6  # typespec, ts, drizzle, router, handlers, handlers_test - no refinement and gherkin by default
+        assert client.messages.create.call_count == 7
         assert my_bot.refined_description is not None
         assert my_bot.typespec.error_output is None
         assert my_bot.gherkin is not None
         assert my_bot.typescript_schema.error_output is None
         assert my_bot.drizzle.error_output is None
         assert my_bot.router.error_output is None
+
+
         for x in my_bot.handlers.values():
             assert x.error_output is None
