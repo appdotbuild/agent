@@ -1,0 +1,50 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - mock/sdk
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t botbuild/tsp_compiler -f Dockerfile.typespec .
+          docker build -t botbuild/app_schema -f Dockerfile.application .
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r agent/requirements.txt
+
+      - name: Run tests
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
+        run: |
+          # Give the current user access to docker socket
+          sudo chmod 666 /var/run/docker.sock
+          # Run tests
+          PYTHONPATH=$PYTHONPATH:./agent/ python -m pytest agent/tests/
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker image prune -f
