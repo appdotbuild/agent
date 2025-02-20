@@ -20,16 +20,45 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile.typespec
+          tags: botbuild/tsp_compiler
+          push: false
+          load: true
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Build Application Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile.application
+          tags: botbuild/app_schema
+          push: false
+          load: true
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
         run: |
-          cd agent
-          docker build -t botbuild/tsp_compiler -f Dockerfile.typespec .
-          docker build -t botbuild/app_schema -f Dockerfile.application .
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install dependencies
         run: |
