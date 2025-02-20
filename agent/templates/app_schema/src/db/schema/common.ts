@@ -1,4 +1,5 @@
-import { integer, pgTable, pgEnum, text } from "drizzle-orm/pg-core";
+import { integer, pgTable, pgEnum, text, json } from "drizzle-orm/pg-core";
+import { type ContentBlock } from "../../common/llm";
 
 export const usersTable = pgTable("users", {
   id: text().primaryKey(),
@@ -10,5 +11,5 @@ export const messagesTable = pgTable("messages", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   user_id: text().references(() => usersTable.id),
   role: msgRolesEnum(),
-  content: text(),
+  content: json().$type<string | Array<ContentBlock>>(),
 });
