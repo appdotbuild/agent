@@ -6,26 +6,33 @@ const { Context, Telegraf } = require('telegraf');
 const { message } = require('telegraf/filters');
 
 const mainHandler = async (ctx: typeof Context) => {
-    console.log('mainHandler');
-    await putMessage(ctx.from!.id.toString(), 'user', ctx.message.text!);
-    const messages = await getHistory(ctx.from!.id.toString(), 3);
-    const validMessages = messages.filter(msg => msg.role !== null && msg.content !== null) as { role: "user" | "assistant"; content: string }[];
-    const route = await getRoute(validMessages);
-    console.log('route', route);
-    const handler = handlers[route];
-    if (handler) {
-        const result = await handler.execute(validMessages);
-        if (result[0].role === "assistant") {
-            ctx.reply(result[0].content);
-            await putMessage(ctx.from!.id.toString(), 'assistant', result[0].content);
+    try {
+        console.log('mainHandler');
+        await putMessage(ctx.from!.id.toString(), 'user', ctx.message.text!);
+        const messages = await getHistory(ctx.from!.id.toString(), 3);
+        const validMessages = messages.filter(msg => msg.role !== null && msg.content !== null) as { role: "user" | "assistant"; content: string }[];
+        const route = await getRoute(validMessages);
+        console.log('route', route);
+        const handler = handlers[route];
+        if (handler) {
+            const result = await handler.execute(validMessages);
+            if (result[0].role === "assistant") {
+                ctx.reply(result[0].content);
+                await putMessage(ctx.from!.id.toString(), 'assistant', result[0].content);
+            }
+        }
+        else {
+            const handlerDescriptions = Object.keys(handlers).map(handler =>
+                handler.split(/(?=[A-Z])/).join(' ').toLowerCase()).join(', ').replace('handler', '').replace('handler, ', '.');
+            const message = 'I don\'t know how to respond to that. Ask me one of the following: ' + handlerDescriptions;
+            ctx.reply(message);
+                await putMessage(ctx.from!.id.toString(), 'assistant', message);
         }
     }
-    else {
-        const handlerDescriptions = Object.keys(handlers).map(handler =>
-            handler.split(/(?=[A-Z])/).join(' ').toLowerCase()).join(', ').replace('handler', '').replace('handler, ', '.');
-        const message = 'I don\'t know how to respond to that. Ask me one of the following: ' + handlerDescriptions;
-        ctx.reply(message);
-        await putMessage(ctx.from!.id.toString(), 'assistant', message);
+    catch (error) {
+        console.error('Error in mainHandler:', error);
+        ctx.reply('An error occurred. Please try again later.');
+        await putMessage(ctx.from!.id.toString(), 'assistant', 'An error occurred. Please try again later.');
     }
 }
 

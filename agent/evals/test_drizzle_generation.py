@@ -1,11 +1,11 @@
 import os
 import tempfile
-import re
 from typing import Dict
 from anthropic import AnthropicBedrock
 from compiler.core import Compiler
-from policies import handlers
+from policies import drizzle
 from application import Application
+from tracing_client import TracingClient
 
 DATASET_DIR = "evals/dataset.min"
 SCHEMA_SUFFIXES = {
@@ -14,10 +14,11 @@ SCHEMA_SUFFIXES = {
     "_db.ts": "drizzle_schema"
 }
 
-def evaluate_handlers_generation() -> float:
+def evaluate_drizzle_generation() -> float:
     try:
         client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
         compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
+        tracing_client = TracingClient(client)
     except Exception as e:
         print(f"Failed to initialize core components: {str(e)}")
         return 0.0
@@ -39,36 +40,43 @@ def evaluate_handlers_generation() -> float:
                 test_case = list(data_mapping.values())[i % len(data_mapping)]
                 
                 print(f"\nTest case {i + 1}/{total_attempts}:")
-                
-                llm_functions = re.compile(r'@llm_func\(\d+\)\s*(\w+)\s*\(', re.DOTALL).findall(test_case["typespec_definitions"])
-                handlers = application._make_handlers(
-                    llm_functions=llm_functions,
-                    typespec_definitions=test_case["typespec_definitions"],
-                    typescript_schema=test_case["typescript_schema"],
-                    drizzle_schema=test_case["drizzle_schema"],
-                    handler_interfaces={},
-                    handler_tests={}
-                )
-                
-                all_handlers_compiled = True
-                for name, handler in handlers.items():
-                    #print(handler)
-                    if handler.error_output is not None:
-                        print(f"Handler {name} compilation failed:")
-                        print(handler.error_output)
-                        all_handlers_compiled = False
-                    else:
-                        print(f"Handler {name} compilation successful")
+         
+                # Generate drizzle schema
+                jinja_env = application.jinja_env
+                content = jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=test_case["typespec_definitions"])
+                message = {"role": "user", "content": content}
 
-                if all_handlers_compiled:
+                response = tracing_client.call_anthropic(
+                    model="anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    max_tokens=8192,
+                    messages=[message],
+                )
+
+                reasoning, drizzle_schema = drizzle.DrizzleTaskNode.parse_output(response.content[0].text)
+                #print(f"Drizzle schema generated:\n{drizzle_schema}")
+
+                # Compile drizzle schema
+                feedback = application.compiler.compile_drizzle(drizzle_schema)
+                if feedback['exit_code'] == 0 and feedback['stderr'] is None:
+                    print("Drizzle schema compilation successful")
                     successful_compilations += 1
+                else:
+                    print("Drizzle schema compilation failed - starting loop")
+                    print(feedback['stderr'].split('\n')[-1])
+
+                    result = application._make_drizzle(test_case["typespec_definitions"])
+                    if result.error_output is not None:
+                        print(result.error_output)
+                    else:
+                        successful_compilations += 1
+                        print("Drizzle schema compilation successful")
 
             except Exception as e:
-                print(f"Error in iteration {i}: {str(e)}")
-                continue
+                    print(f"Error in iteration {i}: {str(e)}")
+                    continue
 
     success_rate = (successful_compilations / total_attempts) * 100
-    print(f"\nHandlers Generation Success Rate: {success_rate:.2f}%")
+    print(f"\nDrizzle Generation Success Rate: {success_rate:.2f}%")
     print(f"Successful compilations: {successful_compilations}/{total_attempts}")
     
     return success_rate
@@ -94,4 +102,4 @@ def load_test_data() -> Dict:
     }
 
 if __name__ == "__main__":
-    evaluate_handlers_generation()
+    evaluate_drizzle_generation()

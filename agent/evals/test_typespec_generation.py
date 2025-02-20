@@ -1,28 +1,35 @@
+import os
 import tempfile
+from typing import Dict, Tuple
 from anthropic import AnthropicBedrock
-import jinja2
+from tracing_client import TracingClient
 from compiler.core import Compiler
-from core import stages
+from policies import typespec
+from application import Application
 
-def write_tsp_file(content: str, filepath: str) -> None:
-    """Write TypeSpec content to a file."""
-    with open(filepath, 'w') as f:
-        f.write(content)
+DATASET_DIR = "evals/dataset.min"
+SCHEMA_SUFFIXES = {
+    "_app.tsp": "typespec_definitions",
+    "_app.ts": "typescript_schema", 
+    "_db.ts": "drizzle_schema"
+}
 
 def evaluate_typespec_generation() -> float:
     """
-    Run TypeSpec generation 50 times and evaluate success rate.
+    Run TypeSpec generation and evaluate success rate.
     Returns percentage of successful compilations.
     """
-    jinja_env = jinja2.Environment()
-    typespec_tpl = jinja_env.from_string(stages.typespec.PROMPT)
-    compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     try:
         client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+        compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
+        tracing_client = TracingClient(client)
     except Exception as e:
-        print(f"Failed to initialize AWS client: {str(e)}")
+        print(f"Failed to initialize core components: {str(e)}")
         return 0.0
-    
+
+    successful_compilations = 0
+    total_attempts = 10
+
     test_descriptions = [
         "A bot that manages personal finances and tracks expenses",
         "Chat bot for answering programming questions with code examples",
@@ -35,55 +42,49 @@ def evaluate_typespec_generation() -> float:
         "Weather advisory bot with local forecasts and alerts",
         "A study assistant bot for organizing notes and schedules"
     ]
-    
-    successful_compilations = 0
-    total_attempts = 5
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
+        application = Application(client, compiler, "templates", tmpdir, branch_factor=1, max_depth=1, max_workers=1)
+
         for i in range(total_attempts):
-            description = test_descriptions[i % len(test_descriptions)]
             try:
-                # Generate TypeSpec
-                prompt = typespec_tpl.render(application_description=description)
+                description = test_descriptions[i % len(test_descriptions)]
                 
-                print(f"\nAttempt {i + 1}/{total_attempts}:")
+                print(f"\nTest case {i + 1}/{total_attempts}:")
                 print(f"Description: {description}")
-                
-                response = client.messages.create(
+
+                # Generate TypeSpec
+                jinja_env = application.jinja_env
+                content = jinja_env.from_string(typespec.PROMPT).render(application_description=description)
+                message = {"role": "user", "content": content}
+
+                response = tracing_client.call_anthropic(
                     model="anthropic.claude-3-5-sonnet-20241022-v2:0",
                     max_tokens=8192,
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[message],
                 )
+
+                reasoning, typespec_definitions, functions = typespec.TypespecTaskNode.parse_output(response.content[0].text)
                 
-                try:
-                    result = stages.typespec.parse_output(response.content[0].text)
-                    print("Successfully parsed LLM output")
-                except Exception as e:
-                    print(f"Failed to parse LLM output: {str(e)}")
-                    continue
-                    
-                if result and result.get("typespec_definitions"):
-                    result = compiler.compile_typespec("\n".join([
-                        'import "./helpers.js";',
-                        ''
-                        'extern dec llm_func(target: unknown, history: valueof int32);',
-                        '',
-                        result["typespec_definitions"]
-                    ]))
-                    
-                    # Compile and check success
-                    if result["exit_code"] == 0:
+                typespec_schema = "\n".join(['import "./helpers.js";', "", typespec_definitions])
+                feedback = application.compiler.compile_typespec(typespec_schema)
+                if feedback['exit_code'] == 0 and feedback['stderr'] is None:
+                    print("TypeSpec compilation attempt 1 successful")
+                    successful_compilations += 1
+                else:
+                    print("TypeSpec compilation attempt 1 failed - running loop")
+                    print(feedback['stdout'].split('\n')[-1])
+                    result = application._make_typespec(description)
+                    if result.error_output is None:
+                        print("TypeSpec compilation loop successful")
                         successful_compilations += 1
-                        print("TypeSpec compilation successful")
                     else:
                         print("TypeSpec compilation failed")
-                else:
-                    print("No TypeSpec definitions found in result")
-            
+    
             except Exception as e:
                 print(f"Error in iteration {i}: {str(e)}")
                 continue
-    
+
     success_rate = (successful_compilations / total_attempts) * 100
     print(f"\nTypeSpec Generation Success Rate: {success_rate:.2f}%")
     print(f"Successful compilations: {successful_compilations}/{total_attempts}")
