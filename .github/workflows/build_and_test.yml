@@ -31,13 +31,10 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
-          context: ./agent
-          file: ./agent/Dockerfile.typespec
-          tags: botbuild/tsp_compiler
-          push: false
-          load: true
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
 
       - name: Build Application Docker image
         uses: docker/build-push-action@v4
