@@ -24,17 +24,21 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
+          # we can cache python dependencies as well if we want, but it's not necessary for now
           restore-keys: |
-            ${{ runner.os }}-buildx-
+            ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
 
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
+          context: ./agent
+          file: ./agent/Dockerfile.typespec
+          tags: botbuild/tsp_compiler
+          push: false
+          load: true
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
       - name: Build Application Docker image
         uses: docker/build-push-action@v4
@@ -68,7 +72,6 @@ jobs:
         run: |
           # Give the current user access to docker socket
           sudo chmod 666 /var/run/docker.sock
-          # Run tests
           PYTHONPATH=$PYTHONPATH:./agent/ python -m pytest agent/tests/
 
       - name: Clean up

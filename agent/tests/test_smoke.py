@@ -136,6 +136,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
         </handler>        """
 
     else:
+        print("Failed processing LLM", messages)
         raise ValueError(f"Unrecognized prompt: {prompt}")
 
     return _wrap_anthropic_response(text=text, tool_use=tool_use)
