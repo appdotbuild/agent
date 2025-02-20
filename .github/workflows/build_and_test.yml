@@ -15,7 +15,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17.0-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -75,7 +75,6 @@ jobs:
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install dependencies
-        # we can cache the virtualenv, but it's not necessary for now
         run: |
           uv venv
           uv pip install -r agent/requirements.txt
