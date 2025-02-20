@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 import requests
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, model_validator
@@ -16,6 +17,22 @@ from langfuse.decorators import langfuse_context, observe
 client = AnthropicBedrock(aws_region="us-west-2")
 compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
 
+sentry_dns = os.getenv("SENTRY_DSN")
+
+if sentry_dns:
+    sentry_sdk.init(
+        dsn=sentry_dns,
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        send_default_pii=True,
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for tracing.
+        traces_sample_rate=1.0,
+        # Set profiles_sample_rate to 1.0 to profile 100%
+        # of sampled transactions.
+        # We recommend adjusting this value in production.
+        profiles_sample_rate=1.0,
+    )
 
 app = FastAPI()
 
