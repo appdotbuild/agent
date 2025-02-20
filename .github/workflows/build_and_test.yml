@@ -27,7 +27,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-        alias: postgres
+          --name postgres
 
     steps:
       - name: Checkout repository
