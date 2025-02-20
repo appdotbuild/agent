@@ -10,10 +10,17 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Given user application description generate TypeSpec models and interface for the application. Output just a single interface.
-Every decorated @llm_func operates on free-form text messages and its arguments should be
-easily extractable from chat messages. Keep argument complexity within what can be extracted / inferred
-from the chat messages directly. When designing the interface expect that every function has a pre- and post-processor.
+Given user application description generate TypeSpec models and interface for the application.
+
+TypeSpec is extended with an @llm_func decorator that defines a history window for use messages.
+extern dec llm_func(target: unknown, history: valueof int32);
+
+Rules:
+- Output contains a single interface.
+- Functions in the interface should be decorated with @llm_func decorator.
+- Each function should have a single argument "options".
+- Data model for the function argument should be simple and easily inferable from chat messages.
+- Using reserved keywords for property names, type names, and function names is not allowed.
 
 Make sure using correct TypeSpec types for date and time:
 Dates and Times
@@ -31,21 +38,16 @@ TypeSpec basic types:
 - decimal: Represents a decimal number with arbitrary precision
 - string: Represents a sequence of characters
 - boolean: Represents true and false values
-bytes: Represents a sequence of bytes
-null: Represents a null value
--unknown: Represents a value of any type
--void: Used to indicate no return value for functions/operations
+- bytes: Represents a sequence of bytes
+- null: Represents a null value
+- unknown: Represents a value of any type
+- void: Used to indicate no return value for functions/operations
 NOTE: Avoid using other types.
 
 TypeSpec RESERVED keywords:
 - model: Used to define a model
 - interface: Used to define an interface
-NOTE: Avoid using reserved keywords for property names, type names, and function names.
-
-TypeSpec is extended with special decorator that indicates that this function
-is processed by language model parametrized with number of previous messages passed to the LLM.
-
-extern dec llm_func(target: unknown, history: valueof int32);
+NOTE: Avoid using these keywords as property names, type names, and function names.
 
 Example input:
 <description>
@@ -63,7 +65,7 @@ LLM can extract and infer the arguments from plain text and pass them to the han
     {name: "tomato", calories: 20},
     {name: "cheese", calories: 50},
 ]})
-- recordDish(dish: Dish): void;
+- recordDish(options: Dish): void;
 ...
 </reasoning>
 
@@ -78,16 +80,22 @@ model Ingredient {
     calories: integer;
 }
 
+model ListDishesRequest {
+    from: utcDateTime;
+    to: utcDateTime;
+}
+
 interface DietBot {
     @llm_func(1)
-    recordDish(dish: Dish): void;
+    recordDish(options: Dish): void;
     @llm_func(1)
-    listDishes(from: utcDateTime, to: utcDateTime): Dish[];
+    listDishes(options: ListDishesRequest): Dish[];
 }
 </typespec>
 
-User application description:
+<description>
 {{application_description}}
+</description>
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 """.strip()
@@ -143,7 +151,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> TypespecData:
+    def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> TypespecData:
         response = typespec_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
@@ -161,7 +169,8 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return TypespecData(messages=messages, output=output)
     

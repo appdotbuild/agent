@@ -10,32 +10,65 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Based on TypeSpec models and interfaces, generate TypeScript data types for the application.
+Based on TypeSpec models and interfaces, generate Zod TypeScript data types for the application.
 Ensure that the data types follow the TypeScript syntax.
+For each function in the <typespec> interfaces generate function declarations in the TypeScript output.
 Encompass output with <typescript> tag.
 
-Example output:
+Rules:
+- Always use coerce of Zod date and time types.
+- For functions emit declarations only, omit function bodies ```export declare function funtionName(parameter: SomeType): Promise<SomeOutput>;```
+
+Example:
+<typespec>
+model User {
+    id: string;
+}
+
+model Message {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+interface GreeterBot {
+    @llm_func(2)
+    greetUser(user: User): Message;
+}
+</typespec>
 
 <reasoning>
     The application operates on users and messages and processes them with LLM.
     The users are identified by their ids.
     The messages have roles and content.
+    Application greets user and responds with a message.
 </reasoning>
 
 <typescript>
-export interface User {
-    id: string;
-}
+import { z } from 'zod';
 
-export interface Message {
-    role: 'user' | 'assistant';
-    content: string;
-}
+export const userSchema = z.object({
+    id: z.string(),
+});
+
+export type User = z.infer<typeof userSchema>;
+
+export const messageSchema = z.object({
+    role: z.literal('user').or(z.literal('assistant')),
+    content: z.string(),
+});
+
+export type Message = z.infer<typeof messageSchema>;
+
+export declare function greetUser(user: User): Promise<Message>;
 </typescript>
 
 Application TypeSpec:
 
+<typespec>
 {{typespec_definitions}}
+</typespec>
+
+Return <reasoning> and TypeSpec definition encompassed with <typescript> tag.
 """.strip()
 
 
@@ -50,10 +83,19 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 
 
 @dataclass
+class FunctionDeclaration:
+    name: str
+    argument_type: str
+    argument_schema: str
+    return_type: str
+
+
+@dataclass
 class TypescriptOutput:
     reasoning: str
     typescript_schema: str
-    type_names: list[str]
+    functions: list[FunctionDeclaration]
+    type_to_zod: dict[str, str]
     feedback: CompileResult
 
     @property
@@ -88,24 +130,26 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> TypescriptData:
+    def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> TypescriptData:
         response = typescript_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
             messages=input,
         )
         try:
-            reasoning, typescript_schema, type_names = TypescriptTaskNode.parse_output(response.content[0].text)
+            reasoning, typescript_schema, functions, type_to_zod = TypescriptTaskNode.parse_output(response.content[0].text)
             feedback = typescript_compiler.compile_typescript({"src/common/schema.ts": typescript_schema})
             output = TypescriptOutput(
                 reasoning=reasoning,
                 typescript_schema=typescript_schema,
-                type_names=type_names,
+                functions=functions,
+                type_to_zod=type_to_zod,
                 feedback=feedback,
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return TypescriptData(messages=messages, output=output)
     
@@ -133,7 +177,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             del typescript_jinja_env
     
     @staticmethod
-    def parse_output(output: str) -> tuple[str, str, list[str]]:
+    def parse_output(output: str) -> tuple[str, str, list[FunctionDeclaration], dict[str, str]]:
         pattern = re.compile(
             r"<reasoning>(.*?)</reasoning>.*?<typescript>(.*?)</typescript>",
             re.DOTALL,
@@ -143,5 +187,28 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <typescript> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        type_names: list[str] = re.findall(r"export interface (\w+)", definitions)
-        return reasoning, definitions, type_names
+
+        pattern = re.compile(
+            r"export\s+type\s+(?P<typeName>\w+)\s*=\s*z\.infer\s*<\s*typeof\s+(?P<schemaName>\w+)\s*>",
+            re.MULTILINE
+        )
+        type_to_zod = {
+            match.group("typeName"): match.group("schemaName")
+            for match in pattern.finditer(definitions)
+        }
+        pattern = re.compile(
+            r"declare\s+function\s+(?P<functionName>\w+)\s*\(\s*\w+\s*:\s*(?P<argumentType>\w+)\s*\)\s*:\s*(?P<returnType>\w+.*)\s*;",
+            re.MULTILINE
+        )
+        functions = []
+        for match in pattern.finditer(definitions):
+            argument_type = match.group("argumentType")
+            if argument_type not in type_to_zod:
+                raise ValueError(f"Missing schema for argument type {argument_type}")
+            functions.append(FunctionDeclaration(
+                name=match.group("functionName"),
+                argument_type=argument_type,
+                argument_schema=type_to_zod[argument_type],
+                return_type=match.group("returnType"),
+            ))
+        return reasoning, definitions, functions, type_to_zod

@@ -1,19 +1,22 @@
 import { GenericHandler, type Message } from "../common/handler";
 import { client } from "../common/llm";
 const nunjucks = require('nunjucks');
-import * as TJS from "typescript-json-schema";
+import { z } from "zod";
+import { type JSONSchema7 } from "json-schema";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
-interface GreetUserParams {
-    name: string;
-    age: number;
-}
+const greetUserParamsSchema = z.object({
+    name: z.string(),
+    age: z.number(),
+    today: z.coerce.date(),
+});
+
+type GreetUserParams = z.infer<typeof greetUserParamsSchema>;
 
 const handle = (options: GreetUserParams): string => {
     console.log(options);
     return options.name + ' is ' + options.age + ' years old';
 };
-
-type HandleArg = Parameters<typeof handle>[0];
 
 const preProcessorPrompt = `
 Conversation:
@@ -21,27 +24,6 @@ Conversation:
 <role name="{{message.role}}">{{message.content}}</role>
 {% endfor %}
 `;
-
-const getJSONSchema = () => {
-    const settings: TJS.PartialArgs = {
-        required: true,
-    };
-    
-    const compilerOptions: TJS.CompilerOptions = {
-        strictNullChecks: true,
-        allowJs: true,
-        allowImportingTsExtensions: true,
-        noEmit: true,
-        strict: true,
-        skipLibCheck: true,
-    };
-    
-    const program = TJS.getProgramFromFiles(
-        [__filename],
-        compilerOptions,
-    );
-    return TJS.generateSchema(program, "HandleArg", settings)
-}
 
 const postProcessorPrompt = `
 Generate response to user using output from recordUser function and conversation.
@@ -54,9 +36,9 @@ Conversation:
 {% endfor %}
 `
 
-const preProcessor = async (input: Message[]): Promise<HandleArg> => {
+const preProcessor = async (input: Message[]): Promise<GreetUserParams> => {
     const userPrompt = nunjucks.renderString(preProcessorPrompt, { messages: input });
-    const schema = getJSONSchema()!;
+    const schema = zodToJsonSchema(greetUserParamsSchema, { target: 'jsonSchema7', $refStrategy: 'root'}) as JSONSchema7;
     const response = await client.messages.create({
         model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
         max_tokens: 2048,
@@ -77,7 +59,7 @@ const preProcessor = async (input: Message[]): Promise<HandleArg> => {
     });
     switch (response.content[0].type) {
         case "tool_use":
-            return response.content[0].input as HandleArg;
+            return greetUserParamsSchema.parse(response.content[0].input);
         default:
             throw new Error("Unexpected response type");
     }

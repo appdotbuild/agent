@@ -136,7 +136,7 @@ class RouterTaskNode(TaskNode[RouterData, list[MessageParam]]):
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> RouterData:
+    def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> RouterData:
         response = router_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
@@ -149,7 +149,8 @@ class RouterTaskNode(TaskNode[RouterData, list[MessageParam]]):
             output = RouterOutput(functions=functions)
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content})
         langfuse_context.update_current_observation(output=output)
         return RouterData(messages=messages, output=output)
     

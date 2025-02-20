@@ -1,3 +1,17 @@
-// handler tests for {{handler_name}}
+import { afterEach, beforeEach, describe } from "bun:test";
+import { resetDB, createDB } from "../../helpers";
+{{handler_function_import}}
+{{imports}}
 
-{{handler_tests}}
+describe("{{handler_name}}", () => {
+    beforeEach(async () => {
+        await createDB();
+    });
+
+    afterEach(async () => {
+        await resetDB();
+    });
+    {% for test in tests %}
+    {{test|indent(4)}}
+    {% endfor %}
+});

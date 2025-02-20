@@ -53,14 +53,12 @@ class Compiler:
         with self.tmp_network() as network, self.tmp_postgres() as postgres, self.app_container() as container:
             network.connect(postgres)
             network.connect(container)
-            schema_path, schema = "src/db/schema/application.ts", shlex.quote(schema)
-            command = [
-                "sh",
-                "-c",
-                f"echo {schema} > {schema_path} && npx drizzle-kit push --force --config=drizzle.config.ts"
-            ]
-            return self.exec_demux(container, command)
-
+            Compiler.copy_files(container, {"src/db/schema/application.ts": schema})
+            result = self.exec_demux(container, ["npx", "tsc", "--noEmit"])
+            if result["exit_code"] != 0:
+                return result
+            return self.exec_demux(container, ["npx", "drizzle-kit", "push", "--force"])
+        
     @overload
     def compile_typescript(self, files: dict[str, str]) -> CompileResult:
         ...

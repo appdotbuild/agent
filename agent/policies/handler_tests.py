@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import os
 import re
-import uuid
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
@@ -12,111 +11,95 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Based on TypeScript application definition and gherkin test cases, generate a unit test suite for {{function_name}} function.
-Handler always accepts single argument. 
-Handler should satisfy following interface:
+Based on TypeScript and Drizzle schemas application definition generate a unit test suite for {{function_name}} function.
 
-<handler>
-interface Message {
-    role: 'user' | 'assistant';
-    content: string;
-};
-
-interface Handler<Options, Output> {
-    preProcessor: (input: Message[]) => Options | Promise<Options>;
-    handle: (options: Options) => Output | Promise<Output>;
-    postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>;
-}
-
-class GenericHandler<Options, Output> implements Handler<Options, Output> {
-    constructor(
-        public handle: (options: Options) => Output | Promise<Output>,
-        public preProcessor: (input: Message[]) => Options | Promise<Options>,
-        public postProcessor: (output: Output, input: Message[]) => Message[] | Promise<Message[]>
-    ) {}
-
-    async execute(input: Message[]): Promise<Message[] | Output> {
-        const options = await this.preProcessor(input);
-        const result = await this.handle(options);
-        return this.postProcessor ? await this.postProcessor(result, input) : result;
-    }
-}
-</handler>
-
-Example test suite implementation for "greetUser" function and following interfaces:
-
-<tests>
-import { db } from "../db";
-import type { Greeting } from "../db/schema/application";
-import { messagesTable } from "../db/schema/common";
-
-interface Options {
-    user_id: string;
-    message: string;
-    greeting: Greeting;
-}
-
-interface Output {
-    greetingMessage: string;
-}
-
-
-
-</tests>
-
-Application Definitions:
-
-<typespec>
-{{typesspec_schema}}
-</typespec>
+Example:
 
 <typescript>
-{{typescript_schema}}
+import { z } from 'zod';
+
+export const greetingRequestSchema = z.object({
+  name: z.string(),
+  greeting: z.string(),
+});
+
+export type GreetingRequest = z.infer<typeof greetingRequestSchema>;
+
+export declare function greet(options: GreetingRequest): Promise<string>;
 </typescript>
 
 <drizzle>
-{{drizzle_schema}}
+import { serial, text, pgTable, timestamp } from "drizzle-orm/pg-core";
+
+export const greetingRequestsTable = pgTable("greeting_requests", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  greeting: text("greeting").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull()
+});
+
+export const greetingResponsesTable = pgTable("greeting_responses", {
+  id: serial("id").primaryKey(),
+  request_id: serial("request_id")
+    .references(() => greetingRequestsTable.id)
+    .notNull(),
+  response_text: text("response_text").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull()
+});
 </drizzle>
 
-<gherkin>
-{{test_cases}}
-</gherkin>
+Output:
 
-Handler to implement: {{function_name}}
+<imports>
+import { expect, it } from "bun:test";
+import { db } from "../../db";
+import { greetingRequestsTable } from "../../db/schema/application";
+import { type GreetingRequest } from "../../common/schema";
+</imports>
 
-Return Options and Output interfaces and test suite within <tests> tag.
+<test>
+it("should return a greeting", async () => {
+  const input: GreetingRequest = { name: "Alice", greeting: "Hello" };
+  const greeting = await greet(input);
+  expect(greeting).toEqual("Hello, Alice!");
+});
+</test>
 
-Generate only:
-1. handler input Options interface,
-2. handler Output interface,
-3. test suite implementation referencing handler Options and Output interfaces according to test cases,
-
-Omit in generated code:
-1. Avoid generating handler code.
+<test>
+it("should store the greeting request", async () => {
+  const input: GreetingRequest = { name: "Alice", greeting: "Hello" };
+  await greet(input);
+  const requests = await db.select().from(greetingRequestsTable).execute();
+  expect(requests).toHaveLength(1);
+  expect(requests[0].name).toEqual("Alice");
+  expect(requests[0].greeting).toEqual("Hello");
+});
+</test>
 
 Code style:
 1. Always use quotes "" not '' for strings,
 2. TypeScript types must be imported using a type-only import since 'verbatimModuleSyntax' is enabled,
 3. Use underscored names (i.e. _options) if they not used in the code (e.g. in function parameters).
 4. Make sure to consistently use nullability and never assign null to non-nullable types. For example:
-   - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
-   - If a field can be null, explicitly define it as `string | null` in the interface
-   - When working with arrays of objects, ensure each object property matches the interface type exactly
-   - Use optional properties with `?` instead of allowing null values where appropriate
+  - If a field is defined as `string` in an interface, don't assign `null` or `undefined` to it
+  - If a field can be null, explicitly define it as `string | null` in the interface
+  - When working with arrays of objects, ensure each object property matches the interface type exactly
+  - Use optional properties with `?` instead of allowing null values where appropriate
 5. Use PascalCase for all type names (e.g. `UserProfile`, `WorkoutRoutine`, `ProgressMetrics`) and camelCase for variables/properties. For example:
-    - Interface names should be PascalCase: `interface UserProfile`
-    - Type aliases should be PascalCase: `type ResponseData`
-    - Generic type parameters should be PascalCase: `Array<UserData>`
-    - Enum names should be PascalCase: `enum UserRole`
+  - Interface names should be PascalCase: `interface UserProfile`
+  - Type aliases should be PascalCase: `type ResponseData`
+  - Generic type parameters should be PascalCase: `Array<UserData>`
+  - Enum names should be PascalCase: `enum UserRole`
 
-  
+
 Note on imports:
 * Use only required imports, reread the code to make sure you are importing only required files,
 * STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA, TYPE NAMES FROM TYPESPEC SCHEMA,
-* Drizzle schema imports must always be from "../db/schema/application", for example: import { customTable } from "../db/schema/application";,
-* Typespec schema imports must always be from "../common/schema", for example: import { CarPoem } from "../common/schema";,
+* Drizzle schema imports must always be from "../../db/schema/application", for example: import { customTable } from "../../db/schema/application";,
+* Typespec schema imports must always be from "../../common/schema", for example: import { CarPoem } from "../../common/schema";,
 * Drizzle ORM operators imports must come from "drizzle-orm" if required: import { eq } from "drizzle-orm";
-* If using db instance, use: import { db } from "../db";,
+* If using db instance, use: import { db } from "../../db";,
+* Avoid importing "describe", "beforeEach", "afterEach" it will cause a duplicate declaration error.
 
 Drizzle style guide:
 
@@ -238,20 +221,20 @@ function buildQuery(options: QueryOptions) {
 ### Common Fixes for TypeScript Errors
 
 1. Missing Operators:
-   - Always import operators explicitly
-   - Use correct import path for your database
+  - Always import operators explicitly
+  - Use correct import path for your database
 
 2. Query Chain Breaks:
-   - Maintain proper query chain
-   - Store intermediate query in variable for conditionals
+  - Maintain proper query chain
+  - Store intermediate query in variable for conditionals
 
 3. Array Operations:
-   - Use `inArray` for array comparisons
-   - Consider using SQL template literals for complex cases
+  - Use `inArray` for array comparisons
+  - Consider using SQL template literals for complex cases
 
 4. Type Safety:
-   - Define interfaces for query options
-   - Use TypeScript's type inference with proper imports
+  - Define interfaces for query options
+  - Use TypeScript's type inference with proper imports
 
 ## Advanced Troubleshooting
 
@@ -411,6 +394,18 @@ interface QueryOptions<T> {
 These patterns will help prevent common TypeScript errors while working with Drizzle ORM, especially in workout tracking and progress monitoring systems.
 </drizzle_guide>
 
+Application Definitions:
+
+<typescript>
+{{typescript_schema}}
+</typescript>
+
+<drizzle>
+{{drizzle_schema}}
+</drizzle>
+
+Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas.
+Match the output format provided in the Example. Return required imports within <imports> and tests encompassed with <test> tags.
 """.strip()
 
 
@@ -421,18 +416,20 @@ Make sure to address following TypeScript compilation and runtime errors:
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
-Return fixed complete TypeScript definition encompassed with <tests> tags.
+Follow original formatting, return <imports> and corrected complete test suite with each test encompassed within <test> tag.
 """
 
 # TODO: Fix this terrible hack
 _current_dir = os.path.dirname(os.path.realpath(__file__))
-_handler_tpl_path = os.path.abspath(os.path.join(_current_dir, "../templates/interpolation/handler.tpl"))
-with open(_handler_tpl_path, "r", encoding="utf-8") as f:
-    HANDLER_TPL = f.read()
+_handler_test_tpl_path = os.path.abspath(os.path.join(_current_dir, "../templates/interpolation/handler_test.tpl"))
+with open(_handler_test_tpl_path, "r", encoding="utf-8") as f:
+    HANDLER_TEST_TPL = f.read()
+
 
 @dataclass
-class HandlerOutput:
-    handler: str
+class HandlerTestOutput:
+    imports: str
+    tests: list[str]
     feedback: CompileResult
 
     @property
@@ -443,12 +440,12 @@ class HandlerOutput:
 
 
 @dataclass
-class HandlerData:
+class HandlerTestData:
     messages: list[MessageParam]
-    #function_name: str
-    output: HandlerOutput | Exception
+    output: HandlerTestOutput | Exception
 
-class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
+
+class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
     @property
     def run_args(self) -> list[MessageParam]:
         fix_template = typescript_jinja_env.from_string(FIX_PROMPT)
@@ -457,46 +454,48 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             messages.extend(node.data.messages)
             content = None
             match node.data.output:
-                case HandlerOutput(feedback={"exit_code": exit_code, "stdout": stdout}) if exit_code != 0:
+                case HandlerTestOutput(feedback={"exit_code": exit_code, "stdout": stdout}) if exit_code != 0:
                     content = fix_template.render(errors=stdout)
-                case HandlerOutput():
+                case HandlerTestOutput():
                     continue
                 case Exception() as e:
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages #, self.data.function_name            
+        return messages          
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> HandlerData:
+    def run(input: list[MessageParam], *args, init: bool = False,  **kwargs) -> HandlerTestData:
         response = typescript_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
             messages=input,
         )
         try:
-            handler = HandlerTaskNode.parse_output(response.content[0].text)
-            handler_check = typescript_jinja_env.from_string(HANDLER_TPL).render(
-                handler=handler,
+            imports, tests = HandlerTestTaskNode.parse_output(response.content[0].text)
+            handler_check = typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(
                 handler_name=kwargs['function_name'],
-                handler_interfaces=kwargs['handler_interfaces'],
-                handler_tests=kwargs['handler_tests'],
-                typespec_schema=kwargs['typespec_schema'],
-                typescript_schema=kwargs['typescript_schema'],
-                drizzle_schema=kwargs['drizzle_schema'])
-            feedback = typescript_compiler.compile_typescript({f"src/handlers/{kwargs['function_name']}.ts": handler_check, 
-                                                               "src/common/schema.ts": kwargs['typescript_schema'], 
-                                                               "src/db/schema/application.ts": kwargs['drizzle_schema']})
-            output = HandlerOutput(
-                handler=handler,
+                handler_function_import=f'import {{ {kwargs["function_name"]} }} from "../../common/schema";',
+                imports=imports,
+                tests=tests,
+            )
+            feedback = typescript_compiler.compile_typescript({
+                f"src/tests/handlers/{kwargs['function_name']}.test.ts": handler_check,
+                "src/common/schema.ts": kwargs['typescript_schema'],
+                "src/db/schema/application.ts": kwargs['drizzle_schema']
+            })
+            output = HandlerTestOutput(
+                imports=imports,
+                tests=tests,
                 feedback=feedback,
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
-        return HandlerData(messages=messages, output=output)
+        return HandlerTestData(messages=messages, output=output)
 
     @property
     def is_successful(self) -> bool:
@@ -522,10 +521,12 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             del typescript_jinja_env
     
     @staticmethod
-    def parse_output(output: str) -> HandlerOutput:
-        pattern = re.compile(r"<handler>(.*?)</handler>", re.DOTALL)
+    def parse_output(output: str) -> tuple[str, str]:
+        pattern = re.compile(r"<imports>(.*?)</imports>", re.DOTALL)
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output")
-        handler = match.group(1).strip()
-        return handler
+            raise ValueError("Failed to parse output, expected <imports> tag")
+        imports = match.group(1).strip()
+        pattern = re.compile(r"<test>(.*?)</test>", re.DOTALL)
+        tests = pattern.findall(output)
+        return imports, tests

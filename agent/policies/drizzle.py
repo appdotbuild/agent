@@ -81,19 +81,21 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
             messages.extend(node.data.messages)
             content = None
             match node.data.output:
-                case DrizzleOutput(feedback={"stderr": stderr}) if stderr is not None:
-                    content = fix_template.render(errors=stderr)
-                case DrizzleOutput():
-                    continue
                 case Exception() as e:
                     content = fix_template.render(errors=str(e))
+                case DrizzleOutput(feedback={"stderr": stderr}) if stderr is not None:
+                    content = fix_template.render(errors=stderr)
+                case DrizzleOutput(feedback={"exit_code": exit_code, "stdout": stdout, "stderr": None}) if exit_code != 0:
+                    content = fix_template.render(errors=stdout)
+                case _:
+                    continue
             if content:
                 messages.append({"role": "user", "content": content})
         return messages
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
-    def run(input: list[MessageParam], *args, **kwargs) -> DrizzleData:
+    def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> DrizzleData:
         response = drizzle_client.call_anthropic(
             model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
@@ -109,7 +111,8 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
             )
         except Exception as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [] if not init else input
+        messages.append({"role": "assistant", "content": response.content[0].text})
         langfuse_context.update_current_observation(output=output)
         return DrizzleData(messages=messages, output=output)
 
