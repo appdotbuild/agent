@@ -10,7 +10,7 @@ from core.datatypes import *
 
 
 class Application:
-    def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5):
+    def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5, dfs_budget: int = 20):
         self.client = TracingClient(client)
         self.compiler = compiler
         self.jinja_env = jinja2.Environment()
@@ -18,6 +18,7 @@ class Application:
         self.BRANCH_FACTOR = branch_factor
         self.MAX_DEPTH = max_depth
         self.MAX_WORKERS = max_workers
+        self.DFS_BUDGET = dfs_budget
 
     @observe(capture_output=False)
     def create_bot(self, application_description: str, bot_id: str | None = None):
@@ -161,7 +162,7 @@ class Application:
         message = {"role": "user", "content": content}
         test_data = handler_tests.HandlerTestTaskNode.run([message], init=True, **prompt_params)
         test_root = handler_tests.HandlerTestTaskNode(test_data)
-        test_solution = common.bfs(test_root, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS, **prompt_params)
+        test_solution = common.dfs(test_root, 5, self.BRANCH_FACTOR, self.DFS_BUDGET, **prompt_params)
         return test_solution
 
     @observe(capture_input=False, capture_output=False)
@@ -228,7 +229,7 @@ class Application:
         message = {"role": "user", "content": content}
         output = handlers.HandlerTaskNode.run([message], init=True, **prompt_params)
         root_node = handlers.HandlerTaskNode(output)
-        solution = common.bfs(root_node, self.MAX_DEPTH, self.BRANCH_FACTOR, self.MAX_WORKERS, **prompt_params)
+        solution = common.dfs(root_node, 5, self.BRANCH_FACTOR, self.DFS_BUDGET, **prompt_params)
         return solution
 
     @observe(capture_input=False, capture_output=False)
