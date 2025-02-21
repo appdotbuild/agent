@@ -119,3 +119,30 @@ def bfs[T: TaskNode](
                 node, result = future_to_node[future], future.result()
                 node.children.append(type(node)(result, parent=node))
     return root.best_solution()
+
+
+@observe(capture_input=False, capture_output=False)
+def dfs[T: TaskNode](
+    root: T,
+    max_depth: int = 5,
+    max_width: int = 3,
+    budget_lim: int | None = None,
+    **kwargs,
+) -> T:
+    cur_node, budget_used = root, 0
+    budget_lim = budget_lim or max_width ** max_depth
+    while cur_node and budget_used < budget_lim:
+        if cur_node.best_solution().is_successful:
+            break
+        if (
+            cur_node.depth >= max_depth 
+            or not cur_node.is_expandable 
+            or len(cur_node.children) >= max_width
+        ):
+            cur_node = cur_node.parent
+            continue
+        data = cur_node.run(cur_node.run_args, **kwargs)
+        new_node = type(cur_node)(data, parent=cur_node)
+        cur_node.children.append(new_node)
+        cur_node, budget_used = new_node, budget_used + 1
+    return root.best_solution()
