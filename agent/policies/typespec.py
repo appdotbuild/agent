@@ -12,8 +12,8 @@ from compiler.core import Compiler, CompileResult
 PROMPT = """
 Given user application description generate TypeSpec models and interface for the application.
 
-TypeSpec is extended with an @llm_func decorator that defines a history window for use messages.
-extern dec llm_func(target: unknown, history: valueof int32);
+TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use scenario.
+extern dec llm_func(target: unknown, description: string);
 
 Rules:
 - Output contains a single interface.
@@ -86,9 +86,9 @@ model ListDishesRequest {
 }
 
 interface DietBot {
-    @llm_func(1)
+    @llm_func("Record user's dish")
     recordDish(options: Dish): void;
-    @llm_func(1)
+    @llm_func("List user's dishes")
     listDishes(options: ListDishesRequest): Dish[];
 }
 </typespec>
@@ -113,10 +113,16 @@ Return <reasoning> and fixed complete TypeSpec definition encompassed with <type
 
 
 @dataclass
+class LLMFunction:
+    name: str
+    description: str
+
+
+@dataclass
 class TypespecOutput:
     reasoning: str
     typespec_definitions: str
-    llm_functions: list[str]
+    llm_functions: list[LLMFunction]
     feedback: CompileResult
 
     @property
@@ -159,7 +165,13 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         )
         try:
             reasoning, typespec_definitions, llm_functions = TypespecTaskNode.parse_output(response.content[0].text)
-            typespec_schema = "\n".join(['import "./helpers.js";', "", typespec_definitions])
+            typespec_schema = "\n".join([
+                'import "./helpers.js";',
+                "",
+                "extern dec llm_func(target: unknown, description: string);",
+                "",
+                typespec_definitions
+            ])
             feedback = typespec_compiler.compile_typespec(typespec_schema)
             output = TypespecOutput(
                 reasoning=reasoning,
@@ -198,7 +210,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             del typespec_jinja_env
     
     @staticmethod
-    def parse_output(output: str) -> tuple[str, str, list[str]]:
+    def parse_output(output: str) -> tuple[str, str, list[LLMFunction]]:
         pattern = re.compile(
             r"<reasoning>(.*?)</reasoning>.*?<typespec>(.*?)</typespec>",
             re.DOTALL,
@@ -208,6 +220,6 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             raise ValueError("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        pattern = re.compile(r'@llm_func\(\d+\)\s*(\w+)\s*\(', re.DOTALL)
-        functions = pattern.findall(output)
+        pattern = re.compile(r'@llm_func\("(?P<description>.+)"\)\s*(?P<name>\w+)\s*\(', re.MULTILINE)
+        functions = [LLMFunction(**match.groupdict()) for match in pattern.finditer(definitions)]
         return reasoning, definitions, functions

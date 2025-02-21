@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from contextlib import contextmanager
-import os
 import re
 import jinja2
 from anthropic.types import MessageParam
@@ -428,13 +427,6 @@ Return fixed complete TypeScript definition encompassed with <handler> tag.
 """
 
 
-# TODO: Fix this terrible hack
-_current_dir = os.path.dirname(os.path.realpath(__file__))
-_handler_tpl_path = os.path.abspath(os.path.join(_current_dir, "../templates/interpolation/handler.tpl"))
-with open(_handler_tpl_path, "r", encoding="utf-8") as f:
-    HANDLER_TPL = f.read()
-
-
 @dataclass
 class HandlerOutput:
     name: str
@@ -523,15 +515,8 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         test_suite: str | None = kwargs.get("test_suite", None)
         try:
             handler = HandlerTaskNode.parse_output(response.content[0].text)
-            handler_check = typescript_jinja_env.from_string(HANDLER_TPL).render(
-                handler=handler,
-                handler_name=kwargs['function_name'],
-                argument_type=kwargs['argument_type'],
-                argument_schema=kwargs['argument_schema'],
-                test_suite=test_suite,
-            )
             files = {
-                f"src/handlers/{kwargs['function_name']}.ts": handler_check,
+                f"src/handlers/{kwargs['function_name']}.ts": handler,
                 "src/common/schema.ts": kwargs['typescript_schema'],
                 "src/db/schema/application.ts": kwargs['drizzle_schema'],
             }
@@ -546,7 +531,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                 case _:
                     raise ValueError(F"Invalid test suite class {test_suite}")
             output = HandlerOutput(
-                name=f"{kwargs['function_name']}Handler", # TODO: Fix, NASTY (to avoid name conflict when importing declaration)
+                name=kwargs['function_name'],
                 handler=handler,
                 feedback=feedback,
                 test_feedback=test_feedback,

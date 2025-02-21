@@ -1,1 +1,1 @@
-export function $llm_func(context, target, history) {}
+export function $llm_func(context, target, description) {}

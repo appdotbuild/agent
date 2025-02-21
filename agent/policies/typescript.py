@@ -18,6 +18,7 @@ Encompass output with <typescript> tag.
 Rules:
 - Always use coerce of Zod date and time types.
 - For functions emit declarations only, omit function bodies ```export declare function funtionName(parameter: SomeType): Promise<SomeOutput>;```
+- Function names in emitted TypeScript should match the function names in the <typespec> interfaces.
 
 Example:
 <typespec>
@@ -31,7 +32,7 @@ model Message {
 }
 
 interface GreeterBot {
-    @llm_func(2)
+    @llm_func("Greets the user")
     greetUser(user: User): Message;
 }
 </typespec>

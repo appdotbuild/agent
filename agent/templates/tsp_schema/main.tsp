@@ -1,5 +1,4 @@
 import "./helpers.js";
 
-extern dec llm_func(target: unknown, history: valueof int32);
+extern dec llm_func(target: unknown, description: string);
 
-//{{typespec_definitions}}

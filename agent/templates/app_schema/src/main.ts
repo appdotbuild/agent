@@ -6,8 +6,7 @@ import { client, type MessageParam, type ContentBlock } from "./common/llm";
 import 'dotenv/config';
 const { Context, Telegraf } = require('telegraf');
 const { message } = require('telegraf/filters');
-import { greetUserParamsSchema } from './common/schema';
-
+import * as dummy from './handlers/dummy_handler';
 
 const makeSchema = (schema: z.ZodObject<any>) => {
     const jsonSchema = zodToJsonSchema(schema, { target: 'jsonSchema7', $refStrategy: 'root' }) as JSONSchema7;
@@ -18,14 +17,13 @@ const makeSchema = (schema: z.ZodObject<any>) => {
     }
 }
 
-
 const handler_tools = [
     {
         name: "greeter",
         description: "create a greeting message",
-        handler: require('./handlers/dummy_handler').handle,
-        input_schema: makeSchema(greetUserParamsSchema),
-        parse: (input: any) => greetUserParamsSchema.parse(input),
+        handler: dummy.handle,
+        input_schema: makeSchema(dummy.greetUserParamsSchema),
+        parse: (input: any) => dummy.greetUserParamsSchema.parse(input),
     }
 ]
 
