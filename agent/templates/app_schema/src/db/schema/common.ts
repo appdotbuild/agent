@@ -10,6 +10,6 @@ export const msgRolesEnum = pgEnum("msg_roles", ["user", "assistant"]);
 export const messagesTable = pgTable("messages", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   user_id: text().references(() => usersTable.id),
-  role: msgRolesEnum(),
-  content: json().$type<string | Array<ContentBlock>>(),
+  role: msgRolesEnum().notNull(),
+  content: json().$type<string | Array<ContentBlock>>().notNull(),
 });
