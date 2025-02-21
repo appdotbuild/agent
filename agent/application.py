@@ -153,7 +153,7 @@ class Application:
         drizzle_schema: str,
         *args,
         **kwargs,
-    ) -> handler_tests.HandlerTestTaskNode:
+    ) -> HandlerTestsOut:
         prompt_params = {
             "function_name": function_name,
             "typescript_schema": typescript_schema,
@@ -163,7 +163,11 @@ class Application:
         test_data = handler_tests.HandlerTestTaskNode.run([message], init=True, **prompt_params)
         test_root = handler_tests.HandlerTestTaskNode(test_data)
         test_solution = common.dfs(test_root, 5, self.BRANCH_FACTOR, self.DFS_BUDGET, **prompt_params)
-        return test_solution
+        match test_solution.data.output:
+            case Exception() as e:
+                return HandlerTestsOut(None, None, str(e))
+            case output:
+                return HandlerTestsOut(function_name, output.content, None)
 
     @observe(capture_input=False, capture_output=False)
     def _make_handler_tests(
@@ -177,7 +181,7 @@ class Application:
         results: dict[str, HandlerTestsOut] = {}
         with handler_tests.HandlerTestTaskNode.platform(self.client, self.compiler, self.jinja_env):
             with concurrent.futures.ThreadPoolExecutor(self.MAX_WORKERS) as executor:
-                future_to_handler: dict[concurrent.futures.Future[handler_tests.HandlerTestTaskNode], str] = {}
+                future_to_handler: dict[concurrent.futures.Future[HandlerTestsOut], str] = {}
                 for function in llm_functions:
                     test_prompt_params = {
                         "function_name": function.name,
@@ -196,11 +200,7 @@ class Application:
                     )] = function.name
                 for future in concurrent.futures.as_completed(future_to_handler):
                     function_name, result = future_to_handler[future], future.result()
-                    match result.data.output:
-                        case Exception() as e:
-                            results[function_name] = HandlerTestsOut(None, None, str(e))
-                        case output:
-                            results[function_name] = HandlerTestsOut(function_name, output.content, None)
+                    results[function_name] = result
         return results
 
     @observe(capture_input=False, capture_output=False)
@@ -216,7 +216,7 @@ class Application:
         test_suite: str | None,
         *args,
         **kwargs,
-    ) -> handlers.HandlerTaskNode:
+    ) -> HandlerOut:
         prompt_params = {
             "function_name": function_name,
             "argument_type": argument_type,
@@ -230,7 +230,11 @@ class Application:
         output = handlers.HandlerTaskNode.run([message], init=True, **prompt_params)
         root_node = handlers.HandlerTaskNode(output)
         solution = common.dfs(root_node, 5, self.BRANCH_FACTOR, self.DFS_BUDGET, **prompt_params)
-        return solution
+        match solution.data.output:
+            case Exception() as e:
+                return HandlerOut(None, None, None, str(e))
+            case output:
+                return HandlerOut(output.name, output.handler, argument_schema, None)
 
     @observe(capture_input=False, capture_output=False)
     def _make_handlers(self, llm_functions: list[typescript.FunctionDeclaration], handler_tests: dict[str, HandlerTestsOut], typespec_definitions: str, typescript_schema: str, drizzle_schema: str):
@@ -239,7 +243,7 @@ class Application:
         results: dict[str, HandlerOut] = {}
         with handlers.HandlerTaskNode.platform(self.client, self.compiler, self.jinja_env):
             with concurrent.futures.ThreadPoolExecutor(self.MAX_WORKERS) as executor:
-                future_to_handler: dict[concurrent.futures.Future[handlers.HandlerTaskNode], str] = {}
+                future_to_handler: dict[concurrent.futures.Future[HandlerOut], str] = {}
                 for function in llm_functions:
                     match handler_tests.get(function.name):
                         case HandlerTestsOut(_, test_content, None) if test_content is not None:
@@ -271,11 +275,7 @@ class Application:
                     )] = function.name
                 for future in concurrent.futures.as_completed(future_to_handler):
                     function_name, result = future_to_handler[future], future.result()
-                    match result.data.output:
-                        case Exception() as e:
-                            results[function_name] = HandlerOut(None, None, None, str(e))
-                        case output:
-                            results[function_name] = HandlerOut(output.name, output.handler, function.argument_schema, None)
+                    results[function_name] = result
         return results
 
     @observe(capture_input=False, capture_output=False)

@@ -4,11 +4,19 @@ from shutil import copytree, ignore_patterns
 from .datatypes import *
 
 TOOL_TEMPLATE = """
+import { z } from 'zod';
 import * as schema from './common/schema';
 {% for handler in handlers %}import * as {{ handler.name }} from './handlers/{{ handler.name }}';
 {% endfor %}
 
-export const handlers = [{% for handler in handlers %}
+interface ToolHandler<argSchema extends z.ZodObject<any>> {
+    name: string;
+    description: string;
+    handler: (options: z.infer<argSchema>) => any;
+    inputSchema: argSchema;
+}
+
+export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
     {
         name: '{{ handler.name }}',
         description: `{{ handler.description }}`,

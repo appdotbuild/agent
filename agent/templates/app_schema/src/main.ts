@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type JSONSchema7 } from "json-schema";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { getHistory, putMessage } from "./common/crud";
+import { getHistory, putMessageBatch } from "./common/crud";
 import { client, type MessageParam, type ToolUseBlock, type ToolResultBlock } from "./common/llm";
 import 'dotenv/config';
 const { Context, Telegraf } = require('telegraf');
@@ -47,10 +47,11 @@ async function callTool(toolBlock: ToolUseBlock) {
     const tool = handler_tools.find((tool) => tool.name === name);
     if (tool) {
         try {
+            const content = await tool.handler(tool.inputSchema.parse(input));
             return {
                 type: "tool_result",
                 tool_use_id: id,
-                content: await tool.handler(tool.inputSchema.parse(input)),
+                content: JSON.stringify(content),
             } as ToolResultBlock;
         } catch (error) {
             return {
@@ -99,9 +100,8 @@ async function main(ctx: typeof Context) {
 
         break;
     }
-    // console.dir(thread, { depth: null });
 
-    await Promise.all(thread.map(message => putMessage(ctx.from!.id.toString(), message.role, message.content)));
+    await putMessageBatch(thread.map(message => ({ user_id: ctx.from!.id.toString(), ...message })));
 
     let toolCalls: ToolUseBlock[] = [];
     let toolResults: ToolResultBlock[] = [];

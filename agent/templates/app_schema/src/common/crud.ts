@@ -8,6 +8,12 @@ export const putMessage = async (user_id: string, role: 'user' | 'assistant', co
     await db.insert(messagesTable).values({ user_id, role, content });
 }
 
+export const putMessageBatch = async (batch : Array<{user_id: string, role: 'user' | 'assistant', content: string | Array<ContentBlock>}>) => {
+    const userIds = batch.map(({user_id}) => user_id);
+    await db.insert(usersTable).values(userIds.map(id => ({ id }))).onConflictDoNothing();
+    await db.insert(messagesTable).values(batch.map(({user_id, role, content}) => ({ user_id, role, content })));
+}
+
 export const getHistory = async (user_id: string, history: number = 1, role?: 'user' | 'assistant') => {
     const rows = await db.select({
         role: messagesTable.role,
