@@ -553,7 +553,10 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
     def is_successful(self) -> bool:
         if isinstance(self.data.output, Exception):
             return False
-        return self.data.output.is_successful or self.depth > 1 and self.score > 0
+        return (
+            self.data.output.is_successful 
+            or (self.depth > 1 and self.score > 0 and self.data.output.feedback["exit_code"] == 0)
+        )
     
     @staticmethod
     @contextmanager
