@@ -4,7 +4,7 @@ import re
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
-from .common import TaskNode
+from .common import TaskNode, PolicyException
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
 
@@ -536,7 +536,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                 feedback=feedback,
                 test_feedback=test_feedback,
             )
-        except Exception as e:
+        except PolicyException as e:
             output = e
         messages = [] if not init else input
         messages.append({"role": "assistant", "content": response.content[0].text})
@@ -576,6 +576,6 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         pattern = re.compile(r"<handler>(.*?)</handler>", re.DOTALL)
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output")
+            raise PolicyException("Failed to parse output")
         handler = match.group(1).strip()
         return handler

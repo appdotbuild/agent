@@ -4,7 +4,7 @@ import re
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
-from .common import TaskNode
+from .common import TaskNode, PolicyException
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
 
@@ -147,7 +147,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
                 type_to_zod=type_to_zod,
                 feedback=feedback,
             )
-        except Exception as e:
+        except PolicyException as e:
             output = e
         messages = [] if not init else input
         messages.append({"role": "assistant", "content": response.content[0].text})
@@ -205,7 +205,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
         for match in pattern.finditer(definitions):
             argument_type = match.group("argumentType")
             if argument_type not in type_to_zod:
-                raise ValueError(f"Missing schema for argument type {argument_type}")
+                raise PolicyException(f"Missing schema for argument type {argument_type}")
             functions.append(FunctionDeclaration(
                 name=match.group("functionName"),
                 argument_type=argument_type,

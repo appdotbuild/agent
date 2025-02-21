@@ -4,7 +4,7 @@ import re
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
-from .common import TaskNode
+from .common import TaskNode, PolicyException
 from tracing_client import TracingClient
 import logging
 
@@ -102,7 +102,7 @@ class RefinementTaskNode(TaskNode[RefinementData, list[MessageParam]]):
                 requirements=requirements,
                 feedback=feedback,
             )
-        except Exception as e:
+        except PolicyException as e:
             output = e
         messages = [{"role": "assistant", "content": response.content[0].text}]
         langfuse_context.update_current_observation(output=output)
@@ -123,7 +123,7 @@ class RefinementTaskNode(TaskNode[RefinementData, list[MessageParam]]):
         )
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output, expected <requirements> tag")
+            raise PolicyException("Failed to parse output, expected <requirements> tag")
         return match.group(1).strip()
 
     @staticmethod
