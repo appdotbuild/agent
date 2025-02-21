@@ -4,7 +4,7 @@ import re
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
-from .common import TaskNode
+from .common import TaskNode, PolicyException
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
 
@@ -179,7 +179,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
                 llm_functions=llm_functions,
                 feedback=feedback,
             )
-        except Exception as e:
+        except PolicyException as e:
             output = e
         messages = [] if not init else input
         messages.append({"role": "assistant", "content": response.content[0].text})
@@ -217,7 +217,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         )
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output, expected <reasoning> and <typespec> tags")
+            raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
         pattern = re.compile(r'@llm_func\("(?P<description>.+)"\)\s*(?P<name>\w+)\s*\(', re.MULTILINE)

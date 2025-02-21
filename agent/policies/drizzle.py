@@ -4,7 +4,7 @@ import re
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
-from .common import TaskNode
+from .common import TaskNode, PolicyException
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
 
@@ -109,7 +109,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
                 drizzle_schema=drizzle_schema,
                 feedback=feedback,
             )
-        except Exception as e:
+        except PolicyException as e:
             output = e
         messages = [] if not init else input
         messages.append({"role": "assistant", "content": response.content[0].text})
@@ -148,7 +148,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
         )
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output, expected <reasoning> and <typespec> tags")
+            raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         drizzle_schema = match.group(2).strip()
         return reasoning, drizzle_schema

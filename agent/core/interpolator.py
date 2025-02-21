@@ -11,11 +11,11 @@ import * as schema from './common/schema';
 export const handlers = [{% for handler in handlers %}
     {
         name: '{{ handler.name }}',
-        description: '{{ handler.description }}',
+        description: `{{ handler.description }}`,
         handler: {{ handler.name }}.handle,
-        input_schema: schema.{{ handler.argument_schema }},
-    },
-{% endfor %}];
+        inputSchema: schema.{{ handler.argument_schema }},
+    },{% endfor %}
+];
 """.strip()
 
 

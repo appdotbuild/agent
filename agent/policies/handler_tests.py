@@ -4,7 +4,7 @@ import re
 import jinja2
 from anthropic.types import MessageParam
 from langfuse.decorators import observe, langfuse_context
-from .common import TaskNode
+from .common import TaskNode, PolicyException
 from tracing_client import TracingClient
 from compiler.core import Compiler, CompileResult
 
@@ -509,7 +509,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
                 content=typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(**params),
                 feedback=feedback,
             )
-        except Exception as e:
+        except PolicyException as e:
             output = e
         messages = [] if not init else input
         messages.append({"role": "assistant", "content": response.content[0].text})
@@ -544,7 +544,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
         pattern = re.compile(r"<imports>(.*?)</imports>", re.DOTALL)
         match = pattern.search(output)
         if match is None:
-            raise ValueError("Failed to parse output, expected <imports> tag")
+            raise PolicyException("Failed to parse output, expected <imports> tag")
         imports = match.group(1).strip()
         pattern = re.compile(r"<test>(.*?)</test>", re.DOTALL)
         tests = pattern.findall(output)

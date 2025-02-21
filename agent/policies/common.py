@@ -5,6 +5,11 @@ import concurrent.futures
 from langfuse.decorators import langfuse_context, observe
 
 
+class PolicyException(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 class Node[T]:
     data: T
     parent: Optional[Self]
