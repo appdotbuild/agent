@@ -15,9 +15,14 @@ Given user application description generate TypeSpec models and interface for th
 TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use scenario.
 extern dec llm_func(target: unknown, description: string);
 
+TypeSpec is extended with an @scenario decorator that defines gherkin scenario for the function use case.
+extern dec scenario(target: unknown, description: string);
+
 Rules:
 - Output contains a single interface.
 - Functions in the interface should be decorated with @llm_func decorator.
+- Each function in the interface should be decorated with at least one @scenario decorator.
+- Each function must have a complete set of scenarios defined with @scenario decorator.
 - Each function should have a single argument "options".
 - Data model for the function argument should be simple and easily inferable from chat messages.
 - Using reserved keywords for property names, type names, and function names is not allowed.
@@ -86,10 +91,57 @@ model ListDishesRequest {
 }
 
 interface DietBot {
-    @llm_func("Record user's dish")
-    recordDish(options: Dish): void;
-    @llm_func("List user's dishes")
-    listDishes(options: ListDishesRequest): Dish[];
+  @scenario("""
+  Scenario: Single dish entry
+    When user says "I ate a cheeseburger with fries"
+    Then system should extract:
+      - Dish: "cheeseburger"
+      - Dish: "fries"
+      - Ingredients for cheeseburger: [patty, bun, cheese]
+      - Ingredients for fries: [potatoes, oil]
+    Examples:
+      | Input                                  | Expected Dishes |
+      | "I had a salad for lunch"              | ["salad"]       |
+      | "Just drank a protein shake"           | ["protein shake"] |
+  """)
+  @llm_func("Extract food entries from natural language")
+  op recordEntry(message: string): ConfirmationResponse;
+
+  @scenario("""
+  Scenario: Detailed meal logging
+    When user says "For breakfast I had 2 eggs and avocado toast"
+    Then system should create:
+      - Meal entry with type "breakfast"
+      - Dish: "eggs" with quantity 2
+      - Dish: "avocado toast" with ingredients:
+        - avocado
+        - bread
+    Examples:
+      | Input                                  | Expected Interpretation       |
+      | "Drank 300ml orange juice"             | Liquid measurement captured    |
+      | "Pizza slice around noon"               | Meal time set to 12:00         |
+  """)
+  @llm_func("Analyze meal context and quantities")
+  op analyzeMeal(message: string): MealAnalysisResult;
+
+  @scenario("""
+  Scenario: Nutritional validation
+    Given user input "I ate 10 pizzas today"
+    When calorie total exceeds daily limit
+    Then system should flag excessive intake
+    And suggest portion control
+  """)
+  @llm_func("Monitor nutritional thresholds")
+  op validateIntake(entry: MealEntry): ValidationResult;
+
+  @scenario("""
+  Scenario: Historical query
+    When user asks "What did I eat last Thursday?"
+    Then system returns entries from 2024-02-15
+    With full meal breakdown
+  """)
+  @llm_func("Retrieve and summarize dietary history")
+  op listEntries(query: string): DietaryHistoryResponse;
 }
 </typespec>
 
