@@ -218,6 +218,24 @@ No error handling yet.
 
 ## Contributing
 
+### Nix Setup (Recommended)
+
+1. Install [Nix](https://nixos.org/nix/)
+
+   ```
+   sh <(curl -L https://nixos.org/nix/install)
+   ```
+
+2. Install and setup [Direnv](https://direnv.net/)
+
+   ```
+   # Install direnv
+   curl -sfL https://direnv.net/install.sh | bash
+
+   # Load nix environment
+   direnv allow
+   ```
+
 ### VS Code Dev Container Setup (Optional)
 
 Project includes DevContainer configuration for consistent development environment:

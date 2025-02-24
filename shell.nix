@@ -22,12 +22,8 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-    export DIRENV_LOG_FORMAT=""
-    
     python -m venv .venv
     source .venv/bin/activate
-    
-    export PIP_QUIET=1
 
     # Install all dependencies from requirements.txt
     pip install --upgrade pip --quiet
