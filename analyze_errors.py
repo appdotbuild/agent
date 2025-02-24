@@ -339,34 +339,26 @@ def process_traces_and_classify(
     return df
 
 
-def main(
-    start_date: str | None = None,
-    end_date: str | None = None,
-    bot_name_pattern: str | None = None,
-):
-    if start_date is None:
-        start_date = (datetime.today() - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
-    df = process_traces_and_classify(
-        start_date=start_date, end_date=end_date, bot_name_pattern=bot_name_pattern
-    )
-    df.to_csv("/tmp/classified_errors.csv", index=False)
-    print(f"Classified errors saved to /tmp/classified_errors.csv")
-    generate_error_analysis(df)
-
-def convert_md_to_html():
+def convert_md_to_pdf():
     try:
         import subprocess
-        print("Attempting to convert markdown to HTML...")
+        print("Attempting to convert markdown to PDF...")
         subprocess.run(
-            ["pandoc", "/tmp/error_analysis.md", "-o", "/tmp/error_analysis.html"],
+            [
+                "pandoc",
+                "/tmp/error_analysis.md",
+                "-o", "/tmp/error_analysis.pdf",
+                "-V", "colorlinks=true",
+                "-V", "linkcolor=blue",
+            ],
             check=True,
             capture_output=True
         )
-        print("HTML generated at /tmp/error_analysis.html")
+        print("PDF generated at /tmp/error_analysis.pdf")
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print("Could not convert to HTML - pandoc may not be installed")
+        print("Could not convert to PDF - pandoc may not be installed (brew install pandoc mactex)")
     except Exception as e:
-        print(f"Unexpected error converting to HTML: {e}")
+        print(f"Unexpected error converting to PDF: {e}")
 
 
 def main(
@@ -382,7 +374,7 @@ def main(
     df.to_csv("/tmp/classified_errors.csv", index=False)
     print(f"Classified errors saved to /tmp/classified_errors.csv")
     generate_error_analysis(df)
-    convert_md_to_html()
+    convert_md_to_pdf()
 
 
 if __name__ == "__main__":

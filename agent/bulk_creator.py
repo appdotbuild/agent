@@ -1,12 +1,13 @@
 from anthropic import AnthropicBedrock
-from application import Application, feature_flags
+from application import Application
 from compiler.core import Compiler
 import tempfile
-import os
 import coloredlogs
 import logging
 from fire import Fire
 import shutil
+import os
+from core.interpolator import Interpolator
 
 
 logger = logging.getLogger(__name__)
@@ -58,20 +59,32 @@ ideas = (
 )
 
 
-def main():
+def main(prefix: str, save_dir: str | None = None):
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
-    feature_flags.refine_initial_prompt = False
 
     for name, prompt in ideas:
         print(prompt)
 
-        tempdir = tempfile.TemporaryDirectory()
-        application = Application(client, compiler, "templates", tempdir.name)
+        application = Application(client, compiler)
 
-        my_bot = application.create_bot(prompt, f"arseny_test_21022025_{name}_base")
+        my_bot = application.create_bot(prompt, f"{prefix}_{name}")
         print("Bot created:", my_bot)
-        print("\nGeneration directory:", application.generation_dir)
+
+        if save_dir:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            interpolator = Interpolator(current_dir)
+            
+            bot_dir = os.path.join(save_dir, f"{prefix}_{name}")
+            os.makedirs(bot_dir, exist_ok=True)
+            
+            interpolator.bake(my_bot, bot_dir)
+
+            app_schema_dir = os.path.join(bot_dir, 'app_schema')
+            os.chdir(app_schema_dir)
+            os.system('npm install')
+            os.system('npx tsc --noEmit')
+            os.chdir('..')
 
 
 if __name__ == "__main__":
