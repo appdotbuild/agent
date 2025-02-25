@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: ./app_schema
+      dockerfile: ./Dockerfile
+    environment:
+      - APP_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - AWS_PROFILE=dev
+      - AWS_REGION=us-west-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      - postgres
+    volumes:
+      - ~/.aws:/root/.aws:ro
+
+volumes:
+  postgres_data:

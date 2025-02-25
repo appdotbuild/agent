@@ -47,7 +47,6 @@ def evaluate_drizzle_generation() -> float:
                 message = {"role": "user", "content": content}
 
                 response = tracing_client.call_anthropic(
-                    model="anthropic.claude-3-5-sonnet-20241022-v2:0",
                     max_tokens=8192,
                     messages=[message],
                 )
