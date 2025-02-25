@@ -24,8 +24,8 @@ Rules:
 
 Make sure using correct TypeSpec types for date and time:
 Dates and Times
-- plainDate: A date on a calendar without a time zone, e.g. “April 10th”
-- plainTime: A time on a clock without a time zone, e.g. “3:00 am”
+- plainDate: A date on a calendar without a time zone, e.g. "April 10th"
+- plainTime: A time on a clock without a time zone, e.g. "3:00 am"
 - utcDateTime: Represents a date and time in Coordinated Universal Time (UTC)
 - offsetDateTime: Represents a date and time with a timezone offset
 - duration:	A duration/time period. e.g 5s, 10h
@@ -163,7 +163,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, typespec_definitions, llm_functions = TypespecTaskNode.parse_output(response.content[0].text)
+            reasoning, typespec_definitions, llm_functions = TypespecTaskNode.parse_output(response.content[-1].text)
             typespec_schema = "\n".join([
                 'import "./helpers.js";',
                 "",
@@ -181,7 +181,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         except PolicyException as e:
             output = e
         messages = [] if not init else input
-        messages.append({"role": "assistant", "content": response.content[0].text})
+        messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return TypespecData(messages=messages, output=output)
     

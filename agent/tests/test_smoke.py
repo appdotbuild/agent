@@ -39,7 +39,7 @@ def get_real_antropic_response(prompt: str | None = None, messages: list[dict] |
         model="anthropic.claude-3-5-sonnet-20241022-v2:0"
 
     )
-    return response.content[0].text
+    return response.content[-1].text
 
 
 def _get_pseudo_llm_response(*args, **kwargs):

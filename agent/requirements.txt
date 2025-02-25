@@ -1,10 +1,10 @@
 annotated-types==0.7.0
-anthropic==0.43.0
+anthropic==0.47.1
 anyio==4.8.0
 asttokens==3.0.0
 boto3==1.35.99
 botocore==1.35.99
-certifi==2024.12.14
+certifi==2025.1.31
 coloredlogs==15.0.1
 comm==0.2.2
 debugpy==1.8.12
@@ -38,7 +38,7 @@ prompt_toolkit==3.0.48
 psutil==6.1.1
 ptyprocess==0.7.0
 pure_eval==0.2.3
-pydantic==2.10.5
+pydantic==2.10.6
 pydantic-settings==2.7.1
 pydantic_core==2.27.2
 Pygments==2.19.1

@@ -13,8 +13,8 @@ from core.datatypes import *
 
 
 class Application:
-    def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5, dfs_budget: int = 20):
-        self.client = TracingClient(client)
+    def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5, dfs_budget: int = 20, thinking_budget: int = 0):
+        self.client = TracingClient(client, thinking_budget=thinking_budget)
         self.compiler = compiler
         self.jinja_env = jinja2.Environment()
         self.BRANCH_FACTOR = branch_factor

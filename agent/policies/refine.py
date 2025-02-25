@@ -95,7 +95,7 @@ class RefinementTaskNode(TaskNode[RefinementData, list[MessageParam]]):
             messages=input,
         )
         try:
-            requirements = RefinementTaskNode.parse_output(response.content[0].text)
+            requirements = RefinementTaskNode.parse_output(response.content[-1].text)
             feedback = {}
             output = RefinementOutput(
                 requirements=requirements,
@@ -103,7 +103,7 @@ class RefinementTaskNode(TaskNode[RefinementData, list[MessageParam]]):
             )
         except PolicyException as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [{"role": "assistant", "content": response.content[-1].text}]
         langfuse_context.update_current_observation(output=output)
         return RefinementData(messages=messages, output=output)
 
