@@ -1,3 +1,5 @@
+# For local development only! Do not use for deployment, it is not guaranteed to work.
+
 FROM oven/bun:latest
 
 WORKDIR /app
