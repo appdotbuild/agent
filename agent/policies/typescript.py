@@ -82,12 +82,18 @@ Make sure to address following typescript compilation errors:
 Return <reasoning> and fixed complete typescript definition encompassed with <typescript> tag.
 """
 
+@dataclass
+class Scenario:
+    id: str
+    description: str
+    gherkin: str
 
 @dataclass
 class FunctionDeclaration:
     name: str
     argument_type: str
     argument_schema: str
+    scenarios: list[Scenario]
     return_type: str
 
 
