@@ -151,7 +151,7 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, gherkin = GherkinTaskNode.parse_output(response.content[0].text)
+            reasoning, gherkin = GherkinTaskNode.parse_output(response.content[-1].text)
             feedback = gherkin_compiler.compile_gherkin(gherkin)
             output = GherkinOutput(
                 reasoning=reasoning,
@@ -160,7 +160,7 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
             )
         except PolicyException as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [{"role": "assistant", "content": response.content[-1].text}]
         langfuse_context.update_current_observation(output=output)
         return GherkinData(messages=messages, output=output)
     

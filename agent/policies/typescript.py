@@ -137,7 +137,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, typescript_schema, functions, type_to_zod = TypescriptTaskNode.parse_output(response.content[0].text)
+            reasoning, typescript_schema, functions, type_to_zod = TypescriptTaskNode.parse_output(response.content[-1].text)
             feedback = typescript_compiler.compile_typescript({"src/common/schema.ts": typescript_schema})
             output = TypescriptOutput(
                 reasoning=reasoning,
@@ -149,7 +149,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
         except PolicyException as e:
             output = e
         messages = [] if not init else input
-        messages.append({"role": "assistant", "content": response.content[0].text})
+        messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return TypescriptData(messages=messages, output=output)
     

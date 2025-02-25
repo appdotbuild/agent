@@ -51,7 +51,7 @@ def evaluate_drizzle_generation() -> float:
                     messages=[message],
                 )
 
-                reasoning, drizzle_schema = drizzle.DrizzleTaskNode.parse_output(response.content[0].text)
+                reasoning, drizzle_schema = drizzle.DrizzleTaskNode.parse_output(response.content[-1].text)
                 #print(f"Drizzle schema generated:\n{drizzle_schema}")
 
                 # Compile drizzle schema

@@ -63,7 +63,7 @@ def evaluate_typespec_generation() -> float:
                     messages=[message],
                 )
 
-                reasoning, typespec_definitions, functions = typespec.TypespecTaskNode.parse_output(response.content[0].text)
+                reasoning, typespec_definitions, functions = typespec.TypespecTaskNode.parse_output(response.content[-1].text)
                 
                 typespec_schema = "\n".join(['import "./helpers.js";', "", typespec_definitions])
                 feedback = application.compiler.compile_typespec(typespec_schema)

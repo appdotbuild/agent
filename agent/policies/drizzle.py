@@ -101,7 +101,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
             messages=input,
         )
         try:
-            reasoning, drizzle_schema = DrizzleTaskNode.parse_output(response.content[0].text)
+            reasoning, drizzle_schema = DrizzleTaskNode.parse_output(response.content[-1].text)
             feedback = drizzle_compiler.compile_drizzle(drizzle_schema)
             output = DrizzleOutput(
                 reasoning=reasoning,
@@ -111,7 +111,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
         except PolicyException as e:
             output = e
         messages = [] if not init else input
-        messages.append({"role": "assistant", "content": response.content[0].text})
+        messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return DrizzleData(messages=messages, output=output)
 

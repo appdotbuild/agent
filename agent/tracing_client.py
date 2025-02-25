@@ -4,8 +4,9 @@ from langfuse.decorators import langfuse_context, observe
 
 
 class TracingClient:
-    def __init__(self, m_claude: AnthropicBedrock):
+    def __init__(self, m_claude: AnthropicBedrock, thinking_budget: int = 0):
         self.m_claude = m_claude
+        self.thinking_budget = thinking_budget
     
     @observe(as_type="generation", name="Anthropic-generation")
     def call_anthropic(
@@ -26,14 +27,25 @@ class TracingClient:
             model_parameters={
                 "maxTokens": max_tokens,
                 "temperature": temperature,
+                "thinkingBudget": self.thinking_budget,
             },
             metadata=kwargs,
         )
+        if self.thinking_budget > 0:
+            thinking_config = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget,
+            }
+        else:
+            thinking_config = {
+                "type": "disabled",
+            }
         completion: Message = self.m_claude.messages.create(
-            max_tokens=max_tokens,
+            max_tokens=max_tokens + self.thinking_budget,
             model=model,
             messages=messages,
             temperature=temperature,
+            thinking=thinking_config,
             **kwargs,
         )
         if len(completion.content) == 1 and completion.content[0].type == "text":

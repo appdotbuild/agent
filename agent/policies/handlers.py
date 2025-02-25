@@ -513,7 +513,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         )
         test_suite: str | None = kwargs.get("test_suite", None)
         try:
-            handler = HandlerTaskNode.parse_output(response.content[0].text)
+            handler = HandlerTaskNode.parse_output(response.content[-1].text)
             files = {
                 f"src/handlers/{kwargs['function_name']}.ts": handler,
                 "src/common/schema.ts": kwargs['typescript_schema'],
@@ -538,7 +538,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         except PolicyException as e:
             output = e
         messages = [] if not init else input
-        messages.append({"role": "assistant", "content": response.content[0].text})
+        messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return HandlerData(messages=messages, output=output)
     
