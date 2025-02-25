@@ -1,1 +1,3 @@
-export function $llm_func(context, target, description) {}
+export function $llm_func(target, description) {}
+
+export function $scenario(target, gherkin) {}

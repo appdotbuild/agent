@@ -91,30 +91,33 @@ model ListDishesRequest {
 }
 
 interface DietBot {
-  @scenario("""
-  Scenario: Single dish entry
-    When user says "I ate a cheeseburger with fries"
-    Then system should extract:
-      - Dish: "cheeseburger"
-      - Dish: "fries"
-      - Ingredients for cheeseburger: [patty, bun, cheese]
-      - Ingredients for fries: [potatoes, oil]
-    Examples:
-      | Input                                  | Expected Dishes |
-      | "I had a salad for lunch"              | ["salad"]       |
-      | "Just drank a protein shake"           | ["protein shake"] |
-  """)
-  @llm_func("Extract food entries from natural language")
-  recordDish(options: Dish): void;
+    
+    @scenario(
+\"\"\"
+Scenario: Single dish entry
+When user says "I ate a cheeseburger with fries"
+Then system should extract:
+    - Dish: "cheeseburger"
+    - Dish: "fries"
+    - Ingredients for cheeseburger: [patty, bun, cheese]
+    - Ingredients for fries: [potatoes, oil]
+Examples:
+    | Input                                  | Expected Dishes |
+    | "I had a salad for lunch"              | ["salad"]       |
+    | "Just drank a protein shake"           | ["protein shake"] |
+\"\"\")
+    @llm_func("Extract food entries from natural language")
+    recordDish(options: Dish): void;
 
-  @scenario("""
-  Scenario: Historical query
-    When user asks "What did I eat last Thursday?"
-    Then system returns entries from 2024-02-15
-    With full meal breakdown
-  """)
-  @llm_func("Retrieve and summarize dietary history")
-  listDishes(options: ListDishesRequest): Dish[];
+    @scenario(
+\"\"\"
+Scenario: Historical query
+When user asks "What did I eat last Thursday?"
+Then system returns entries from 2024-02-15
+With full meal breakdown
+\"\"\")
+    @llm_func("Retrieve and summarize dietary history")
+    listDishes(options: ListDishesRequest): Dish[];
 }
 </typespec>
 
@@ -194,6 +197,8 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
                 'import "./helpers.js";',
                 "",
                 "extern dec llm_func(target: unknown, description: string);",
+                "",
+                "extern dec scenario(target: unknown, gherkin: string);",
                 "",
                 typespec_definitions
             ])
