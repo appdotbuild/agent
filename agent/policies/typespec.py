@@ -151,7 +151,7 @@ Return <reasoning> and fixed complete TypeSpec definition encompassed with <type
 class LLMFunction:
     name: str
     description: str
-    scenarios: list[str]
+    scenario: str
 
 @dataclass
 class TypespecOutput:
@@ -257,6 +257,6 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        pattern = re.compile(r'(@scenario\("(?P<id>.+)"\)+\s*@llm_func\("(?P<description>.+)"\)\s*(?P<name>\w+)\s*\(', re.MULTILINE)
+        pattern = re.compile(r'@scenario\(\"\"\"(?P<scenario>.+)\"\"\"\)\s*@llm_func\("(?P<description>.+)"\)\s*(?P<name>\w+)\s*\(', re.MULTILINE)
         functions = [LLMFunction(**match.groupdict()) for match in pattern.finditer(definitions)]
         return reasoning, definitions, functions
