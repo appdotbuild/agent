@@ -7,3 +7,4 @@ import os
 
 gherkin = bool(os.getenv("GHERKIN", False))
 refine_initial_prompt = bool(os.getenv("REFINE_INITIAL_PROMPT", False))
+perplexity = bool(os.getenv("PERPLEXITY", False))

@@ -1,6 +1,8 @@
 import os
 import jinja2
 from shutil import copytree, ignore_patterns
+
+from core import feature_flags
 from .datatypes import *
 
 TOOL_TEMPLATE = """
@@ -21,7 +23,7 @@ export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
         name: '{{ handler.name }}',
         description: `{{ handler.description }}`,
         handler: {{ handler.name }}.handle,
-        inputSchema: schema.{{ handler.argument_schema }},
+        inputSchema: {{ handler.argument_schema }},
     },{% endfor %}
 ];
 """.strip()
@@ -49,10 +51,17 @@ class Interpolator:
             {
                 "name": name,
                 "description": next((f.description for f in application.typespec.llm_functions if f.name == name), ""),
-                "argument_schema": handler.argument_schema,
+                "argument_schema": f"schema.{handler.argument_schema}",
             }
             for name, handler in application.handlers.items()
         ]
+        
+        if feature_flags.perplexity:
+            handler_tools.append({
+                "name": "web_search",
+                "description": "search the web for information",
+                "argument_schema": "web_search.webSearchParamsSchema",
+            })
 
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))

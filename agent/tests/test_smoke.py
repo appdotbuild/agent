@@ -73,7 +73,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
         }
 
         interface SimpleResponseBot {
-            @llm_func("processInput")
+        @llm_func("process user input and generate response")
             processInput(options: InputMessage): ResponseMessage;
         }
         </typespec>
