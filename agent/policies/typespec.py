@@ -91,7 +91,6 @@ model ListDishesRequest {
 }
 
 interface DietBot {
-    
     @scenario(
 \"\"\"
 Scenario: Single dish entry
@@ -119,6 +118,14 @@ With full meal breakdown
     @llm_func("Retrieve and summarize dietary history")
     listDishes(options: ListDishesRequest): Dish[];
 }
+
+    @scenario(
+\"\"\"
+Scenario: Historical query with date range
+When user asks "What did I eat between 2024-02-10 and 2024-02-15?"
+Then system returns entries from 2024-02-10 to 2024-02-15
+With full meal breakdown
+\"\"\")
 </typespec>
 
 <description>
@@ -198,7 +205,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
                 "",
                 "extern dec llm_func(target: unknown, description: string);",
                 "",
-                "extern dec scenario(target: unknown, gherkin: string);",
+                "extern dec scenario(target: unknown, description: string);",
                 "",
                 typespec_definitions
             ])
