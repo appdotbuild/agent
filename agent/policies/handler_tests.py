@@ -10,7 +10,7 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Based on TypeScript and Drizzle schemas application definition generate a unit test suite for {{function_name}} function.
+Based on TypeScript, Drizzle schemas, application definition and gherkin scenarios generate a unit test suite for {{function_name}} function.
 
 Example:
 
@@ -57,6 +57,7 @@ import { type GreetingRequest } from "../../common/schema";
 </imports>
 
 <test>
+// Scenario: Greeting returned 
 it("should return a greeting", async () => {
   const input: GreetingRequest = { name: "Alice", greeting: "Hello" };
   const greeting = await greet(input);
@@ -65,6 +66,7 @@ it("should return a greeting", async () => {
 </test>
 
 <test>
+// Scenario: Greeting saved to database
 it("should store the greeting request", async () => {
   const input: GreetingRequest = { name: "Alice", greeting: "Hello" };
   await greet(input);
@@ -403,7 +405,7 @@ Application Definitions:
 {{drizzle_schema}}
 </drizzle>
 
-Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas.
+Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas, make sure every gherkin scenario is covered by at least one test.
 Match the output format provided in the Example. Return required imports within <imports> and tests encompassed with <test> tags.
 """.strip()
 

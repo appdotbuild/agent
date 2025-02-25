@@ -60,7 +60,7 @@ class Application:
         drizzle_schema = drizzle.drizzle_schema
 
         print("Compiling Handler Tests...")
-        handler_test_dict = self._make_handler_tests(typescript_functions, typescript_schema_definitions, drizzle_schema)
+        handler_test_dict = self._make_handler_tests(typescript_functions, typescript_schema_definitions, drizzle_schema, gherkin.gherkin)
 
         print("Compiling Handlers...")
         handlers = self._make_handlers(typescript_functions, handler_test_dict, typespec_definitions, typescript_schema_definitions, drizzle_schema)
@@ -175,6 +175,7 @@ class Application:
         llm_functions: list[typescript.FunctionDeclaration],
         typescript_schema: str,
         drizzle_schema: str,
+        gherkin_scenarios: str,
     ) -> dict[str, HandlerTestsOut]:
         trace_id = langfuse_context.get_current_trace_id()
         observation_id = langfuse_context.get_current_observation_id()
@@ -187,6 +188,7 @@ class Application:
                         "function_name": function.name,
                         "typescript_schema": typescript_schema,
                         "drizzle_schema": drizzle_schema,
+                        "gherkin_scenarios": gherkin_scenarios,
                     }
                     content = self.jinja_env.from_string(handler_tests.PROMPT).render(**test_prompt_params)
                     future_to_handler[executor.submit(
