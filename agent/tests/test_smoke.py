@@ -7,6 +7,7 @@ from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
 from application import Application, langfuse_context, feature_flags
 from compiler.core import Compiler
+from core.interpolator import Interpolator
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,7 +73,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
         }
 
         interface SimpleResponseBot {
-            @llm_func(1)
+            @llm_func("processInput")
             processInput(options: InputMessage): ResponseMessage;
         }
         </typespec>
@@ -356,21 +357,21 @@ def test_end2end():
     client = _anthropic_client("some response")
     langfuse_context.configure(enabled=False)
     feature_flags.refine_initial_prompt = True
+    
 
     with tempfile.TemporaryDirectory() as tempdir:
-        current_path = os.path.dirname(os.path.abspath(__file__))
-        templates_path = os.path.join(current_path, "../templates")
-        application = Application(client, compiler, templates_path, tempdir)
+        application = Application(client, compiler)
         my_bot = application.create_bot("Create a bot that does something please")
 
-        assert client.messages.create.call_count == 7
+        interpolator = Interpolator(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        interpolator.bake(my_bot, tempdir)
+
+        assert client.messages.create.call_count == 6
         assert my_bot.refined_description is not None
         assert my_bot.typespec.error_output is None
         assert my_bot.gherkin is not None
         assert my_bot.typescript_schema.error_output is None
         assert my_bot.drizzle.error_output is None
-        assert my_bot.router.error_output is None
-
 
         for x in my_bot.handlers.values():
             assert x.error_output is None
