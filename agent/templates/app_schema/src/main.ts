@@ -4,6 +4,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { getHistory, putMessageBatch } from "./common/crud";
 import { client, type MessageParam, type ToolUseBlock, type ToolResultBlock } from "./common/llm";
 import 'dotenv/config';
+import Fastify from 'fastify';
 const { Context, Telegraf } = require('telegraf');
 const { message } = require('telegraf/filters');
 import { handlers } from './tools';
@@ -70,13 +71,13 @@ async function callTool(toolBlock: ToolUseBlock) {
     }
 }
 
-async function main(ctx: typeof Context) {
-    const LOG_RESPONSE = process.env['LOG_RESPONSE'] ?? false;
-    const WINDOW_SIZE = 100;
+async function handle_chat(user_id: string, message: string) {
     const THREAD_LIMIT = 10;
-    const messages = await getHistory(ctx.from!.id.toString(), WINDOW_SIZE);
+    const WINDOW_SIZE = 100;
+    const LOG_RESPONSE = process.env['LOG_RESPONSE'] ?? false;
 
-    let thread: MessageParam[] = [{ role: "user", content: ctx.message.text }];
+    const messages = await getHistory(user_id, WINDOW_SIZE);
+    let thread: MessageParam[] = [{ role: "user", content: message }];
     while (thread.length < THREAD_LIMIT) {
         const response = await callClaude([...messages, ...thread]);
 
@@ -102,7 +103,7 @@ async function main(ctx: typeof Context) {
         break;
     }
 
-    await putMessageBatch(thread.map(message => ({ user_id: ctx.from!.id.toString(), ...message })));
+    await putMessageBatch(thread.map(message => ({ user_id: user_id, ...message })));
 
     let toolCalls: ToolUseBlock[] = [];
     let toolResults: ToolResultBlock[] = [];
@@ -133,13 +134,57 @@ async function main(ctx: typeof Context) {
     if (LOG_RESPONSE && toolLines.length) {
         userReply += "\n" + toolLines.join("\n");
     }
-    await ctx.reply(userReply || 'No response');
+    return userReply || 'No response';
 }
 
-const bot = new Telegraf(process.env['TELEGRAM_BOT_TOKEN']);
-bot.on(message('text'), main);
-bot.launch();
+function run_telegram() {
+    const bot = new Telegraf(process.env['TELEGRAM_BOT_TOKEN']);
+    bot.on(message('text'), async (ctx: typeof Context) => {
+        const userReply = await handle_chat(ctx.from!.id.toString(), ctx.message.text);
+        await ctx.reply(userReply);
+    });
+    bot.launch();
+    process.once('SIGINT', () => bot.stop('SIGINT'));
+    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+}
 
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+function run_server() {
+    const port = parseInt(process.env['PORT']!, 10);
+    const reqTypeSchema = z.object({
+        user_id: z.string(),
+        message: z.string(),
+    });
+
+    const app = Fastify();
+    app.post('/chat', async (req, res) => {
+        const data = reqTypeSchema.parse(req.body);
+        const userReply = await handle_chat(data.user_id, data.message);
+        return { reply: userReply };
+    });
+
+    for (const handler of handlers) {
+        app.post(`/handler/${handler.name}`, async (req, res) => {
+            const data = handler.inputSchema.parse(req.body);
+            const result = await handler.handler(data);
+            return { response: result };
+        });
+    }
+
+    app.listen({ port }, function (err, address) {
+        if (err) {
+            app.log.error(err)
+            process.exit(1)
+        }
+    })
+}
+
+switch (process.env['RUN_MODE'] ?? 'telegram') {
+    case 'server':
+        run_server();
+        break;
+    case 'telegram':
+        run_telegram();
+        break;
+    default:
+        throw new Error('Invalid RUN_MODE');
+}
