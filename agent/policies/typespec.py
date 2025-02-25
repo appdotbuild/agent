@@ -105,34 +105,7 @@ interface DietBot {
       | "Just drank a protein shake"           | ["protein shake"] |
   """)
   @llm_func("Extract food entries from natural language")
-  op recordEntry(message: string): ConfirmationResponse;
-
-  @scenario("""
-  Scenario: Detailed meal logging
-    When user says "For breakfast I had 2 eggs and avocado toast"
-    Then system should create:
-      - Meal entry with type "breakfast"
-      - Dish: "eggs" with quantity 2
-      - Dish: "avocado toast" with ingredients:
-        - avocado
-        - bread
-    Examples:
-      | Input                                  | Expected Interpretation       |
-      | "Drank 300ml orange juice"             | Liquid measurement captured    |
-      | "Pizza slice around noon"               | Meal time set to 12:00         |
-  """)
-  @llm_func("Analyze meal context and quantities")
-  op analyzeMeal(message: string): MealAnalysisResult;
-
-  @scenario("""
-  Scenario: Nutritional validation
-    Given user input "I ate 10 pizzas today"
-    When calorie total exceeds daily limit
-    Then system should flag excessive intake
-    And suggest portion control
-  """)
-  @llm_func("Monitor nutritional thresholds")
-  op validateIntake(entry: MealEntry): ValidationResult;
+  recordDish(options: Dish): void;
 
   @scenario("""
   Scenario: Historical query
@@ -141,7 +114,7 @@ interface DietBot {
     With full meal breakdown
   """)
   @llm_func("Retrieve and summarize dietary history")
-  op listEntries(query: string): DietaryHistoryResponse;
+  listDishes(options: ListDishesRequest): Dish[];
 }
 </typespec>
 
