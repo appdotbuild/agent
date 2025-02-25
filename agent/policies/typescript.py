@@ -133,7 +133,6 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
     @observe(capture_input=False, capture_output=False)
     def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> TypescriptData:
         response = typescript_client.call_anthropic(
-            model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
             messages=input,
         )

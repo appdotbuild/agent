@@ -10,8 +10,8 @@ class TracingClient:
     @observe(as_type="generation", name="Anthropic-generation")
     def call_anthropic(
         self,
-        model: str,
         messages: list[MessageParam],
+        model: str = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
         max_tokens: int = 8192,
         temperature: float = 1.0,
         **kwargs,
