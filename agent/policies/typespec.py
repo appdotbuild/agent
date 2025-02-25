@@ -24,6 +24,7 @@ Rules:
 - Each function in the interface should be decorated with at least one @scenario decorator.
 - Each function must have a complete set of scenarios defined with @scenario decorator.
 - Each function should have a single argument "options".
+- The "options" parameter must always be an object model type, never a primitive type.
 - Data model for the function argument should be simple and easily inferable from chat messages.
 - Using reserved keywords for property names, type names, and function names is not allowed.
 
