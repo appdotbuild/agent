@@ -83,17 +83,10 @@ Return <reasoning> and fixed complete typescript definition encompassed with <ty
 """
 
 @dataclass
-class Scenario:
-    id: str
-    description: str
-    gherkin: str
-
-@dataclass
 class FunctionDeclaration:
     name: str
     argument_type: str
     argument_schema: str
-    scenarios: list[Scenario]
     return_type: str
 
 

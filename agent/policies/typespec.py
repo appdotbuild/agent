@@ -16,7 +16,7 @@ TypeSpec is extended with an @llm_func decorator that defines a single sentence 
 extern dec llm_func(target: unknown, description: string);
 
 TypeSpec is extended with an @scenario decorator that defines gherkin scenario for the function use case.
-extern dec scenario(target: unknown, description: string);
+extern dec scenario(target: unknown, gherkin: string);
 
 Rules:
 - Output contains a single interface.
@@ -205,7 +205,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
                 "",
                 "extern dec llm_func(target: unknown, description: string);",
                 "",
-                "extern dec scenario(target: unknown, description: string);",
+                "extern dec scenario(target: unknown, gherkin: string);",
                 "",
                 typespec_definitions
             ])
