@@ -381,34 +381,35 @@ def test_end2end():
         for x in my_bot.handlers.values():
             assert x.error_output is None
 
-            # change directory to tempdir and run docker compose
-            current_dir = os.getcwd()
-            os.chdir(tempdir)
+        print("Generation complete, testing in docker")
+        # change directory to tempdir and run docker compose
+        current_dir = os.getcwd()
+        os.chdir(tempdir)
 
-            def generate_random_name(prefix, length=8):
-                return prefix + ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+        def generate_random_name(prefix, length=8):
+            return prefix + ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
-            env = os.environ.copy()
-            env["APP_CONTAINER_NAME"] = generate_random_name("app_")
-            env["POSTGRES_CONTAINER_NAME"] = generate_random_name("db_")
-            env["NETWORK_NAME"] = generate_random_name("network_")
+        env = os.environ.copy()
+        env["APP_CONTAINER_NAME"] = generate_random_name("app_")
+        env["POSTGRES_CONTAINER_NAME"] = generate_random_name("db_")
+        env["NETWORK_NAME"] = generate_random_name("network_")
+        try:
+            cmd = ["docker", "compose", "up", "-d"]
+            result = subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
+            assert result.returncode == 0
+            time.sleep(5)
+            client = docker.from_env()
+            app_container = client.containers.get(env["APP_CONTAINER_NAME"])
+            db_container = client.containers.get(env["POSTGRES_CONTAINER_NAME"])
+
+            assert app_container.status == "running", f"App container {env['APP_CONTAINER_NAME']} is not running"
+            assert db_container.status == "running", f"Postgres container {env['POSTGRES_CONTAINER_NAME']} is not running"
+
+        finally:
             try:
-                cmd = ["docker", "compose", "up", "-d"]
-                result = subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
-                assert result.returncode == 0
-                time.sleep(5)
-                client = docker.from_env()
-                app_container = client.containers.get(env["APP_CONTAINER_NAME"])
-                db_container = client.containers.get(env["POSTGRES_CONTAINER_NAME"])
-
-                assert app_container.status == "running", f"App container {env['APP_CONTAINER_NAME']} is not running"
-                assert db_container.status == "running", f"Postgres container {env['POSTGRES_CONTAINER_NAME']} is not running"
-
-            finally:
-                try:
-                    cmd = ["docker", "compose", "down"]
-                    subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
-                except subprocess.CalledProcessError as e:
-                    print(f"Error downing docker compose: {e}")
-                    raise e
-                os.chdir(current_dir)
+                cmd = ["docker", "compose", "down"]
+                subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error downing docker compose: {e}")
+                raise e
+            os.chdir(current_dir)
