@@ -10,7 +10,7 @@
   "no-multiple-empty-lines": "on",
   "no-empty-background": "on",
   "indentation": [
-    "on", 
+    "on",
     {
       "Feature": 0,
       "Background": 2,
@@ -20,4 +20,4 @@
       "example": 6
     }
   ]
-} 
+}
