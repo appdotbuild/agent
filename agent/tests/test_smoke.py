@@ -6,7 +6,7 @@ import docker
 import random
 import string
 import time
-
+import httpx
 from unittest.mock import MagicMock
 from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
@@ -398,7 +398,8 @@ def test_end2end():
             cmd = ["docker", "compose", "up", "-d"]
             result = subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
             assert result.returncode == 0
-            time.sleep(5)
+            print("Waiting for app to start")
+            time.sleep(15)
             client = docker.from_env()
             app_container = client.containers.get(env["APP_CONTAINER_NAME"])
             db_container = client.containers.get(env["POSTGRES_CONTAINER_NAME"])
@@ -406,6 +407,9 @@ def test_end2end():
             assert app_container.status == "running", f"App container {env['APP_CONTAINER_NAME']} is not running"
             assert db_container.status == "running", f"Postgres container {env['POSTGRES_CONTAINER_NAME']} is not running"
 
+            response = httpx.post("http://localhost:8989/chat", json={"message": "hello", "user_id": "42"})
+            assert len(response.json())
+            
         finally:
             try:
                 cmd = ["docker", "compose", "down"]

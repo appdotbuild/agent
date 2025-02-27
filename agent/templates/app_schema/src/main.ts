@@ -149,13 +149,15 @@ function run_telegram() {
 }
 
 function run_server() {
-    const port = parseInt(process.env['PORT']!, 10);
+    const port = parseInt(process.env['PORT']! || '3000', 10);
     const reqTypeSchema = z.object({
         user_id: z.string(),
         message: z.string(),
     });
 
-    const app = Fastify();
+    const app = Fastify({
+        logger: true
+    });
     app.post('/chat', async (req, res) => {
         const data = reqTypeSchema.parse(req.body);
         const userReply = await handle_chat(data.user_id, data.message);
@@ -170,7 +172,7 @@ function run_server() {
         });
     }
 
-    app.listen({ port }, function (err, address) {
+    app.listen({ port, host: '0.0.0.0' }, function (err, address) {
         if (err) {
             app.log.error(err)
             process.exit(1)
