@@ -9,7 +9,7 @@ def start_app() -> None:
         port=int(os.getenv("PORT", "8080")),
         access_log=False,
         reload=os.getenv("RELOAD", "false").lower() == "true",
-        timeout_keep_alive=60 * 20 * 1000,
+        timeout_keep_alive=60 * 20 * 1000, # 20 minutes
     )
 
 
