@@ -1,0 +1,5 @@
+# only for development, not required for production
+black==25.1.0
+joblib==1.4.2
+pandas==2.2.3
+tqdm==4.67.1
