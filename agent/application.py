@@ -23,7 +23,7 @@ class Application:
         self.DFS_BUDGET = dfs_budget
 
     @observe(capture_output=False)
-    def create_bot(self, application_description: str, bot_id: str | None = None):
+    def create_bot(self, application_description: str, bot_id: str | None = None, *args, **kwargs):
         langfuse_context.update_current_trace(user_id=os.environ.get("USER_ID", socket.gethostname()))
         if bot_id is not None:
             langfuse_context.update_current_observation(metadata={"bot_id": bot_id})

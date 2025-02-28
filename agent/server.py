@@ -1,11 +1,12 @@
 from typing import Optional
 from typing_extensions import Self
 import os
+import uuid
 import shutil
 import tempfile
 import requests
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, model_validator
 
@@ -69,17 +70,16 @@ class BuildRequest(BaseModel):
 class BuildResponse(BaseModel):
     status: str
     message: str
-    trace_id: str
+    trace_id: str | None
     metadata: dict = {}
 
 
-@app.post("/compile", response_model=BuildResponse)
-def compile(request: BuildRequest):
+def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
         interpolator = Interpolator(".")
-        logger.info(f"Creating bot with prompt: {request.prompt}")
-        bot = application.create_bot(request.prompt, request.botId)
+        logger.info(f"Creating bot with prompt: {prompt}")
+        bot = application.create_bot(prompt, bot_id, langfuse_observation_id=trace_id)
         logger.info(f"Baked bot to {tmpdir}")
         interpolator.bake(bot, tmpdir)
         zipfile = shutil.make_archive(
@@ -88,14 +88,15 @@ def compile(request: BuildRequest):
             root_dir=os.path.join(tmpdir, "app_schema"),
         )
         with open(zipfile, "rb") as f:
-            upload_result = requests.put(
-                request.writeUrl,
-                data=f.read(),
-            )
+            upload_result = requests.put(write_url, data=f.read())
             upload_result.raise_for_status()
-        metadata = {"functions": bot.typespec.llm_functions}
-        logger.info(f"Uploaded bot to {request.writeUrl}")
-        return BuildResponse(status="success", message="done", trace_id=bot.trace_id, metadata=metadata)
+
+
+@app.post("/compile", response_model=BuildResponse)
+def compile(request: BuildRequest, background_tasks: BackgroundTasks):
+    trace_id = uuid.uuid4().hex
+    background_tasks.add_task(generate_bot, request.writeUrl, request.prompt, trace_id, request.botId)
+    return BuildResponse(status="success", message="done", trace_id=trace_id)
 
 
 @app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
