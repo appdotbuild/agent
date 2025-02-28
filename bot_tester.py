@@ -84,9 +84,11 @@ class BotTester:
         self.env["APP_CONTAINER_NAME"] = "app_" + postfix
         self.env["POSTGRES_CONTAINER_NAME"] = "db_" + postfix
         self.env["NETWORK_NAME"] = "network_" + postfix
+        self.env["RUN_MODE"] = "http-server"
+
         os.chdir(bot_dir)
         
-        logger.info("Starting bot services with docker-compose, port {self.port} for the bot API")
+        logger.info(f"Starting bot services with docker-compose, port {self.port} for the bot API")
         
         port_mapping = f"{self.port}:3000"
         self.env["BOT_PORT_MAPPING"] = port_mapping        
@@ -124,7 +126,7 @@ class BotTester:
 
         logger.info(f"Sending message to bot at {url}, payload: {payload}")
         
-        retries = 2
+        retries = 3
         for attempt in range(retries + 1):
             try:
                 response = self.httpx_client.post(url, json=payload, timeout=30)
@@ -135,6 +137,7 @@ class BotTester:
                     logger.info(f"attempt {attempt+1} failed, retrying in 5 seconds: {str(e)}")
                     time.sleep(5)
                 else:
+                    breakpoint()
                     raise
     
     def evaluate_experience(self, conversation: List[Dict[str, Any]], prompt: str) -> Dict[str, Any]:
