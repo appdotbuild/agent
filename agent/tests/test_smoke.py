@@ -1,12 +1,18 @@
 import tempfile
 import logging
 import os
+import subprocess
+import docker
+import random
+import string
+import time
 
 from unittest.mock import MagicMock
 from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
 from application import Application, langfuse_context, feature_flags
 from compiler.core import Compiler
+from core.interpolator import Interpolator
 
 logging.basicConfig(level=logging.INFO)
 
@@ -39,7 +45,7 @@ def get_real_antropic_response(prompt: str | None = None, messages: list[dict] |
         model="anthropic.claude-3-5-sonnet-20241022-v2:0"
 
     )
-    return response.content[0].text
+    return response.content[-1].text
 
 
 def _get_pseudo_llm_response(*args, **kwargs):
@@ -72,7 +78,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
         }
 
         interface SimpleResponseBot {
-            @llm_func(1)
+        @llm_func("process user input and generate response")
             processInput(options: InputMessage): ResponseMessage;
         }
         </typespec>
@@ -356,21 +362,54 @@ def test_end2end():
     client = _anthropic_client("some response")
     langfuse_context.configure(enabled=False)
     feature_flags.refine_initial_prompt = True
+    
 
     with tempfile.TemporaryDirectory() as tempdir:
-        current_path = os.path.dirname(os.path.abspath(__file__))
-        templates_path = os.path.join(current_path, "../templates")
-        application = Application(client, compiler, templates_path, tempdir)
+        application = Application(client, compiler)
         my_bot = application.create_bot("Create a bot that does something please")
 
-        assert client.messages.create.call_count == 7
+        interpolator = Interpolator(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        interpolator.bake(my_bot, tempdir)
+
+        assert client.messages.create.call_count == 6
         assert my_bot.refined_description is not None
         assert my_bot.typespec.error_output is None
         assert my_bot.gherkin is not None
         assert my_bot.typescript_schema.error_output is None
         assert my_bot.drizzle.error_output is None
-        assert my_bot.router.error_output is None
-
 
         for x in my_bot.handlers.values():
             assert x.error_output is None
+
+        print("Generation complete, testing in docker")
+        # change directory to tempdir and run docker compose
+        current_dir = os.getcwd()
+        os.chdir(tempdir)
+
+        def generate_random_name(prefix, length=8):
+            return prefix + ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+        env = os.environ.copy()
+        env["APP_CONTAINER_NAME"] = generate_random_name("app_")
+        env["POSTGRES_CONTAINER_NAME"] = generate_random_name("db_")
+        env["NETWORK_NAME"] = generate_random_name("network_")
+        try:
+            cmd = ["docker", "compose", "up", "-d"]
+            result = subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
+            assert result.returncode == 0
+            time.sleep(5)
+            client = docker.from_env()
+            app_container = client.containers.get(env["APP_CONTAINER_NAME"])
+            db_container = client.containers.get(env["POSTGRES_CONTAINER_NAME"])
+
+            assert app_container.status == "running", f"App container {env['APP_CONTAINER_NAME']} is not running"
+            assert db_container.status == "running", f"Postgres container {env['POSTGRES_CONTAINER_NAME']} is not running"
+
+        finally:
+            try:
+                cmd = ["docker", "compose", "down"]
+                subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error downing docker compose: {e}")
+                raise e
+            os.chdir(current_dir)

@@ -196,6 +196,8 @@ src/
 └── main.ts
 ```
 
+One could run it with `docker compose up` in the generated app. 
+
 ## Environment Variables
 
 ```env

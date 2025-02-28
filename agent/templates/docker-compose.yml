@@ -1,0 +1,46 @@
+services:
+  postgres:
+    container_name: ${POSTGRES_CONTAINER_NAME:-postgres_bot}
+    image: postgres:latest
+    hostname: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 1s
+      timeout: 20s
+      retries: 5
+
+  app:
+    container_name: ${APP_CONTAINER_NAME:-app_bot}
+    build:
+      context: ./app_schema
+      dockerfile: ./Dockerfile
+    environment:
+      - APP_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - AWS_PROFILE=dev
+      - AWS_REGION=us-west-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ~/.aws:/root/.aws:ro
+    networks:
+      - default
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: ${NETWORK_NAME:-app_network}
+    driver: bridge

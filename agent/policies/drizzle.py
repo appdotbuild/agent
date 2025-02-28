@@ -97,12 +97,11 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
     @observe(capture_input=False, capture_output=False)
     def run(input: list[MessageParam], *args, init: bool = False, **kwargs) -> DrizzleData:
         response = drizzle_client.call_anthropic(
-            model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
             messages=input,
         )
         try:
-            reasoning, drizzle_schema = DrizzleTaskNode.parse_output(response.content[0].text)
+            reasoning, drizzle_schema = DrizzleTaskNode.parse_output(response.content[-1].text)
             feedback = drizzle_compiler.compile_drizzle(drizzle_schema)
             output = DrizzleOutput(
                 reasoning=reasoning,
@@ -112,7 +111,7 @@ class DrizzleTaskNode(TaskNode[DrizzleData, list[MessageParam]]):
         except PolicyException as e:
             output = e
         messages = [] if not init else input
-        messages.append({"role": "assistant", "content": response.content[0].text})
+        messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return DrizzleData(messages=messages, output=output)
 

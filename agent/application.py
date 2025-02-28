@@ -1,3 +1,5 @@
+import os
+import socket
 import jinja2
 import concurrent.futures
 from anthropic import AnthropicBedrock
@@ -9,12 +11,12 @@ from core import feature_flags
 from core.datatypes import *
 
 
+
 class Application:
-    def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5, dfs_budget: int = 20):
-        self.client = TracingClient(client)
+    def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5, dfs_budget: int = 20, thinking_budget: int = 0):
+        self.client = TracingClient(client, thinking_budget=thinking_budget)
         self.compiler = compiler
         self.jinja_env = jinja2.Environment()
-        self._model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
         self.BRANCH_FACTOR = branch_factor
         self.MAX_DEPTH = max_depth
         self.MAX_WORKERS = max_workers
@@ -22,6 +24,7 @@ class Application:
 
     @observe(capture_output=False)
     def create_bot(self, application_description: str, bot_id: str | None = None):
+        langfuse_context.update_current_trace(user_id=os.environ.get("USER_ID", socket.gethostname()))
         if bot_id is not None:
             langfuse_context.update_current_observation(metadata={"bot_id": bot_id})
 
@@ -74,6 +77,7 @@ class Application:
                 "handlers": {k: v.__dict__ for k, v in handlers.items()},
                 "handler_tests": {k: v.__dict__ for k, v in handler_test_dict.items()},
                 "gherkin": gherkin.__dict__,
+                "scenarios": {f.name: f.scenario for f in typespec.llm_functions},
             },
             metadata = {
                 "refined_description_ok": app_prompt.error_output is None,

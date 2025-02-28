@@ -147,12 +147,11 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
     @observe(capture_input=False, capture_output=False)
     def run(input: list[MessageParam], *args, **kwargs) -> GherkinData:
         response = gherkin_client.call_anthropic(
-            model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             max_tokens=8192,
             messages=input,
         )
         try:
-            reasoning, gherkin = GherkinTaskNode.parse_output(response.content[0].text)
+            reasoning, gherkin = GherkinTaskNode.parse_output(response.content[-1].text)
             feedback = gherkin_compiler.compile_gherkin(gherkin)
             output = GherkinOutput(
                 reasoning=reasoning,
@@ -161,7 +160,7 @@ class GherkinTaskNode(TaskNode[GherkinData, list[MessageParam]]):
             )
         except PolicyException as e:
             output = e
-        messages = [{"role": "assistant", "content": response.content[0].text}]
+        messages = [{"role": "assistant", "content": response.content[-1].text}]
         langfuse_context.update_current_observation(output=output)
         return GherkinData(messages=messages, output=output)
     

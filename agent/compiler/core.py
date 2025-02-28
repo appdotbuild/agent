@@ -99,12 +99,12 @@ class Compiler:
         exit_code, (stdout, stderr) = container.exec_run(
             command,
             demux=True,
-            environment={"NO_COLOR": "1", "FORCE_COLOR": "0"},
+            environment={"NO_COLOR": "1", "FORCE_COLOR": "0", "APP_DATABASE_URL": "postgres://postgres:postgres@postgres:5432/postgres"},
         )
         return CompileResult(
             exit_code=exit_code,
-            stdout=stdout.decode("utf-8") if stdout else None,
-            stderr=stderr.decode("utf-8") if stderr else None,
+            stdout=stdout.decode("utf-8", errors="replace") if stdout else None,
+            stderr=stderr.decode("utf-8", errors="replace") if stderr else None,
         )
 
     @contextmanager

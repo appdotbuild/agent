@@ -1,5 +1,5 @@
 from anthropic import AnthropicBedrock
-from application import Application
+from application import Application, feature_flags
 from compiler.core import Compiler
 import os
 import coloredlogs

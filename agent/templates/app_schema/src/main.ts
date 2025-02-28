@@ -71,6 +71,7 @@ async function callTool(toolBlock: ToolUseBlock) {
 }
 
 async function main(ctx: typeof Context) {
+    const LOG_RESPONSE = process.env['LOG_RESPONSE'] ?? false;
     const WINDOW_SIZE = 100;
     const THREAD_LIMIT = 10;
     const messages = await getHistory(ctx.from!.id.toString(), WINDOW_SIZE);
@@ -128,7 +129,10 @@ async function main(ctx: typeof Context) {
         return `Handler '${toolCall!.name}' responded with: "${toolResult.content}"`;
     });
 
-    const userReply = textContent.join("\n") + (toolLines.length ? "\n" + toolLines.join("\n") : "");
+    let userReply = textContent.join("\n");
+    if (LOG_RESPONSE && toolLines.length) {
+        userReply += "\n" + toolLines.join("\n");
+    }
     await ctx.reply(userReply || 'No response');
 }
 

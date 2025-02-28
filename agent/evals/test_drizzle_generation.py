@@ -47,12 +47,11 @@ def evaluate_drizzle_generation() -> float:
                 message = {"role": "user", "content": content}
 
                 response = tracing_client.call_anthropic(
-                    model="anthropic.claude-3-5-sonnet-20241022-v2:0",
                     max_tokens=8192,
                     messages=[message],
                 )
 
-                reasoning, drizzle_schema = drizzle.DrizzleTaskNode.parse_output(response.content[0].text)
+                reasoning, drizzle_schema = drizzle.DrizzleTaskNode.parse_output(response.content[-1].text)
                 #print(f"Drizzle schema generated:\n{drizzle_schema}")
 
                 # Compile drizzle schema

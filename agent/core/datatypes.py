@@ -6,6 +6,7 @@ from dataclasses import dataclass
 class LLMFunction:
     name: str
     description: str
+    scenario: str
 
 
 @dataclass

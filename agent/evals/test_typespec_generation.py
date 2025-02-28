@@ -59,12 +59,11 @@ def evaluate_typespec_generation() -> float:
                 message = {"role": "user", "content": content}
 
                 response = tracing_client.call_anthropic(
-                    model="anthropic.claude-3-5-sonnet-20241022-v2:0",
                     max_tokens=8192,
                     messages=[message],
                 )
 
-                reasoning, typespec_definitions, functions = typespec.TypespecTaskNode.parse_output(response.content[0].text)
+                reasoning, typespec_definitions, functions = typespec.TypespecTaskNode.parse_output(response.content[-1].text)
                 
                 typespec_schema = "\n".join(['import "./helpers.js";', "", typespec_definitions])
                 feedback = application.compiler.compile_typespec(typespec_schema)
