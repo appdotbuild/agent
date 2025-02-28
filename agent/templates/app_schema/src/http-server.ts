@@ -9,11 +9,22 @@ import { z } from 'zod';
 import { handlers } from './tools';
 import { env } from './env';
 import { handleChat } from './common/chat';
+import getPort from 'get-port';
 
-const ALLOWED_ORIGINS = ['chatbot.build', 'localhost', 'admin.chatbot.build'];
+const ALLOWED_ORIGINS = [
+  'chatbot.build',
+  'admin.chatbot.build',
+  'localhost',
+  '127.0.0.1',
+];
 
-export function launchHttpServer() {
-  const port = env.APP_PORT;
+export async function launchHttpServer() {
+  let port = env.APP_PORT;
+  if (env.NODE_ENV === 'development') {
+    // get a random port if the port is already in use
+    port = await getPort({ port: env.APP_PORT });
+  }
+
   const reqTypeSchema = z.object({
     user_id: z.string(),
     message: z.string(),
@@ -87,6 +98,24 @@ export function launchHttpServer() {
     if (err) {
       app.log.error(err);
       process.exit(1);
+    } else {
+      console.log(`Server is running on port ${port}`);
     }
   });
+
+  const gracefulShutdown = async () => {
+    console.log('Shutting down server gracefully...');
+    try {
+      await app.close();
+      console.log('Server shut down successfully');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during shutdown:', err);
+      process.exit(1);
+    }
+  };
+
+  // Listen for termination signals
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 }
