@@ -20,7 +20,7 @@
     "noFallthroughCasesInSwitch": true,
 
     // Some stricter flags
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": true
   }
