@@ -103,8 +103,8 @@ class Compiler:
         )
         return CompileResult(
             exit_code=exit_code,
-            stdout=stdout.decode("utf-8") if stdout else None,
-            stderr=stderr.decode("utf-8") if stderr else None,
+            stdout=stdout.decode("utf-8", errors="replace") if stdout else None,
+            stderr=stderr.decode("utf-8", errors="replace") if stderr else None,
         )
 
     @contextmanager

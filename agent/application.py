@@ -77,6 +77,7 @@ class Application:
                 "handlers": {k: v.__dict__ for k, v in handlers.items()},
                 "handler_tests": {k: v.__dict__ for k, v in handler_test_dict.items()},
                 "gherkin": gherkin.__dict__,
+                "scenarios": {f.name: f.scenario for f in typespec.llm_functions},
             },
             metadata = {
                 "refined_description_ok": app_prompt.error_output is None,

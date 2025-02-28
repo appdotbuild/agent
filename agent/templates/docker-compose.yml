@@ -12,7 +12,7 @@ services:
     networks:
       - default
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "postgres", "-U", "postgres", "-p", "5432"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 1s
       timeout: 20s
       retries: 5
@@ -29,11 +29,6 @@ services:
       - AWS_REGION=us-west-2
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - RUN_MODE=server # can be server or telegram
-      # - PORT=3000
-    ports:
-      - "8989:3000"
-    
     depends_on:
       postgres:
         condition: service_healthy

@@ -29,6 +29,7 @@ export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
 """.strip()
 
 
+
 class Interpolator:
     def __init__(self, root_dir: str):
         self.root_dir = root_dir

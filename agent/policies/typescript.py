@@ -82,7 +82,6 @@ Make sure to address following typescript compilation errors:
 Return <reasoning> and fixed complete typescript definition encompassed with <typescript> tag.
 """
 
-
 @dataclass
 class FunctionDeclaration:
     name: str
