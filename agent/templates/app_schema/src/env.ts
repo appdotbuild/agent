@@ -14,7 +14,9 @@ export const env = createEnv({
     RUN_MODE: z.enum(['telegram', 'http-server']).default('telegram'),
     LOG_RESPONSE: coercedBoolean.default('false'),
     PERPLEXITY_API_KEY: z.string().optional(),
-    NODE_ENV: z.enum(['development', 'production']).default('development'),
+    NODE_ENV: z
+      .enum(['development', 'production', 'test'])
+      .default('development'),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
