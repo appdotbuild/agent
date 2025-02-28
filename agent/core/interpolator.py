@@ -2,10 +2,6 @@ import os
 import jinja2
 from shutil import copytree, ignore_patterns
 
-        
-import random
-import string
-
 from core import feature_flags
 from .datatypes import *
 
@@ -33,9 +29,6 @@ export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
 """.strip()
 
 
-def random_prefix():
-    return ''.join(random.choices(string.ascii_lowercase, k=8))
-
 
 class Interpolator:
     def __init__(self, root_dir: str):
@@ -51,13 +44,6 @@ class Interpolator:
 
         with open(os.path.join(output_dir, "app_schema", "src", "db", "schema", "application.ts"), "w") as f:
             f.write(application.drizzle.drizzle_schema)
-
-        common_ts_path = os.path.join(output_dir, "app_schema", "src", "db", "schema", "common.ts")
-        with open(common_ts_path, "r") as f:
-            common_ts_content = f.read()
-        common_ts_content = common_ts_content.replace("MESSAGE_PREFIX", random_prefix())
-        with open(common_ts_path, "w") as f:
-            f.write(common_ts_content)
 
         with open(os.path.join(output_dir, "app_schema", "src", "common", "schema.ts"), "w") as f:
             f.write(application.typescript_schema.typescript_schema)
