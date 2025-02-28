@@ -9,10 +9,7 @@ const coercedBoolean = z.string().transform((s) => s !== 'false' && s !== '0');
 export const env = createEnv({
   server: {
     APP_DATABASE_URL: z.string(),
-    TELEGRAM_BOT_TOKEN:
-      process.env['RUN_MODE'] === 'http-server'
-        ? z.string().optional()
-        : z.string(),
+    TELEGRAM_BOT_TOKEN: z.string().optional(),
     APP_PORT: z.coerce.number().default(3000),
     RUN_MODE: z.enum(['telegram', 'http-server']).default('telegram'),
     LOG_RESPONSE: coercedBoolean.default('false'),
