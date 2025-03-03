@@ -30,7 +30,6 @@ const handlerTools = handlers.map((tool) => ({
 }));
 
 function getCustomTools() {
-  console.log('Getting custom tools');
   const availableCustomTools = custom_handlers.filter((tool) => tool.can_handle());
   return availableCustomTools.map((tool) => ({
     ...tool,
