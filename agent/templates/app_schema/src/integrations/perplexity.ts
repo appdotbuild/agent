@@ -92,11 +92,18 @@ export const webSearchParamsSchema = z.object({
 
 export type WebSearchParams = z.infer<typeof webSearchParamsSchema>;
 
-export const handle = async (options: WebSearchParams): Promise<string> => {
+export const handle_search_web = async (options: WebSearchParams): Promise<string> => {
+  console.log('Searching web for:', options.query);
   return searchPerplexity({
     query: options.query,
     search_type: 'web',
   }).then((result) => {
+    console.log('Search result:', result.result);
     return result.result;
   });
+};
+
+export const can_handle_search_web = (): boolean => {
+  console.log('Checking if can handle web search');
+  return env.PERPLEXITY_API_KEY !== undefined && env.PERPLEXITY_API_KEY !== '';
 };

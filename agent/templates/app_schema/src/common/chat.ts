@@ -8,6 +8,7 @@ import {
   type ToolResultBlock,
 } from './llm';
 import { handlers } from '../tools';
+import { custom_handlers } from '../custom_tools';
 import { getHistory, putMessageBatch } from './crud';
 import { env } from '../env';
 
@@ -28,15 +29,25 @@ const handlerTools = handlers.map((tool) => ({
   toolInput: makeSchema(tool.inputSchema),
 }));
 
+function getCustomTools() {
+  console.log('Getting custom tools');
+  const availableCustomTools = custom_handlers.filter((tool) => tool.can_handle());
+  return availableCustomTools.map((tool) => ({
+    ...tool,
+    toolInput: makeSchema(tool.inputSchema),
+  }));
+}
+
 async function callClaude(prompt: string | MessageParam[]) {
   const messages: MessageParam[] = Array.isArray(prompt)
     ? prompt
     : [{ role: 'user', content: prompt }];
+  const tools = [...handlerTools, ...getCustomTools()];
   return await client.messages.create({
     model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
     max_tokens: 2048,
     messages: messages,
-    tools: handlerTools.map((tool) => ({
+    tools: tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
       input_schema: {
