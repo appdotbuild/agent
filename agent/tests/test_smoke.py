@@ -6,7 +6,7 @@ import docker
 import random
 import string
 import time
-
+import httpx
 from unittest.mock import MagicMock
 from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
@@ -363,7 +363,6 @@ def test_end2end():
     langfuse_context.configure(enabled=False)
     feature_flags.refine_initial_prompt = True
     
-
     with tempfile.TemporaryDirectory() as tempdir:
         application = Application(client, compiler)
         my_bot = application.create_bot("Create a bot that does something please")
@@ -393,6 +392,7 @@ def test_end2end():
         env["APP_CONTAINER_NAME"] = generate_random_name("app_")
         env["POSTGRES_CONTAINER_NAME"] = generate_random_name("db_")
         env["NETWORK_NAME"] = generate_random_name("network_")
+        env["RUN_MODE"] = "http-server"
         try:
             cmd = ["docker", "compose", "up", "-d"]
             result = subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
@@ -404,6 +404,23 @@ def test_end2end():
 
             assert app_container.status == "running", f"App container {env['APP_CONTAINER_NAME']} is not running"
             assert db_container.status == "running", f"Postgres container {env['POSTGRES_CONTAINER_NAME']} is not running"
+
+            aws_check = subprocess.run(
+                ["aws", "sts", "get-caller-identity", "--profile", "dev"],
+                capture_output=True,
+                text=True
+            )            
+            aws_available = (aws_check.returncode == 0 and "UserId" in aws_check.stdout) or \
+                           (os.environ.get("AWS_ACCESS_KEY_ID", "").strip() != "")        
+            if aws_available:
+                print("AWS is available, making a request to the http server")
+                # only checking if aws is available if it is, so we have access to bedrock
+                # make a request to the http server
+                base_url = "http://localhost:8989"
+                time.sleep(5)  # to ensure migrations are done
+                response = httpx.post( f"{base_url}/chat", json={"message": "hello", "user_id": "123"}, timeout=10)
+                assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
+                assert response.json()["reply"] 
 
         finally:
             try:
