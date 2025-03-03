@@ -221,7 +221,15 @@ Your final output should consist only of the rating and explanation, and should 
     
     def stop_bot(self, bot_dir: str) -> None:
         os.chdir(bot_dir)
-        
+        try:
+            logs = subprocess.check_output(
+                ["docker", "compose", "logs", "app"], stderr=subprocess.STDOUT, text=True, env=self.env
+            )
+            logs = logs.rstrip().split(" | ")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error capturing logs: {e.output}")
+            logs = [""]        
+
         logger.info("Stopping bot services...")
         try:
             subprocess.run(["docker", "compose", "down"], check=True, env=self.env)
@@ -230,6 +238,8 @@ Your final output should consist only of the rating and explanation, and should 
         except Exception as e:
             os.chdir("..")  # Ensure we return to the original directory
             logger.error(f"Error stopping bot services: {e}")
+
+        return logs
     
     def _generate_random_name(self, prefix: str, length: int = 8) -> str:
         return prefix + ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
@@ -265,9 +275,7 @@ def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_file
             conversation.append({"role": "user", "content": f"Chatbot: {bot_response}"})
             logger.debug(f"Bot response: {bot_response}")
 
-        breakpoint()
-        tester.stop_bot(bot_dir)
-
+        logs = tester.stop_bot(bot_dir)
         conversation_text = [x["content"] for x in conversation]
         evaluation = tester.evaluate_experience(conversation_text, prompt)
         logger.info(f"Rating for {bot_name}: {evaluation['rating'].upper()}")
@@ -286,6 +294,7 @@ def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_file
             "rating": evaluation["rating"],
             "explanation": evaluation["explanation"],
             "thinking": evaluation["thinking"],
+            "logs": [x for x in logs if x.startswith("Tool")],
         }
         return result
         
@@ -298,10 +307,10 @@ DEFAULT_PROMPTS = (
          "PlantBot",
          "hey can u make me a bot that tracks my plants and finds relevant info about? like when i water them and stuff... need it to remind me when to water next",
      ),
-    #  (
-    #      "ComicBot",
-    #      "Generate a bot to manage my comic book collection - should track titles, issues, and value estimates. Thanks!",
-    #  ),
+     (
+         "ComicBot",
+         "Generate a bot to manage my comic book collection - should track titles, issues, and value estimates. Thanks!",
+     ),
      (
          "HomeworkBot",
          "need bot 4 tracking my kids homework assignments and searching if needed & due dates... must be simple 2 use!",
