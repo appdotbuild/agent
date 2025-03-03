@@ -92,9 +92,8 @@ def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None
             with open(zipfile, "rb") as f:
                 upload_result = requests.put(write_url, data=f.read())
                 upload_result.raise_for_status()
-        except Exception as e:
-            logger.error(f"Error creating bot: {e}")
-            raise
+        except Exception:
+            logger.exception("Error creating bot")
 
 
 @app.post("/compile", response_model=BuildResponse)
