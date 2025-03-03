@@ -62,7 +62,8 @@ async function callClaude(prompt: string | MessageParam[]) {
 
 async function callTool(toolBlock: ToolUseBlock) {
   const { name, id, input } = toolBlock;
-  const tool = handlerTools.find((tool) => tool.name === name);
+  const tool = handlerTools.find((tool) => tool.name === name)
+    || getCustomTools().find((tool) => tool.name === name);
   if (tool) {
     try {
       const content = await tool.handler(tool.inputSchema.parse(input));
