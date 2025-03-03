@@ -55,6 +55,7 @@ async function callTool(toolBlock: ToolUseBlock) {
   if (tool) {
     try {
       const content = await tool.handler(tool.inputSchema.parse(input));
+      console.log(`Tool ${name} called with result:`, content);
       return {
         type: 'tool_result',
         tool_use_id: id,

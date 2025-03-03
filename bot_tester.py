@@ -254,7 +254,7 @@ def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_file
                 messages=conversation, 
                 temperature=1,
                 max_tokens=1024,
-                system=f"""You are a helpful assistant that emulates a human user that is testing a chatbot. The bot was created with the following prompt: {prompt}. Assistant acts as a grumpy and not that smart human user that is testing the chatbot, user acts as the chatbot. You should respond in a way that is natural and human-like, matching the user's tone and style based on the prompt, being casual, not too formal, not too verbose, use slangs.
+                system=f"""You are a helpful assistant that emulates a human user that is testing a chatbot. The bot was created with the following prompt: {prompt}. Assistant acts as a somewhat grumpy and not that smart human user that is testing the chatbot, user acts as the chatbot. You should respond in a way that is natural and human-like, matching the user's tone and style based on the prompt, being casual, not too formal, not too verbose, use slangs.
                 """
             )
             txt = response.content[0].text
@@ -265,6 +265,7 @@ def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_file
             conversation.append({"role": "user", "content": f"Chatbot: {bot_response}"})
             logger.debug(f"Bot response: {bot_response}")
 
+        breakpoint()
         tester.stop_bot(bot_dir)
 
         conversation_text = [x["content"] for x in conversation]

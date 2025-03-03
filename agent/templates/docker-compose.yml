@@ -29,7 +29,9 @@ services:
       - AWS_REGION=us-west-2
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - RUN_MODE=http-server # can be server or telegram
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      - RUN_MODE=http-server # can be http-server or telegram
+      
     ports:
       - "${BOT_PORT_MAPPING:-8989:3000}"
     depends_on:
