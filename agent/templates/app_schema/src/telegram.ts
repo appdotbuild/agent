@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { env } from './env';
-import { handleChat } from './common/chat';
+import { handleChat, postprocessThread } from './common/chat';
 
 export function launchTelegram() {
   if (!env.TELEGRAM_BOT_TOKEN) {
@@ -10,11 +10,11 @@ export function launchTelegram() {
 
   const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
   bot.on(message('text'), async (ctx) => {
-    const userReply = await handleChat({
+    const thread = await handleChat({
       user_id: ctx.from.id.toString(),
       message: ctx.message.text,
     });
-    await ctx.reply(userReply);
+    await ctx.reply(postprocessThread(thread, env.LOG_RESPONSE));
   });
 
   bot.launch();

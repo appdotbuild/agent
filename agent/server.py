@@ -101,4 +101,4 @@ def compile(request: BuildRequest, background_tasks: BackgroundTasks):
 
 @app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
 def healthcheck():
-    return BuildResponse(status="success", message="ok")
+    return BuildResponse(status="success", message="ok", trace_id=None)

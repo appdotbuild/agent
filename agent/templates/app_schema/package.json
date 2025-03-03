@@ -29,6 +29,7 @@
   "scripts": {
     "build": "tsc",
     "start": "bun run src/helpers/reset.ts && bun run db:push && bun src/main.ts",
+    "start:http-server": "export RUN_MODE=http-server && bun run start",
     "db:push": "drizzle-kit push --force",
     "format": "prettier --write ."
   }

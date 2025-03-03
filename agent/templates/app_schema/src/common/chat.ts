@@ -77,6 +77,44 @@ async function callTool(toolBlock: ToolUseBlock) {
   }
 }
 
+export function postprocessThread(
+  thread: MessageParam[],
+  logResponse: boolean
+): string {
+  let toolCalls: ToolUseBlock[] = [];
+  let toolResults: ToolResultBlock[] = [];
+  let textContent: string[] = [];
+
+  thread.forEach(({ role, content }) => {
+    if (role === 'assistant' && typeof content === 'string') {
+      textContent.push(content);
+    } else if (Array.isArray(content)) {
+      content.forEach((block) => {
+        if (block.type === 'tool_use') {
+          toolCalls.push(block);
+        } else if (block.type === 'tool_result') {
+          toolResults.push(block);
+        } else if (block.type === 'text' && role === 'assistant') {
+          textContent.push(block.text);
+        }
+      });
+    }
+  });
+
+  const toolLines = toolResults.map((toolResult) => {
+    const toolCall = toolCalls.find(
+      (toolCall) => toolCall.id === toolResult.tool_use_id
+    );
+    return `Handler '${toolCall!.name}' responded with: "${toolResult.content}"`;
+  });
+
+  let userReply = textContent.join('\n');
+  if (logResponse && toolLines.length) {
+    userReply += '\n' + toolLines.join('\n');
+  }
+  return userReply || 'No response';
+}
+
 export async function handleChat({
   user_id,
   message,
@@ -86,7 +124,6 @@ export async function handleChat({
 }) {
   const THREAD_LIMIT = 10;
   const WINDOW_SIZE = 100;
-  const LOG_RESPONSE = env.LOG_RESPONSE;
 
   const messages = await getHistory(user_id, WINDOW_SIZE);
   let thread: MessageParam[] = [{ role: 'user', content: message }];
@@ -118,37 +155,5 @@ export async function handleChat({
   await putMessageBatch(
     thread.map((message) => ({ user_id: user_id, ...message }))
   );
-
-  let toolCalls: ToolUseBlock[] = [];
-  let toolResults: ToolResultBlock[] = [];
-  let textContent: string[] = [];
-
-  thread.forEach(({ role, content }) => {
-    if (role === 'assistant' && typeof content === 'string') {
-      textContent.push(content);
-    } else if (Array.isArray(content)) {
-      content.forEach((block) => {
-        if (block.type === 'tool_use') {
-          toolCalls.push(block);
-        } else if (block.type === 'tool_result') {
-          toolResults.push(block);
-        } else if (block.type === 'text' && role === 'assistant') {
-          textContent.push(block.text);
-        }
-      });
-    }
-  });
-
-  const toolLines = toolResults.map((toolResult) => {
-    const toolCall = toolCalls.find(
-      (toolCall) => toolCall.id === toolResult.tool_use_id
-    );
-    return `Handler '${toolCall!.name}' responded with: "${toolResult.content}"`;
-  });
-
-  let userReply = textContent.join('\n');
-  if (LOG_RESPONSE && toolLines.length) {
-    userReply += '\n' + toolLines.join('\n');
-  }
-  return userReply || 'No response';
+  return thread;
 }

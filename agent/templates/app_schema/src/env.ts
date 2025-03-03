@@ -4,7 +4,9 @@ import { z } from 'zod';
 import 'dotenv/config';
 
 // all env variables are strings
-const coercedBoolean = z.string().transform((s) => s !== 'false' && s !== '0');
+const coercedBoolean = z
+  .string()
+  .transform((s) => s.toLowerCase() !== 'false' && s !== '0');
 
 export const env = createEnv({
   server: {

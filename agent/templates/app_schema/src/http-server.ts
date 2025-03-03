@@ -8,7 +8,7 @@ import {
 import { z } from 'zod';
 import { handlers } from './tools';
 import { env } from './env';
-import { handleChat } from './common/chat';
+import { handleChat, postprocessThread } from './common/chat';
 import getPort from 'get-port';
 
 const ALLOWED_ORIGINS = [
@@ -72,11 +72,26 @@ export async function launchHttpServer() {
       body: reqTypeSchema,
     },
     handler: async ({ body }) => {
-      const userReply = await handleChat({
+      const thread = await handleChat({
         user_id: body.user_id,
         message: body.message,
       });
-      return { reply: userReply };
+      return { reply: postprocessThread(thread, env.LOG_RESPONSE) };
+    },
+  });
+
+  app.withTypeProvider<ZodTypeProvider>().route({
+    method: 'POST',
+    url: '/chat/json',
+    schema: {
+      body: reqTypeSchema,
+    },
+    handler: async ({ body }) => {
+      const thread = await handleChat({
+        user_id: body.user_id,
+        message: body.message,
+      });
+      return thread;
     },
   });
 
