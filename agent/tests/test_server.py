@@ -239,3 +239,4 @@ def test_background_task_addition(auth_headers, mock_env_token):
         assert data["status"] == "success"
         assert data["message"] == "done"
         assert data["trace_id"] == "test-trace-id" 
+        
