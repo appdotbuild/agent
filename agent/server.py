@@ -76,26 +76,32 @@ class BuildResponse(BaseModel):
 
 def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None):
     with tempfile.TemporaryDirectory() as tmpdir:
-        application = Application(client, compiler)
-        interpolator = Interpolator(".")
-        logger.info(f"Creating bot with prompt: {prompt}")
-        bot = application.create_bot(prompt, bot_id, langfuse_observation_id=trace_id)
-        logger.info(f"Baked bot to {tmpdir}")
-        interpolator.bake(bot, tmpdir)
-        zipfile = shutil.make_archive(
-            base_name=os.path.join(tmpdir, "app_schema"),
-            format="zip",
-            root_dir=os.path.join(tmpdir, "app_schema"),
-        )
-        with open(zipfile, "rb") as f:
-            upload_result = requests.put(write_url, data=f.read())
-            upload_result.raise_for_status()
+        try:
+            logger.info(f"Creating bot with prompt: {prompt}")
+            application = Application(client, compiler)
+            interpolator = Interpolator(".")
+            bot = application.create_bot(prompt, bot_id, langfuse_observation_id=trace_id)
+            logger.info(f"Baked bot to {tmpdir}")
+            interpolator.bake(bot, tmpdir)
+            zipfile = shutil.make_archive(
+                base_name=os.path.join(tmpdir, "app_schema"),
+                format="zip",
+                root_dir=os.path.join(tmpdir, "app_schema"),
+            )
+            logger.info(f"Uploading bot to {write_url}")
+            with open(zipfile, "rb") as f:
+                upload_result = requests.put(write_url, data=f.read())
+                upload_result.raise_for_status()
+        except Exception as e:
+            logger.error(f"Error creating bot: {e}")
+            raise
 
 
 @app.post("/compile", response_model=BuildResponse)
 def compile(request: BuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
     background_tasks.add_task(generate_bot, request.writeUrl, request.prompt, trace_id, request.botId)
+    logger.info(f"Background task started for trace_id: {trace_id}")
     return BuildResponse(status="success", message="done", trace_id=trace_id)
 
 
