@@ -104,8 +104,6 @@ export const handle_get_calendar_events = async (
 export const can_handle = (): boolean => {
   return (
     env.GOOGLE_CLIENT_EMAIL !== undefined &&
-    env.GOOGLE_CLIENT_EMAIL !== '' &&
-    env.GOOGLE_PRIVATE_KEY !== undefined &&
-    env.GOOGLE_PRIVATE_KEY !== ''
+    env.GOOGLE_PRIVATE_KEY !== undefined
   );
 };

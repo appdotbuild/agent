@@ -143,5 +143,5 @@ export const handle_search_weather = async (options: WeatherSearchParams): Promi
 };
 
 export const can_handle = (): boolean => {
-  return env.PERPLEXITY_API_KEY !== undefined && env.PERPLEXITY_API_KEY !== '';
+  return env.PERPLEXITY_API_KEY !== undefined;
 };
