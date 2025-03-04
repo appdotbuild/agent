@@ -3,11 +3,6 @@ import * as process from 'process';
 import fetch from 'node-fetch';
 import { env } from '../env';
 
-interface DomainFilter {
-  include?: string[];
-  exclude?: string[];
-}
-
 export interface PerplexitySearchParams {
   query: string;
 }
