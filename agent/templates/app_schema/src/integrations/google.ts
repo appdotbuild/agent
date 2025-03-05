@@ -64,7 +64,7 @@ export const handle_add_calendar_event = async (
 
     return `Event created successfully. Event ID: ${response.data.id}`;
   } catch (error) {
-    throw new Error(`Failed to create calendar event: ${error.message}`);
+    throw new Error(`Failed to create calendar event: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
@@ -96,7 +96,7 @@ export const handle_get_calendar_events = async (
       })
       .join('\n');
   } catch (error) {
-    throw new Error(`Failed to fetch calendar events: ${error.message}`);
+    throw new Error(`Failed to fetch calendar events: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 

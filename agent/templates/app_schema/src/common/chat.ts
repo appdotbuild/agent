@@ -10,8 +10,7 @@ import {
 import { handlers } from '../tools';
 import { custom_handlers } from '../custom_tools';
 import { getHistory, putMessageBatch } from './crud';
-import { env } from '../env';
-
+import type { ContentBlock } from './llm';
 const makeSchema = (schema: z.ZodObject<any>) => {
   const jsonSchema = zodToJsonSchema(schema, {
     target: 'jsonSchema7',
@@ -59,13 +58,13 @@ async function callClaude(prompt: string | MessageParam[]) {
   });
 }
 
-async function callTool(toolBlock: ToolUseBlock) {
+async function callTool(toolBlock: ToolUseBlock): Promise<ToolResultBlock> {
   const { name, id, input } = toolBlock;
   const tool = handlerTools.find((tool) => tool.name === name)
     || getCustomTools().find((tool) => tool.name === name);
   if (tool) {
     try {
-      const content = await tool.handler(tool.inputSchema.parse(input));
+      const content = await tool.handler(tool.inputSchema.parse(input) as any);
       console.log(`Tool ${name} called with result:`, content);
       return {
         type: 'tool_result',
@@ -101,7 +100,7 @@ export function postprocessThread(
     if (role === 'assistant' && typeof content === 'string') {
       textContent.push(content);
     } else if (Array.isArray(content)) {
-      content.forEach((block) => {
+      content.forEach((block: ContentBlock) => {
         if (block.type === 'tool_use') {
           toolCalls.push(block);
         } else if (block.type === 'tool_result') {
