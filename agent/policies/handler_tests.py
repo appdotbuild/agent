@@ -529,6 +529,11 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
             
             # TODO: import location should be handled in interpolator bake method
             params["handler_function_import"] = f'import {{ handle as {kwargs["function_name"]} }} from "../../handlers/{kwargs["function_name"]}.ts";'
+
+            # ensure double imports are not added
+            # FixMe: make it in less barbaric way
+            params["imports"] = imports.replace(f'import {{ {kwargs["function_name"]} }} from "../../common/schema";', "")
+
             output = HandlerTestOutput(
                 imports=imports,
                 tests=tests,
