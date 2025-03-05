@@ -516,16 +516,6 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
             
             linting_cmd = ["npx", "eslint", "-c", ".eslintrc.js", f"./src/tests/handlers/{kwargs['function_name']}.test.ts"]
             compilation_result, linting_result = typescript_compiler.compile_typescript(file_map, [linting_cmd])
-
-            # if linting_result["exit_code"] == 0 and compilation_result["exit_code"] != 0:
-            #     breakpoint()
-            
-            # print(":warning: LINTING RESULT: ", linting_result)
-            # print(":warning: COMPILATION RESULT: ", compilation_result)
-
-            # print(content)
-
-
             combined_feedback = {
                 "exit_code": compilation_result["exit_code"] or linting_result["exit_code"],
                 "stdout": (compilation_result["stdout"] or "") + ("\n" + linting_result["stdout"] if linting_result["stdout"] else ""),
