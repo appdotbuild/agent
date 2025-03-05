@@ -145,7 +145,11 @@ export async function handleChat({
       break;
     }
 
-    thread.push({ role: response.role, content: response.content });
+    const safeContent = response.content.filter(block => 
+      ['text', 'tool_use', 'tool_result'].includes(block.type)
+    );
+    
+    thread.push({ role: response.role, content: safeContent as ContentBlock[] });
 
     const toolUseBlocks = response.content.filter<ToolUseBlock>(
       (content) => content.type === 'tool_use'
