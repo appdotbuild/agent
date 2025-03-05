@@ -10,7 +10,7 @@ import {
 import { handlers } from '../tools';
 import { custom_handlers } from '../custom_tools';
 import { getHistory, putMessageBatch } from './crud';
-import type { ContentBlock } from './llm';
+import type { ContentBlock, ImageBlock, TextBlock } from './llm';
 const makeSchema = (schema: z.ZodObject<any>) => {
   const jsonSchema = zodToJsonSchema(schema, {
     target: 'jsonSchema7',
@@ -145,10 +145,18 @@ export async function handleChat({
       break;
     }
 
-    thread.push({ role: response.role, content: response.content });
+    const contentBlocks = response.content.map((block: any): ContentBlock => {
+      if (block.type === 'text') return block as TextBlock;
+      if (block.type === 'image') return block as ImageBlock;
+      if (block.type === 'tool_use') return block as ToolUseBlock;
+      if (block.type === 'tool_result') return block as ToolResultBlock;
+      return { type: 'text', text: String(block) };
+    });
 
-    const toolUseBlocks = response.content.filter<ToolUseBlock>(
-      (content) => content.type === 'tool_use'
+    thread.push({ role: response.role, content: contentBlocks });
+
+    const toolUseBlocks = contentBlocks.filter<ToolUseBlock>(
+      (content): content is ToolUseBlock => content.type === 'tool_use'
     );
     const allToolResultPromises = toolUseBlocks.map(async (toolBlock) => {
       return await callTool(toolBlock);
