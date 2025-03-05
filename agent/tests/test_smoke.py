@@ -207,7 +207,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
         import { db } from "../../db";
         import { messagesTable, conversationMessagesTable, conversationsTable } from "../../db/schema/application";
         import { eq } from "drizzle-orm";
-        import type { InputMessage, ResponseMessage } from "../../common/schema";
+        import type { InputMessage } from "../../common/schema";
         </imports>
 
         <test>

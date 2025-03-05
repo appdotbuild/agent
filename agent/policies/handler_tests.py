@@ -93,7 +93,9 @@ Code style:
 
 Note on imports:
 * Use only required imports, reread the code to make sure you are importing only required files,
-* STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA, TYPE NAMES FROM TYPESPEC SCHEMA,
+* STRICTLY FOLLOW TYPE NAMES FROM TYPESPEC SCHEMA, TABLE NAMES FROM DRIZZLE SCHEMA (e.g., greetingRequestsTable, greetingResponsesTable, not greeting_requests, greeting_responses)
+* STRICTLY FOLLOW DATA TYPES FROM DRIZZLE SCHEMA;
+* Remember that in Drizzle, JavaScript properties (userId) and SQL column names ("user_id") differ in casing convention
 * Drizzle schema imports must always be from "../../db/schema/application", for example: import { customTable } from "../../db/schema/application";,
 * Typespec schema imports must always be from "../../common/schema", for example: import { CarPoem } from "../../common/schema";,
 * Drizzle ORM operators imports must come from "drizzle-orm" if required: import { eq } from "drizzle-orm";
@@ -403,13 +405,22 @@ Application Definitions:
 {{drizzle_schema}}
 </drizzle>
 
-Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas.
-Match the output format provided in the Example. Return required imports within <imports> and tests encompassed with <test> tags.
+Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas. 
+Assume those imports are already provided:
+
+<imports>
+import { afterEach, beforeEach, describe } from "bun:test";
+import { resetDB, createDB } from "../../helpers";
+import {{ function_name }} from "../../common/schema";
+</imports>
+
+Ensure real function and database operations are tested, avoid mocks unless necessary.
+Match the output format provided in the Example. Return new required imports within <imports> and tests encompassed with <test> tags.
 """.strip()
 
 
 FIX_PROMPT = """
-Make sure to address following TypeScript compilation and runtime errors:
+Make sure to address following TypeScript compilation, linting and runtime errors:
 <errors>
 {{errors}}
 </errors>
@@ -422,8 +433,10 @@ Follow original formatting, return <imports> and corrected complete test suite w
 HANDLER_TEST_TPL = """
 import { afterEach, beforeEach, describe } from "bun:test";
 import { resetDB, createDB } from "../../helpers";
-{{handler_function_import}}
 {{imports}}
+{% if handler_function_import not in imports %}
+{{handler_function_import}}
+{% endif %}
 
 describe("{{handler_name}}", () => {
     beforeEach(async () => {
@@ -494,19 +507,38 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
                 "imports": imports,
                 "tests": tests,
             }
-            content = typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(**params)
-            feedback = typescript_compiler.compile_typescript({
+            content = typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(**params)            
+            file_map = {
                 f"src/tests/handlers/{kwargs['function_name']}.test.ts": content,
                 "src/common/schema.ts": kwargs['typescript_schema'],
                 "src/db/schema/application.ts": kwargs['drizzle_schema']
-            })
+            }
+            
+            linting_cmd = ["npx", "eslint", "-c", ".eslintrc.js", f"./src/tests/handlers/{kwargs['function_name']}.test.ts"]
+            compilation_result, linting_result = typescript_compiler.compile_typescript(file_map, [linting_cmd])
+
+            # if linting_result["exit_code"] == 0 and compilation_result["exit_code"] != 0:
+            #     breakpoint()
+            
+            # print(":warning: LINTING RESULT: ", linting_result)
+            # print(":warning: COMPILATION RESULT: ", compilation_result)
+
+            # print(content)
+
+
+            combined_feedback = {
+                "exit_code": compilation_result["exit_code"] or linting_result["exit_code"],
+                "stdout": (compilation_result["stdout"] or "") + ("\n" + linting_result["stdout"] if linting_result["stdout"] else ""),
+                "stderr": (compilation_result["stderr"] or "") + ("\n" + linting_result["stderr"] if linting_result["stderr"] else "")
+            }
+            
             # TODO: import location should be handled in interpolator bake method
             params["handler_function_import"] = f'import {{ handle as {kwargs["function_name"]} }} from "../../handlers/{kwargs["function_name"]}.ts";'
             output = HandlerTestOutput(
                 imports=imports,
                 tests=tests,
                 content=typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(**params),
-                feedback=feedback,
+                feedback=combined_feedback,
             )
         except PolicyException as e:
             output = e

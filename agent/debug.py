@@ -26,12 +26,10 @@ def main(initial_description: str, final_directory: str | None = None):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         interpolator = Interpolator(current_dir)
         interpolator.bake(my_bot, final_directory)
-
-        # Run npm install and TypeScript compilation as smoke test
-        app_schema_dir = os.path.join(final_directory, 'app_schema')
-        os.chdir(app_schema_dir)
-        os.system('npm install')
-        os.system('npx tsc --noEmit')
+        # run docker compose up in the dir and later down
+        os.chdir(final_directory)
+        os.system('docker compose up --build -d')
+        os.system('docker compose down')
         os.chdir('..')
 
 if __name__ == "__main__":

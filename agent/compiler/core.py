@@ -111,7 +111,7 @@ class Compiler:
     def app_container(self):
         container = self.client.containers.run(
             self.app_image,
-            command=["sleep", "10"],
+            command=["sleep", "infinity"],
             detach=True,
         )
         try:
