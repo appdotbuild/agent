@@ -7,7 +7,8 @@ export const runAgentParamsSchema = z.object({
     query: z.string(),
 });
 
-const pica = new Pica(env.PICA_SECRET_KEY!);
+export const pica = new Pica(env.PICA_SECRET_KEY!);
+
 
 async function runAgentTask(message: string): Promise<string> {
     const systemPrompt = await pica.generateSystemPrompt();
@@ -57,11 +58,7 @@ interface RunAgentResponse {
 export type RunAgentParams = z.infer<typeof runAgentParamsSchema>;
 
 export const handle_run_agent = async (options: RunAgentParams): Promise<RunAgentResponse> => {
-    const result = await runAgentTask(options.query);
-    return {
-        query: options.query,
-        result: result,
-    };
+    
 };
 
 export const can_handle = (): boolean => {

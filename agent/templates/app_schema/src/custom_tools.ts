@@ -19,6 +19,6 @@ export const custom_handlers = [
     description: "run an agent with following integrations enabled: calendar, notion",
     handler: pica.handle_run_agent,
     can_handle: pica.can_handle,
-    inputSchema: pica.runAgentParamsSchema,
+    inputSchema: pica.pica.oneTool,
   }
 ] satisfies CustomToolHandler[];
