@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import * as greet from './handlers/dummy_handler';
 
-interface ToolHandler<argSchema extends z.ZodObject<any>> {
+export interface ToolHandler<argSchema extends z.ZodObject<any>> {
   name: string;
   description: string;
   handler: (options: z.infer<argSchema>) => any;
@@ -14,5 +14,5 @@ export const handlers = [
     description: 'create a greeting message',
     handler: greet.handle,
     inputSchema: greet.greetUserParamsSchema,
-  },
+    },
 ] satisfies ToolHandler<any>[];

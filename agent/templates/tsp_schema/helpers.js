@@ -33,6 +33,12 @@ export function $llm_func(context, target, description) {
             date: utcDateTime;
         }
             
+        @scenario("""
+        Scenario:
+          Given I have a model
+          When I call the function
+          Then I get a result
+        """)
         @llm_func(1)
         fnHandler(args: ArgumentsModelName): void;
        </correct-example>

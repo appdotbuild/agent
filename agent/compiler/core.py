@@ -26,7 +26,7 @@ class Compiler:
     def compile_typespec(self, schema: str):
         container = self.client.containers.run(
             self.tsp_image,
-            command=["sleep", "10"],
+            command=["sleep", "20"],
             detach=True,
         )
         schema_path, schema = "schema.tsp", shlex.quote(schema)

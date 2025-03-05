@@ -162,3 +162,4 @@ cython_debug/
 # TypeScript
 node_modules
 tsp-output/
+.aider*

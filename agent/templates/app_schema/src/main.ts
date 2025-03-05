@@ -11,7 +11,7 @@ function start() {
       launchTelegram();
       break;
     default:
-      throw new Error('Invalid RUN_MODE');
+      throw new Error(`invalid run mode: ${env.RUN_MODE}`);
   }
 }
 
