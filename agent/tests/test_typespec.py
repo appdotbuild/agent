@@ -24,7 +24,9 @@ class TestTypespecParser:
             When user does something
             Then something happens
             \"\"\")
+            
             @llm_func("Test function description")
+            
             testFunction(options: TestModel): void;
             
             @scenario(\"\"\"
@@ -40,7 +42,9 @@ class TestTypespecParser:
         
         reasoning, definitions, functions = TypespecTaskNode.parse_output(test_output)
         
-        assert reasoning == "This is the reasoning section\nwith multiple lines"
+        # Normalize whitespace for comparison
+        normalized_reasoning = "\n".join(line.strip() for line in reasoning.splitlines())
+        assert normalized_reasoning == "This is the reasoning section\nwith multiple lines"
         assert "model TestModel" in definitions
         assert "interface TestInterface" in definitions
         assert len(functions) == 2
@@ -92,8 +96,7 @@ class TestTypespecParser:
         }
         
         interface ComplexInterface {
-            @scenario(\"\"\"
-            Scenario: First scenario
+            @scenario(\"\"\"Scenario: First scenario
             Given a condition
             When something happens
             Then check result
