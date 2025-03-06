@@ -8,7 +8,7 @@ from langfuse.client import StatefulGenerationClient
 from langfuse.decorators import observe, langfuse_context
 
 from .common import AgentState, Node
-from . import common, typespec, drizzle, typescript, handler_tests, handlers, llm_common
+from . import common, typespec, drizzle, typescript, handler_tests, handlers
 
 
 class Context:
@@ -183,3 +183,8 @@ def run_sequence():
     tests_start = handler_tests.Entry(function.name, tsc_result.data.inner.typescript_schema, dz_result.data.inner.drizzle_schema)
     tests_result, _tests_root = solve_agent(tests_start, Context(compiler), "solve_handler_tests", m_claude, langfuse_client)
     assert tests_result and isinstance(tests_result.data.inner, handler_tests.Success), "solution failed"
+
+    function = tsc_result.data.inner.functions[0]
+    handler_start = handlers.Entry(function.name, tsc_result.data.inner.typescript_schema, dz_result.data.inner.drizzle_schema, tests_result.data.inner.source)
+    handler_result, _handler_root = solve_agent(handler_start, Context(compiler), "solve_handlers", m_claude, langfuse_client)
+    assert handler_result and isinstance(handler_result.data.inner, handlers.Success), "solution failed"
