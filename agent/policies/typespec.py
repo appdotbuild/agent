@@ -249,13 +249,9 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        scenario_pattern = re.compile(
-            r'@scenario\(\s*"""\s*(?P<scenario>.+?)\s*"""\s*\)\s*' +
-            r'@llm_func\(\s*"(?P<description>.+?)"\s*\)\s*(?P<name>\w+)\s*\(',
-            re.DOTALL,
-        )
-        llm_func_pattern = re.compile(
-            r'@llm_func\(\s*"(?P<description>.+?)"\s*\)\s*(?P<name>\w+)\s*\(',
+        pattern = re.compile(
+            r'(@scenario\(\s*"""\s*(?P<scenario>.+?)\s*"""\s*\)\s*)+' +
+            r'@llm_func\(\s*"(?P<description>.+?)"\s*\)\s*(@scenario\(\s*"""\s*(?P<scenario>.+?)\s*"""\s*\)\s*)+(?P<name>\w+)\s*\(',
             re.DOTALL,
         )
         functions = [LLMFunction(**match.groupdict()) for match in pattern.finditer(definitions)]
