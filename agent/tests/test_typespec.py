@@ -374,7 +374,7 @@ class TestTypespecParser:
             When user requests to schedule on a specific date and time
             Then system should create the appointment
             \"\"\")
-            createAppointment(req: {
+            createAppointment ( req: {
                 title: string;
                 startTime: utcDateTime;
                 endTime: utcDateTime;
@@ -433,7 +433,8 @@ class TestTypespecParser:
             When user requests a count
             Then system should return the count
             \"\"\")
-            getCount(filter: string): integer;
+            getCount(
+                filter:string): integer;
             
             @llm_func("Get complex return")
             @scenario(\"\"\"
@@ -441,7 +442,7 @@ class TestTypespecParser:
             When user requests an item
             Then system should return the item with metadata
             \"\"\")
-            getItem(id: string): Result<Item>;
+                getItem( id : string ): Result<Item>;
         }
         </typespec>
         """
@@ -476,7 +477,7 @@ class TestTypespecParser:
             When user provides nested search criteria
             Then system should return matching results
             \"\"\")
-            search(params: {
+            search ( params: {
                 query: string;
                 filters: {
                     category?: string;
