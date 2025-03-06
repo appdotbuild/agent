@@ -254,7 +254,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         functions = []
         
         # Find all function declarations in the interface
-        func_pattern = re.compile(r'(\s*)(\w+)\s*\(\s*options\s*:', re.DOTALL)
+        func_pattern = re.compile(r'(\s*)(\w+)\s*\(\s*\w+\s*:', re.DOTALL)
         func_matches = list(func_pattern.finditer(definitions))
         
         for i, func_match in enumerate(func_matches):

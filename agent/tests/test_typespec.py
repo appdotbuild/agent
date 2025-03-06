@@ -27,15 +27,21 @@ class TestTypespecParser:
             
             @llm_func("Test function description")
             
-            testFunction(options: TestModel): void;
+            testFunction(opts: TestModel): void;
             
+            @llm_func("Another function description")
             @scenario(\"\"\"
             Scenario: Test scenario 2
             When user does another thing
             Then another thing happens
             \"\"\")
-            @llm_func("Another function description")
-            anotherFunction(options: TestModel): void;
+            anotherFunction(x: TestModel): void;
+
+            @llm_func("3rd function description")
+            @scenario(\"\"\"
+            Scenario: Test scenario 3
+            \"\"\")
+            thirdFunction(_: TestModel): void;
         }
         </typespec>
         """
@@ -47,7 +53,7 @@ class TestTypespecParser:
         assert normalized_reasoning == "This is the reasoning section\nwith multiple lines"
         assert "model TestModel" in definitions
         assert "interface TestInterface" in definitions
-        assert len(functions) == 2
+        assert len(functions) == 3
         
         assert functions[0].name == "testFunction"
         assert functions[0].description == "Test function description"
@@ -56,6 +62,10 @@ class TestTypespecParser:
         assert functions[1].name == "anotherFunction"
         assert functions[1].description == "Another function description"
         assert "Scenario: Test scenario 2" in functions[1].scenario
+
+        assert functions[2].name == "thirdFunction"
+        assert functions[2].description == "3rd function description"
+        assert "Scenario: Test scenario 3" in functions[2].scenario
 
 
     def test_parse_missing_tags(self):
@@ -96,6 +106,7 @@ class TestTypespecParser:
         }
         
         interface ComplexInterface {
+            @llm_func("Function with multiple scenarios")
             @scenario(\"\"\"Scenario: First scenario
             Given a condition
             When something happens
@@ -107,8 +118,7 @@ class TestTypespecParser:
             When another thing happens
             Then verify outcome
             \"\"\")
-            @llm_func("Function with multiple scenarios")
-            multiScenarioFunc(options: TestModel): void;
+            multiScenarioFunc(xxx: TestModel): void;
         }
         </typespec>
         """
@@ -119,7 +129,9 @@ class TestTypespecParser:
         assert len(functions) == 1
         assert functions[0].name == "multiScenarioFunc"
         assert functions[0].description == "Function with multiple scenarios"
+        # Verify the scenario contains the content from the last specified scenario
         assert "Scenario: Second scenario" in functions[0].scenario
+        assert "When another thing happens" in functions[0].scenario
 
         
     def test_parse_edge_case_formatting(self):
@@ -134,7 +146,7 @@ class TestTypespecParser:
             Test
             \"\"\")  @llm_func("Desc")   
             
-            minFunc(options: M): void;
+            minFunc(param: M): void;
         }
         </typespec>
         """
