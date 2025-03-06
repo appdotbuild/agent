@@ -355,8 +355,27 @@ def test_end2end():
             # only checking if aws is available if it is, so we have access to bedrock
             # make a request to the http server
             base_url = "http://localhost:8989"
-            time.sleep(5)  # to ensure migrations are done
-            response = httpx.post( f"{base_url}/chat", json={"message": "hello", "user_id": "123"}, timeout=10)
+            # Increase wait time and add container logs for debugging
+            time.sleep(10)  # Give more time for startup
+            
+            # Get logs to debug server issues
+            app_logs = app_container.logs().decode('utf-8')
+            print(f"App container logs:\n{app_logs}")
+            
+            # Try to connect with retry logic
+            max_retries = 3
+            retry_delay = 5
+            for attempt in range(max_retries):
+                try:
+                    print(f"Attempt {attempt+1}/{max_retries} to connect to server")
+                    response = httpx.post(f"{base_url}/chat", json={"message": "hello", "user_id": "123"}, timeout=15)
+                    break
+                except httpx.ReadError as e:
+                    print(f"Connection error: {e}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                    else:
+                        raise
 
             if aws_available:
                 assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
