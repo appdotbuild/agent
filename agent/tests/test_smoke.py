@@ -332,9 +332,10 @@ def test_end2end():
         env["NETWORK_NAME"] = generate_random_name("network_")
         env["RUN_MODE"] = "http-server"
         try:
-            cmd = ["docker", "compose", "up", "-d"]
+            # Set a consistent project name to avoid using directory name as prefix
+            cmd = ["docker", "compose", "-p", "botbuild", "up", "-d"]
             result = subprocess.run(cmd, check=False, env=env, capture_output=True, text=True)
-            assert result.returncode == 0
+            assert result.returncode == 0, f"Docker compose failed with error: {result.stderr}"
             time.sleep(5)
             client = docker.from_env()
             app_container = client.containers.get(env["APP_CONTAINER_NAME"])
@@ -365,7 +366,7 @@ def test_end2end():
 
         finally:
             try:
-                cmd = ["docker", "compose", "down"]
+                cmd = ["docker", "compose", "-p", "botbuild", "down"]
                 subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
             except subprocess.CalledProcessError as e:
                 print(f"Error downing docker compose: {e}")
