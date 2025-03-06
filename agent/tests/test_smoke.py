@@ -362,7 +362,7 @@ def test_end2end():
                 try:
                     response = httpx.post(f"{base_url}/chat", json={"message": "hello", "user_id": "123"}, timeout=15)
                     break
-                except httpx.ReadTimeout:
+                except httpx.HTTPError:
                     if attempt < max_retries - 1:
                         print(f"request timed out, retrying ({attempt+1}/{max_retries})")
                         time.sleep(3 * (attempt + 1))
