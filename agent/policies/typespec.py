@@ -119,14 +119,6 @@ With full meal breakdown
     @llm_func("Retrieve and summarize dietary history")
     listDishes(options: ListDishesRequest): Dish[];
 }
-
-    @scenario(
-\"\"\"
-Scenario: Historical query with date range
-When user asks "What did I eat between 2024-02-10 and 2024-02-15?"
-Then system returns entries from 2024-02-10 to 2024-02-15
-With full meal breakdown
-\"\"\")
 </typespec>
 
 <description>
@@ -257,8 +249,12 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        pattern = re.compile(
+        scenario_pattern = re.compile(
             r'@scenario\(\s*"""\s*(?P<scenario>.+?)\s*"""\s*\)\s*' +
+            r'@llm_func\(\s*"(?P<description>.+?)"\s*\)\s*(?P<name>\w+)\s*\(',
+            re.DOTALL,
+        )
+        llm_func_pattern = re.compile(
             r'@llm_func\(\s*"(?P<description>.+?)"\s*\)\s*(?P<name>\w+)\s*\(',
             re.DOTALL,
         )
