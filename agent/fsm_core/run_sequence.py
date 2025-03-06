@@ -123,7 +123,7 @@ def agent_dfs[T](
     expand_fn = langfuse_expand(context, llm_fn, langfuse, langfuse_parent_trace_id, span.id)
     solution = common.dfs_rewind(root, expand_fn, max_depth, max_width, max_budget)
     span.end(
-        output=solution.data.inner.__dict__, # check
+        output=solution.data.inner.__dict__ if solution else None, # check
         metadata={"child_node_id": root._id}
     )
     return solution, root
@@ -147,6 +147,7 @@ def solve_agent[T](
     def _inner():
         trace_id = langfuse_context.get_current_trace_id()
         observation_id = langfuse_context.get_current_observation_id()
+        assert trace_id and observation_id, "missing trace_id or observation_id"
         langfuse_context.update_current_trace(name=trace_name)
         solution = agent_dfs(
             init,
