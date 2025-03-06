@@ -299,6 +299,7 @@ def test_end2end():
     client = _anthropic_client("some response")
     langfuse_context.configure(enabled=False)
     feature_flags.refine_initial_prompt = True
+    feature_flags.perplexity = True
     
     with tempfile.TemporaryDirectory() as tempdir:
         application = Application(client, compiler)
@@ -332,7 +333,7 @@ def test_end2end():
         env["RUN_MODE"] = "http-server"
         try:
             cmd = ["docker", "compose", "up", "-d"]
-            result = subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
+            result = subprocess.run(cmd, check=False, env=env, capture_output=True, text=True)
             assert result.returncode == 0
             time.sleep(5)
             client = docker.from_env()
@@ -349,15 +350,18 @@ def test_end2end():
             )            
             aws_available = (aws_check.returncode == 0 and "UserId" in aws_check.stdout) or \
                            (os.environ.get("AWS_ACCESS_KEY_ID", "").strip() != "")        
+            print("AWS is available, making a request to the http server")
+            # only checking if aws is available if it is, so we have access to bedrock
+            # make a request to the http server
+            base_url = "http://localhost:8989"
+            time.sleep(5)  # to ensure migrations are done
+            response = httpx.post( f"{base_url}/chat", json={"message": "hello", "user_id": "123"}, timeout=10)
+
             if aws_available:
-                print("AWS is available, making a request to the http server")
-                # only checking if aws is available if it is, so we have access to bedrock
-                # make a request to the http server
-                base_url = "http://localhost:8989"
-                time.sleep(5)  # to ensure migrations are done
-                response = httpx.post( f"{base_url}/chat", json={"message": "hello", "user_id": "123"}, timeout=10)
                 assert response.status_code == 200, f"Expected status code 200, got {response.status_code}"
-                assert response.json()["reply"] 
+                assert response.json()["reply"]
+            else:
+                assert response.status_code == 500, f"Expected status code 500, as AWS creds are not available and bot should fail"
 
         finally:
             try:

@@ -92,7 +92,7 @@ class BotTester:
         
         port_mapping = f"{self.port}:3000"
         self.env["BOT_PORT_MAPPING"] = port_mapping        
-        cmd = ["docker", "compose", "up", "-d"]
+        cmd = ["docker", "compose", "up", "-d", "--build"]
         
         try:
             result = subprocess.run(cmd, check=True, env=self.env, capture_output=True, text=True)
@@ -137,7 +137,6 @@ class BotTester:
                     logger.info(f"attempt {attempt+1} failed, retrying in 5 seconds: {str(e)}")
                     time.sleep(5)
                 else:
-                    breakpoint()
                     raise
     
     def evaluate_experience(self, conversation: List[Dict[str, Any]], prompt: str) -> Dict[str, Any]:
@@ -297,6 +296,9 @@ def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_file
             "logs": [x for x in logs if x.startswith("Tool")],
         }
         return result
+    except Exception:
+        logger.exception(f"Error evaluating {bot_name}")
+        return None
         
     finally:
         tester.stop_bot(bot_dir)
@@ -348,7 +350,7 @@ DEFAULT_PROMPTS = (
 def eval_all_prompts(output_file: str = "results.json", messages: int = 10, keep_files: bool = True):
     pool = jl.Parallel(n_jobs=-1, backend="sequential" if os.getenv("DEBUG") else "loky")
     jobs = [jl.delayed(eval_single_prompt)(prompt, bot_name, messages, keep_files) for bot_name, prompt in DEFAULT_PROMPTS]
-    results = pool(jobs)
+    results = [x for x in pool(jobs) if x is not None]
 
     with open(output_file, "w") as fd:
         json.dump(results, fd, indent=4)
