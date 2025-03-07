@@ -43,10 +43,24 @@ export const handle_run_agent = async (options: RunAgentParams): Promise<RunAgen
 export const can_handle = (): boolean => {
     return env.PICA_SECRET_KEY !== undefined;
 };
-export const get_all_tools = (): CustomToolHandler[] => {
-    return [];
-};
 
+export const get_all_tools = (): CustomToolHandler[] => {
+    // TODO: Add all tools from Pica
+    return [{
+        name: "calendar",
+        description: "Calendar",
+        inputSchema: runAgentParamsSchema,
+        handler: handle_run_agent,
+        can_handle: can_handle,
+    },
+    {
+        name: "notion",
+        description: "Notion",
+        inputSchema: runAgentParamsSchema,
+        handler: handle_run_agent,
+        can_handle: can_handle,
+    }];
+}
 
 //runAgentTask("Add a slot in my calendar for this week for and time when the weather is sunny in London")
 //  .then((text) => {
