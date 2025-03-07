@@ -48,8 +48,8 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ github.sha }}-typespec-${{ needs.setup.outputs.cache-key }}
           restore-keys: |
             ${{ runner.os }}-buildx-${{ github.sha }}-typespec-
-            ${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-typespec-
-            ${{ runner.os }}-buildx-typespec-
+            ${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-typespec
+            ${{ runner.os }}-buildx-typespec
 
       - name: Build TypeSpec Docker image
         uses: docker/build-push-action@v4
@@ -93,8 +93,8 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ github.sha }}-app-${{ needs.setup.outputs.cache-key }}
           restore-keys: |
             ${{ runner.os }}-buildx-${{ github.sha }}-app-
-            ${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-app-
-            ${{ runner.os }}-buildx-app-
+            ${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-app
+            ${{ runner.os }}-buildx-app
 
       - name: Build Application Docker image
         uses: docker/build-push-action@v4
