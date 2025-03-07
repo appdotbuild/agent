@@ -2,6 +2,7 @@ import { z } from 'zod';
 import * as process from 'process';
 import fetch from 'node-fetch';
 import { env } from '../env';
+import type { CustomToolHandler } from '../common/tool-handler';
 
 export interface PerplexitySearchParams {
   query: string;
@@ -139,4 +140,37 @@ export const handle_search_weather = async (options: WeatherSearchParams): Promi
 
 export const can_handle = (): boolean => {
   return env.PERPLEXITY_API_KEY !== undefined;
+};
+
+export const get_all_tools = (): CustomToolHandler[] => {
+  return [
+    {
+      name: 'web_search',
+      description: 'Search the web for information',
+      inputSchema: webSearchParamsSchema,
+      handler: handle_search_web,
+      can_handle: can_handle,
+    },
+    {
+      name: 'news_search',
+      description: 'Search the web for news',
+      inputSchema: newsSearchParamsSchema,
+      handler: handle_search_news,
+      can_handle: can_handle,
+    },
+    {
+      name: 'market_search',
+      description: 'Search the web for market information',
+      inputSchema: marketSearchParamsSchema,
+      handler: handle_search_market,
+      can_handle: can_handle,
+    },
+    {
+      name: 'weather_search',
+      description: 'Search the web for weather information',
+      inputSchema: weatherSearchParamsSchema,
+      handler: handle_search_weather,
+      can_handle: can_handle,
+    },
+  ];
 };

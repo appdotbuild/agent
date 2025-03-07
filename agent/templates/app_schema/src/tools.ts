@@ -1,12 +1,5 @@
-import { z } from 'zod';
+import type { ToolHandler } from './common/tool-handler';
 import * as greet from './handlers/dummy_handler';
-
-export interface ToolHandler<argSchema extends z.ZodObject<any>> {
-  name: string;
-  description: string;
-  handler: (options: z.infer<argSchema>) => any;
-  inputSchema: argSchema;
-}
 
 export const handlers = [
   {

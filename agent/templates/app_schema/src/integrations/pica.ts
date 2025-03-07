@@ -3,6 +3,7 @@ import { generateText } from "ai";
 import { Pica } from "@picahq/ai";
 import { env } from "../env";
 import { z } from "zod";
+import type { CustomToolHandler } from "../common/tool-handler";
 
 export const runAgentParamsSchema = z.object({
     query: z.string(),
@@ -42,6 +43,10 @@ export const handle_run_agent = async (options: RunAgentParams): Promise<RunAgen
 export const can_handle = (): boolean => {
     return env.PICA_SECRET_KEY !== undefined;
 };
+export const get_all_tools = (): CustomToolHandler[] => {
+    return [];
+};
+
 
 //runAgentTask("Add a slot in my calendar for this week for and time when the weather is sunny in London")
 //  .then((text) => {

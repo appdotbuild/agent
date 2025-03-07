@@ -1,10 +1,6 @@
+import type { CustomToolHandler } from './common/tool-handler';
 import * as perplexity from './integrations/perplexity';
 import * as pica from './integrations/pica';
-import type { ToolHandler } from './tools';
-
-interface CustomToolHandler extends ToolHandler<any> {
-  can_handle: () => boolean;
-}
 
 export const custom_handlers = [
   {
