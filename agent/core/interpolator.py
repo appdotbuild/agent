@@ -1,8 +1,7 @@
 import os
 import jinja2
 from shutil import copytree, ignore_patterns
-
-from core import feature_flags
+from capabilities import all_custom_tools
 from .datatypes import *
 
 TOOL_TEMPLATE = """
@@ -26,7 +25,7 @@ import type { CustomToolHandler } from './common/tool-handler';
 import * as schema from './common/schema';
 {% set imported_modules = [] %}
 {% for handler in handlers %}
-{% set module_name = handler.name.split('_')[0] %} # pica_calendar -> pica
+{% set module_name = handler.name.split('_')[0] %}
 {% if module_name not in imported_modules %}
 import * as {{ module_name }} from './integrations/{{ module_name }}';
 {% set _ = imported_modules.append(module_name) %}
@@ -71,21 +70,14 @@ class Interpolator:
             for name, handler in application.handlers.items()
         ]
 
-        custom_tools = [
-            {
-                "name": name,
-                "description": next((f.description for f in application.typespec.llm_functions if f.name == name), ""), 
-                "argument_schema": f"schema.{handler.argument_schema}",
-            }
-            for name, handler in application.handlers.items()
-        ]
+        custom_tools = all_custom_tools # TODO: filter based on included capabilities from user
 
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))
 
         # TODO: customize tools based on included capabilities from user
         with open(os.path.join(output_dir, "app_schema", "src", "custom_tools.ts"), "w") as f:
-            f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=custom_tools))
+            f.write(self.environment.from_string(CUSTOM_TOOL_TEMPLATE).render(handlers=custom_tools))
         
         for name, handler in application.handlers.items():
             with open(os.path.join(output_dir, "app_schema", "src", "handlers", f"{name}.ts"), "w") as f:
