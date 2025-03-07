@@ -23,9 +23,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
+          key: ${{ runner.os }}-buildx-${{ github.sha }}-${{ hashFiles('agent/Dockerfile.*') }}
           restore-keys: |
-            ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
+            ${{ runner.os }}-buildx-${{ github.sha }}-
+            ${{ runner.os }}-buildx-
 
       - name: Build TypeSpec Docker image
         uses: docker/build-push-action@v4
