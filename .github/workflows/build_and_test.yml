@@ -63,7 +63,11 @@ jobs:
           echo "${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-typespec"
           echo "${{ runner.os }}-buildx-typespec"
       
+      # Cache Docker layers for TypeSpec
+      # The cache steps are based on the official example from actions/cache
+      # https://github.com/docker/build-push-action/issues/252#issuecomment-744400425
       - name: Cache Docker layers for TypeSpec
+        id: cache-typescript
         uses: actions/cache@v3
         with:
           path: /tmp/.buildx-cache-typespec
@@ -72,6 +76,12 @@ jobs:
             ${{ runner.os }}-buildx-${{ github.sha }}-typespec-
             ${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-typespec
             ${{ runner.os }}-buildx-typespec
+            
+      # Debugging the cache state before build
+      - name: Check cache contents before build
+        run: |
+          echo "Cache hit: ${{ steps.cache-typescript.outputs.cache-hit }}"
+          ls -la /tmp/.buildx-cache-typespec || echo "Cache directory does not exist yet"
 
       - name: Build TypeSpec Docker image
         uses: docker/build-push-action@v4
@@ -81,13 +91,10 @@ jobs:
           tags: botbuild/tsp_compiler
           push: false
           load: true
+          # Use cache-from even on cache miss to initialize the cache
           cache-from: type=local,src=/tmp/.buildx-cache-typespec
-          cache-to: type=local,dest=/tmp/.buildx-cache-typespec-new,mode=max
-
-      - name: Move cache for TypeSpec
-        run: |
-          rm -rf /tmp/.buildx-cache-typespec
-          mv /tmp/.buildx-cache-typespec-new /tmp/.buildx-cache-typespec
+          # Important: Write directly to the cache path that actions/cache will save
+          cache-to: type=local,dest=/tmp/.buildx-cache-typespec,mode=max
           
       - name: Save TypeSpec Docker image
         run: docker save botbuild/tsp_compiler -o /tmp/tsp_compiler.tar
@@ -118,7 +125,11 @@ jobs:
           echo "${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-app"
           echo "${{ runner.os }}-buildx-app"
           
+      # Cache Docker layers for Application
+      # The cache steps are based on the official example from actions/cache
+      # https://github.com/docker/build-push-action/issues/252#issuecomment-744400425
       - name: Cache Docker layers for Application
+        id: cache-application
         uses: actions/cache@v3
         with:
           path: /tmp/.buildx-cache-app
@@ -127,6 +138,12 @@ jobs:
             ${{ runner.os }}-buildx-${{ github.sha }}-app-
             ${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-app
             ${{ runner.os }}-buildx-app
+            
+      # Debugging the cache state before build
+      - name: Check cache contents before build
+        run: |
+          echo "Cache hit: ${{ steps.cache-application.outputs.cache-hit }}"
+          ls -la /tmp/.buildx-cache-app || echo "Cache directory does not exist yet"
 
       - name: Build Application Docker image
         uses: docker/build-push-action@v4
@@ -136,13 +153,10 @@ jobs:
           tags: botbuild/app_schema
           push: false
           load: true
+          # Use cache-from even on cache miss to initialize the cache
           cache-from: type=local,src=/tmp/.buildx-cache-app
-          cache-to: type=local,dest=/tmp/.buildx-cache-app-new,mode=max
-
-      - name: Move cache for Application
-        run: |
-          rm -rf /tmp/.buildx-cache-app
-          mv /tmp/.buildx-cache-app-new /tmp/.buildx-cache-app
+          # Important: Write directly to the cache path that actions/cache will save
+          cache-to: type=local,dest=/tmp/.buildx-cache-app,mode=max
           
       - name: Save Application Docker image
         run: docker save botbuild/app_schema -o /tmp/app_schema.tar
