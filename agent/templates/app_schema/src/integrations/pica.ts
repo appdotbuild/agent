@@ -47,15 +47,15 @@ export const can_handle = (): boolean => {
 export const get_all_tools = (): CustomToolHandler[] => {
     // TODO: Add all tools from Pica
     return [{
-        name: "calendar",
-        description: "Calendar",
+        name: "pica_calendar",
+        description: "Goolge calendar integration",
         inputSchema: runAgentParamsSchema,
         handler: handle_run_agent,
         can_handle: can_handle,
     },
     {
-        name: "notion",
-        description: "Notion",
+        name: "pica_notion",
+        description: "Notion integration",
         inputSchema: runAgentParamsSchema,
         handler: handle_run_agent,
         can_handle: can_handle,

@@ -6,17 +6,10 @@ from core import feature_flags
 from .datatypes import *
 
 TOOL_TEMPLATE = """
-import { z } from 'zod';
 import * as schema from './common/schema';
+import type { ToolHandler } from './common/tool-handler';
 {% for handler in handlers %}import * as {{ handler.name }} from './handlers/{{ handler.name }}';
 {% endfor %}
-
-interface ToolHandler<argSchema extends z.ZodObject<any>> {
-    name: string;
-    description: string;
-    handler: (options: z.infer<argSchema>) => any;
-    inputSchema: argSchema;
-}
 
 export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
     {
@@ -28,7 +21,28 @@ export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
 ];
 """.strip()
 
+CUSTOM_TOOL_TEMPLATE = """
+import type { CustomToolHandler } from './common/tool-handler';
+import * as schema from './common/schema';
+{% set imported_modules = [] %}
+{% for handler in handlers %}
+{% set module_name = handler.name.split('_')[0] %} # pica_calendar -> pica
+{% if module_name not in imported_modules %}
+import * as {{ module_name }} from './integrations/{{ module_name }}';
+{% set _ = imported_modules.append(module_name) %}
+{% endif %}
+{% endfor %}
 
+export const custom_handlers: CustomToolHandler<any>[] = [{% for handler in handlers %}
+    {
+        name: '{{ handler.name }}',
+        description: `{{ handler.description }}`,
+        handler: {{ handler.name }}.handle,
+        inputSchema: {{ handler.argument_schema }},
+        can_handle: {{ handler.name }}.can_handle,
+    },{% endfor %}
+];
+""".strip()
 
 class Interpolator:
     def __init__(self, root_dir: str):
@@ -57,8 +71,21 @@ class Interpolator:
             for name, handler in application.handlers.items()
         ]
 
+        custom_tools = [
+            {
+                "name": name,
+                "description": next((f.description for f in application.typespec.llm_functions if f.name == name), ""), 
+                "argument_schema": f"schema.{handler.argument_schema}",
+            }
+            for name, handler in application.handlers.items()
+        ]
+
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))
+
+        # TODO: customize tools based on included capabilities from user
+        with open(os.path.join(output_dir, "app_schema", "src", "custom_tools.ts"), "w") as f:
+            f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=custom_tools))
         
         for name, handler in application.handlers.items():
             with open(os.path.join(output_dir, "app_schema", "src", "handlers", f"{name}.ts"), "w") as f:
