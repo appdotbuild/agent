@@ -7,11 +7,21 @@ on:
   pull_request:
 
 jobs:
-  build-and-test:
+  setup:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Generate cache key
+        id: cache-key
+        run: echo "key=${{ hashFiles('agent/Dockerfile.*', 'agent/templates/**') }}" >> $GITHUB_OUTPUT
 
+  build-typespec:
+    needs: setup
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -19,14 +29,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Cache Docker layers
+      - name: Cache Docker layers for TypeSpec
         uses: actions/cache@v3
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}-${{ hashFiles('agent/Dockerfile.*') }}
+          path: /tmp/.buildx-cache-typespec
+          key: ${{ runner.os }}-buildx-${{ github.sha }}-typespec-${{ needs.setup.outputs.cache-key }}
           restore-keys: |
-            ${{ runner.os }}-buildx-${{ github.sha }}-
-            ${{ runner.os }}-buildx-
+            ${{ runner.os }}-buildx-${{ github.sha }}-typespec-
+            ${{ runner.os }}-buildx-${{ github.ref_name }}-typespec-
+            ${{ runner.os }}-buildx-typespec-
 
       - name: Build TypeSpec Docker image
         uses: docker/build-push-action@v4
@@ -36,8 +47,42 @@ jobs:
           tags: botbuild/tsp_compiler
           push: false
           load: true
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache-typespec
+          cache-to: type=local,dest=/tmp/.buildx-cache-typespec-new,mode=max
+
+      - name: Move cache for TypeSpec
+        run: |
+          rm -rf /tmp/.buildx-cache-typespec
+          mv /tmp/.buildx-cache-typespec-new /tmp/.buildx-cache-typespec
+          
+      - name: Save TypeSpec Docker image
+        run: docker save botbuild/tsp_compiler -o /tmp/tsp_compiler.tar
+        
+      - name: Upload TypeSpec Docker image
+        uses: actions/upload-artifact@v3
+        with:
+          name: tsp-compiler-image
+          path: /tmp/tsp_compiler.tar
+
+  build-application:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Cache Docker layers for Application
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-app
+          key: ${{ runner.os }}-buildx-${{ github.sha }}-app-${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ github.sha }}-app-
+            ${{ runner.os }}-buildx-${{ github.ref_name }}-app-
+            ${{ runner.os }}-buildx-app-
 
       - name: Build Application Docker image
         uses: docker/build-push-action@v4
@@ -47,16 +92,49 @@ jobs:
           tags: botbuild/app_schema
           push: false
           load: true
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache-app
+          cache-to: type=local,dest=/tmp/.buildx-cache-app-new,mode=max
+
+      - name: Move cache for Application
+        run: |
+          rm -rf /tmp/.buildx-cache-app
+          mv /tmp/.buildx-cache-app-new /tmp/.buildx-cache-app
+          
+      - name: Save Application Docker image
+        run: docker save botbuild/app_schema -o /tmp/app_schema.tar
+        
+      - name: Upload Application Docker image
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-schema-image
+          path: /tmp/app_schema.tar
+
+  run-tests:
+    needs: [build-typespec, build-application]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Download TypeSpec Docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: tsp-compiler-image
+          path: /tmp
+          
+      - name: Download Application Docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: app-schema-image
+          path: /tmp
+          
+      - name: Load Docker images
+        run: |
+          docker load -i /tmp/tsp_compiler.tar
+          docker load -i /tmp/app_schema.tar
 
       - name: Pull PostgreSQL image
         run: docker pull postgres:17.0-alpine
-
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
