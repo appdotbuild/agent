@@ -22,14 +22,26 @@ jobs:
         
       - name: Generate safe ref name
         id: ref-name
-        run: echo "value=$(echo ${{ github.ref_name }} | sed 's/[^a-zA-Z0-9]/-/g')" >> $GITHUB_OUTPUT
+        run: echo "value=$(echo ${{ github.ref_name }} | sed 's/[^a-zA-Z0-9]/-/g')" >> $GITHUB_OUTPUT 
+        # This converts branch names like "feature/foo" to "feature-foo"
         
       - name: Debug cache keys
         run: |
+          echo "===== DEBUG INFORMATION ====="
           echo "GITHUB_SHA: ${{ github.sha }}"
+          echo "GITHUB_REF: ${{ github.ref }}"
           echo "GITHUB_REF_NAME: ${{ github.ref_name }}"
+          echo "GITHUB_HEAD_REF: ${{ github.head_ref }}"
+          echo "GITHUB_BASE_REF: ${{ github.base_ref }}"
           echo "SAFE_REF_NAME: $(echo ${{ github.ref_name }} | sed 's/[^a-zA-Z0-9]/-/g')"
           echo "CACHE_KEY: ${{ hashFiles('agent/Dockerfile.*', 'agent/templates/**') }}"
+          
+          # Print the actual keys that will be used
+          echo "===== GENERATED CACHE KEYS ====="
+          echo "PRIMARY_KEY: ${{ runner.os }}-buildx-${{ github.sha }}-typespec-${{ hashFiles('agent/Dockerfile.*', 'agent/templates/**') }}"
+          echo "BRANCH_SHA_KEY: ${{ runner.os }}-buildx-${{ github.sha }}-typespec-"
+          echo "BRANCH_NAME_KEY: ${{ runner.os }}-buildx-$(echo ${{ github.ref_name }} | sed 's/[^a-zA-Z0-9]/-/g')-typespec"
+          echo "GENERIC_KEY: ${{ runner.os }}-buildx-typespec"
 
   build-typespec:
     needs: setup
@@ -41,6 +53,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      # The issue might be related to how GitHub constructs the cache key internally
+      # Let's add more explicit debug information above the actual cache step
+      - name: Print exact cache keys that will be used
+        run: |
+          echo "LOOKING FOR THESE EXACT KEYS:"
+          echo "${{ runner.os }}-buildx-${{ github.sha }}-typespec-${{ needs.setup.outputs.cache-key }}"
+          echo "${{ runner.os }}-buildx-${{ github.sha }}-typespec-"
+          echo "${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-typespec"
+          echo "${{ runner.os }}-buildx-typespec"
+      
       - name: Cache Docker layers for TypeSpec
         uses: actions/cache@v3
         with:
@@ -86,6 +108,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      # The issue might be related to how GitHub constructs the cache key internally
+      # Let's add more explicit debug information above the actual cache step
+      - name: Print exact cache keys that will be used for Application
+        run: |
+          echo "LOOKING FOR THESE EXACT KEYS (Application):"
+          echo "${{ runner.os }}-buildx-${{ github.sha }}-app-${{ needs.setup.outputs.cache-key }}"
+          echo "${{ runner.os }}-buildx-${{ github.sha }}-app-"
+          echo "${{ runner.os }}-buildx-${{ needs.setup.outputs.safe-ref-name }}-app"
+          echo "${{ runner.os }}-buildx-app"
+          
       - name: Cache Docker layers for Application
         uses: actions/cache@v3
         with:
