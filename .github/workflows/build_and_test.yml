@@ -59,7 +59,7 @@ jobs:
         run: docker save botbuild/tsp_compiler -o /tmp/tsp_compiler.tar
         
       - name: Upload TypeSpec Docker image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tsp-compiler-image
           path: /tmp/tsp_compiler.tar
@@ -104,7 +104,7 @@ jobs:
         run: docker save botbuild/app_schema -o /tmp/app_schema.tar
         
       - name: Upload Application Docker image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: app-schema-image
           path: /tmp/app_schema.tar
