@@ -244,8 +244,8 @@ Your final output should consist only of the rating and explanation, and should 
         return prefix + ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 
-def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_files: bool = True):
-    tester = BotTester(aws_profile="dev", aws_region="us-west-2", output_dir="/tmp/bot_eval/")
+def eval_single_prompt(prompt: str, bot_name: str, messages: int = 10, keep_files: bool = True, output_dir: str = "/tmp/bot_eval/"):
+    tester = BotTester(aws_profile="dev", aws_region="us-west-2", output_dir=output_dir)
     claude = tester.client
 
     bot_dir = tester.generate_bot(prompt, bot_name)
@@ -309,26 +309,26 @@ DEFAULT_PROMPTS = (
          "PlantBot",
          "hey can u make me a bot that tracks my plants and finds relevant info about? like when i water them and stuff... need it to remind me when to water next",
      ),
-     (
-         "ComicBot",
-         "Generate a bot to manage my comic book collection - should track titles, issues, and value estimates. Thanks!",
-     ),
+    #  (
+    #      "ComicBot",
+    #      "Generate a bot to manage my comic book collection - should track titles, issues, and value estimates. Thanks!",
+    #  ),
      (
          "HomeworkBot",
          "need bot 4 tracking my kids homework assignments and searching if needed & due dates... must be simple 2 use!",
      ),
-    #  (
-    #      "WardrobeBot",
-    #      "Can you create a bot that suggests outfit combinations from my wardrobe? I want to input my clothes and get daily suggestions",
-    #  ),
-    #  (
-    #      "SpanishBot",
-    #      "make me a bot that helps me practice spanish! should ask me random words daily and track my progress",
-    #  ),
-    #  (
-    #      "GameBot",
-    #      "Generate chatbot to manage my board game nights - need to track who's coming, which games we're bringing, and keep score",
-    #  ),
+     (
+         "WardrobeBot",
+         "Can you create a bot that suggests outfit combinations from my wardrobe? I want to input my clothes and get daily suggestions",
+     ),
+     (
+         "SpanishBot",
+         "make me a bot that helps me practice spanish! should ask me random words daily and track my progress",
+     ),
+     (
+         "GameBot",
+         "Generate chatbot to manage my board game nights - need to track who's coming, which games we're bringing, and keep score",
+     ),
     #  (
     #      "CoffeeBot",
     #      "I want a bot that tracks my coffee consumption and tells me fun facts about coffee everytime i log a cup!",
@@ -347,15 +347,17 @@ DEFAULT_PROMPTS = (
     #  ),
  )
 
-def eval_all_prompts(output_file: str = "results.json", messages: int = 10, keep_files: bool = True):
+def eval_all_prompts(output_file: str = "results.json", messages: int = 10, keep_files: bool = True, output_dir: str = "/tmp/bot_eval/"):
+    os.makedirs(output_dir, exist_ok=True)
     pool = jl.Parallel(n_jobs=-1, backend="sequential" if os.getenv("DEBUG") else "loky")
-    jobs = [jl.delayed(eval_single_prompt)(prompt, bot_name, messages, keep_files) for bot_name, prompt in DEFAULT_PROMPTS]
+    jobs = [jl.delayed(eval_single_prompt)(prompt, bot_name, messages, keep_files, output_dir) for bot_name, prompt in DEFAULT_PROMPTS]
     results = [x for x in pool(jobs) if x is not None]
 
-    with open(output_file, "w") as fd:
+    full_output_path = os.path.join(output_dir, output_file)
+    with open(full_output_path, "w") as fd:
         json.dump(results, fd, indent=4)
+    logger.info(f"Results saved to {full_output_path}")
     return results
-
 
 
 if __name__ == "__main__":

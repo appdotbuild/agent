@@ -15,6 +15,7 @@ class TracingClient:
         model: str = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
         max_tokens: int = 8192,
         temperature: float = 1.0,
+        override_thinking_budget: int = 0,
         **kwargs,
     ):
         trace_messages = messages.copy()
@@ -31,17 +32,18 @@ class TracingClient:
             },
             metadata=kwargs,
         )
-        if self.thinking_budget > 0:
+        thinking_budget = max(self.thinking_budget, override_thinking_budget)
+        if thinking_budget > 0:
             thinking_config = {
                 "type": "enabled",
-                "budget_tokens": self.thinking_budget,
+                "budget_tokens": thinking_budget,
             }
         else:
             thinking_config = {
                 "type": "disabled",
             }
         completion: Message = self.m_claude.messages.create(
-            max_tokens=max_tokens + self.thinking_budget,
+            max_tokens=max_tokens + thinking_budget,
             model=model,
             messages=messages,
             temperature=temperature,
