@@ -35,7 +35,7 @@ import * as {{ module_name }} from './integrations/{{ module_name }}';
 export const custom_handlers: CustomToolHandler[] = [{% for handler in handlers %}
 {% set module_name = handler.name.split('.')[0] %}
     {
-        name: '{{ handler.name }}',
+        name: '{{ handler.name.replace('.', '_') }}',
         description: `{{ handler.description }}`,
         handler: {{ handler.name }},
         inputSchema: {{ handler.name }}_params_schema,
