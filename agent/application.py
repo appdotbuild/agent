@@ -23,7 +23,7 @@ class Application:
         self.DFS_BUDGET = dfs_budget
 
     @observe(capture_output=False)
-    def create_bot(self, application_description: str, bot_id: str | None = None, *args, **kwargs):
+    def create_bot(self, application_description: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
         langfuse_context.update_current_trace(user_id=os.environ.get("USER_ID", socket.gethostname()))
         if bot_id is not None:
             langfuse_context.update_current_observation(metadata={"bot_id": bot_id})
@@ -89,7 +89,7 @@ class Application:
                 "gherkin_ok": gherkin.error_output is None,
             },
         )
-        return ApplicationOut(app_prompt, typespec, drizzle, handlers, handler_test_dict, typescript_schema, gherkin, langfuse_context.get_current_trace_id())
+        return ApplicationOut(app_prompt, capabilities, typespec, drizzle, handlers, handler_test_dict, typescript_schema, gherkin, langfuse_context.get_current_trace_id())
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):

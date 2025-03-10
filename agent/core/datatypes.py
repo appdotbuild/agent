@@ -79,10 +79,15 @@ class RefineOut:
     refined_description: str
     error_output: str | None
 
+@dataclass
+class CapabilitiesOut:
+    capabilities: list[str]
+    error_output: str | None
 
 @dataclass
 class ApplicationOut:
     refined_description: RefineOut
+    capabilities: CapabilitiesOut
     typespec: TypespecOut
     drizzle: DrizzleOut
     handlers: dict[str, HandlerOut]

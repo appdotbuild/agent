@@ -71,7 +71,7 @@ class Interpolator:
             for name, handler in application.handlers.items()
         ]
 
-        custom_tools = all_custom_tools # TODO: filter based on included capabilities from user
+        custom_tools = all_custom_tools.filter(lambda x: x.name in application.capabilities.capabilities)
 
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))

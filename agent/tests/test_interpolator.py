@@ -3,7 +3,7 @@ import tempfile
 import shutil
 import unittest
 from core.interpolator import Interpolator, TOOL_TEMPLATE, CUSTOM_TOOL_TEMPLATE
-from core.datatypes import ApplicationOut, DrizzleOut, TypescriptOut, TypespecOut, HandlerOut, HandlerTestsOut, RefineOut, GherkinOut
+from core.datatypes import ApplicationOut, DrizzleOut, CapabilitiesOut, TypescriptOut, TypespecOut, HandlerOut, HandlerTestsOut, RefineOut, GherkinOut
 
 class InterpolatorTest(unittest.TestCase):
     def setUp(self):
@@ -31,6 +31,10 @@ class InterpolatorTest(unittest.TestCase):
             drizzle=DrizzleOut(
                 drizzle_schema="// Test drizzle schema",
                 reasoning=None,
+                error_output=None
+            ),
+            capabilities=CapabilitiesOut(
+                capabilities=["pica_calendar"],
                 error_output=None
             ),
             typescript_schema=TypescriptOut(

@@ -16,13 +16,17 @@ class CustomToolsGenerationTest(unittest.TestCase):
     
     def test_custom_tools_interpolation_directly(self):
         """Test that custom_tools.ts is generated correctly with pica handlers by directly testing the interpolator"""
-        from core.datatypes import ApplicationOut, DrizzleOut, TypescriptOut, TypespecOut, HandlerOut, HandlerTestsOut, RefineOut, GherkinOut, LLMFunction
+        from core.datatypes import ApplicationOut, DrizzleOut, CapabilitiesOut, TypescriptOut, TypespecOut, HandlerOut, HandlerTestsOut, RefineOut, GherkinOut, LLMFunction
         
         # Create a test application with a pica_calendar handler
         app = ApplicationOut(
             drizzle=DrizzleOut(
                 drizzle_schema="// Test drizzle schema",
                 reasoning=None,
+                error_output=None
+            ),
+            capabilities=CapabilitiesOut(
+                capabilities=["pica_calendar"],
                 error_output=None
             ),
             typescript_schema=TypescriptOut(
