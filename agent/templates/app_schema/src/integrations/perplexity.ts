@@ -59,14 +59,14 @@ const searchPerplexity = async (
   };
 };
 
-export const webSearchParamsSchema = z.object({
+export const web_search_params_schema = z.object({
   query: z.string(),
 });
 
 // web search
-export type WebSearchParams = z.infer<typeof webSearchParamsSchema>;
+export type WebSearchParams = z.infer<typeof web_search_params_schema>;
 
-export const handle_search_web = async (options: WebSearchParams): Promise<string> => {
+export const web_search = async (options: WebSearchParams): Promise<string> => {
   return searchPerplexity({
     query: options.query,
   }).then((result) => {
@@ -75,7 +75,7 @@ export const handle_search_web = async (options: WebSearchParams): Promise<strin
 };
 
 // news search
-export const newsSearchParamsSchema = z.object({
+export const news_search_params_schema = z.object({
   query: z.string(),
   date_range: z.enum(['day', 'week', 'month', 'year']).optional(),
   sort_by: z.enum(['relevance', 'date']).optional(),
@@ -86,9 +86,9 @@ export const newsSearchParamsSchema = z.object({
   language: z.string().optional()
 });
 
-export type NewsSearchParams = z.infer<typeof newsSearchParamsSchema>;
+export type NewsSearchParams = z.infer<typeof news_search_params_schema>;
 
-export const handle_search_news = async (options: NewsSearchParams): Promise<string> => {
+export const news_search = async (options: NewsSearchParams): Promise<string> => {
   return searchPerplexity({
     query: `Latest news about ${options.query} ${options.date_range ? `from the last ${options.date_range}` : ''} ${options.sort_by ? `sorted by ${options.sort_by}` : ''} ${options.include_images ? 'with images' : ''} ${options.include_videos ? 'with videos' : ''} ${options.include_sources ? 'with sources' : ''} ${options.region ? `in ${options.region}` : ''} ${options.language ? `in ${options.language}` : ''}`,
   }).then((result) => {
@@ -97,7 +97,7 @@ export const handle_search_news = async (options: NewsSearchParams): Promise<str
 };
 
 // market search
-export const marketSearchParamsSchema = z.object({
+export const market_search_params_schema = z.object({
   symbol: z.string(),
   currency: z.enum(['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD', 'CNY', 'HKD', 'INR', 'BRL', 'ARS', 'CLP', 'COP', 'MXN', 'PEN', 'PYG', 'UYU', 'VND', 'ZAR']).optional(),
   include_forecast: z.boolean().optional(),
@@ -111,9 +111,9 @@ export const marketSearchParamsSchema = z.object({
   include_related_events: z.boolean().optional(),
 });
 
-export type MarketSearchParams = z.infer<typeof marketSearchParamsSchema>;
+export type MarketSearchParams = z.infer<typeof market_search_params_schema>;
 
-export const handle_search_market = async (options: MarketSearchParams): Promise<string> => {
+export const market_search = async (options: MarketSearchParams): Promise<string> => {
   return searchPerplexity({
     query: `Current market data for ${options.symbol} ${options.currency ? `in ${options.currency}` : ''} ${options.include_forecast ? 'with a forecast' : ''} ${options.include_chart ? 'with a chart' : ''} ${options.include_news ? 'with news' : ''} ${options.include_stats ? 'with stats' : ''} ${options.include_events ? 'with events' : ''} ${options.include_sources ? 'with sources' : ''} ${options.include_related ? 'with related' : ''} ${options.include_related_news ? 'with related news' : ''} ${options.include_related_events ? 'with related events' : ''}`,
   }).then((result) => {
@@ -122,15 +122,15 @@ export const handle_search_market = async (options: MarketSearchParams): Promise
 };
 
 // weather search
-export const weatherSearchParamsSchema = z.object({
+export const weather_search_params_schema = z.object({
   location: z.string(),
   unit: z.enum(['celsius', 'fahrenheit']).optional(),
   include_forecast: z.boolean().optional(),
 });
 
-export type WeatherSearchParams = z.infer<typeof weatherSearchParamsSchema>;
+export type WeatherSearchParams = z.infer<typeof weather_search_params_schema>;
 
-export const handle_search_weather = async (options: WeatherSearchParams): Promise<string> => {
+export const weather_search = async (options: WeatherSearchParams): Promise<string> => {
   return searchPerplexity({
     query: `Current weather in ${options.location} is ${options.unit} and ${options.include_forecast ? 'includes a forecast' : 'does not include a forecast'}`,
   }).then((result) => {
@@ -147,29 +147,29 @@ export const get_all_tools = (): CustomToolHandler[] => {
     {
       name: 'web_search',
       description: 'Search the web for information',
-      inputSchema: webSearchParamsSchema,
-      handler: handle_search_web,
+      inputSchema: web_search_params_schema,
+      handler: web_search,
       can_handle: can_handle,
     },
     {
       name: 'news_search',
       description: 'Search the web for news',
-      inputSchema: newsSearchParamsSchema,
-      handler: handle_search_news,
+      inputSchema: news_search_params_schema,
+      handler: news_search,
       can_handle: can_handle,
     },
     {
       name: 'market_search',
       description: 'Search the web for market information',
-      inputSchema: marketSearchParamsSchema,
-      handler: handle_search_market,
+      inputSchema: market_search_params_schema,
+      handler: market_search,
       can_handle: can_handle,
     },
     {
       name: 'weather_search',
       description: 'Search the web for weather information',
-      inputSchema: weatherSearchParamsSchema,
-      handler: handle_search_weather,
+      inputSchema: weather_search_params_schema,
+      handler: weather_search,
       can_handle: can_handle,
     },
   ];

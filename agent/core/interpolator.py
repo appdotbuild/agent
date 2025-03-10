@@ -25,20 +25,21 @@ import type { CustomToolHandler } from './common/tool-handler';
 import * as schema from './common/schema';
 {% set imported_modules = [] %}
 {% for handler in handlers %}
-{% set module_name = handler.name.split('_')[0] %}
+{% set module_name = handler.name.split('.')[0] %}
 {% if module_name not in imported_modules %}
 import * as {{ module_name }} from './integrations/{{ module_name }}';
 {% set _ = imported_modules.append(module_name) %}
 {% endif %}
 {% endfor %}
 
-export const custom_handlers: CustomToolHandler<any>[] = [{% for handler in handlers %}
+export const custom_handlers: CustomToolHandler[] = [{% for handler in handlers %}
+{% set module_name = handler.name.split('.')[0] %}
     {
         name: '{{ handler.name }}',
         description: `{{ handler.description }}`,
-        handler: {{ handler.name }}.handle,
-        inputSchema: {{ handler.argument_schema }},
-        can_handle: {{ handler.name }}.can_handle,
+        handler: {{ handler.name }},
+        inputSchema: {{ handler.name }}_params_schema,
+        can_handle: {{ module_name }}.can_handle,
     },{% endfor %}
 ];
 """.strip()

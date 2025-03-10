@@ -32,7 +32,7 @@ interface RunAgentResponse {
   
 export type RunAgentParams = z.infer<typeof runAgentParamsSchema>;
 
-export const handle_run_agent = async (options: RunAgentParams): Promise<RunAgentResponse> => {
+export const run_agent = async (options: RunAgentParams): Promise<RunAgentResponse> => {
     const result = await runAgentTask(options.query);
     return {
         query: options.query,
@@ -44,20 +44,42 @@ export const can_handle = (): boolean => {
     return env.PICA_SECRET_KEY !== undefined;
 };
 
+export const calendar_params_schema = z.object({
+    query: z.string(),
+});
+
+export type CalendarParams = z.infer<typeof calendar_params_schema>;
+
+export const calendar = async (options: CalendarParams): Promise<string> => {
+    const result = await runAgentTask(options.query);
+    return result;
+};
+
+export const notion_params_schema = z.object({
+    query: z.string(),
+});
+
+export type NotionParams = z.infer<typeof notion_params_schema>;    
+
+export const notion = async (options: NotionParams): Promise<string> => {
+    const result = await runAgentTask(options.query);
+    return result;
+};
+
 export const get_all_tools = (): CustomToolHandler[] => {
-    // TODO: Add all tools from Pica
+    // TODO: Add more tools from Pica
     return [{
         name: "pica_calendar",
         description: "Goolge calendar integration",
-        inputSchema: runAgentParamsSchema,
-        handler: handle_run_agent,
+        inputSchema: calendar_params_schema,
+        handler: calendar,
         can_handle: can_handle,
     },
     {
         name: "pica_notion",
         description: "Notion integration",
-        inputSchema: runAgentParamsSchema,
-        handler: handle_run_agent,
+        inputSchema: notion_params_schema,
+        handler: notion,
         can_handle: can_handle,
     }];
 }
