@@ -83,7 +83,7 @@ class CapabilitiesResponse(BaseModel):
     capabilities: list[str]
     
 
-def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
+def generate_bot(write_url: str, prompt: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
         interpolator = Interpolator(".")
