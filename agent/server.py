@@ -14,7 +14,7 @@ from anthropic import AnthropicBedrock
 from core.interpolator import Interpolator
 from application import Application
 from compiler.core import Compiler
-from langfuse.decorators import langfuse_context, observe
+from capabilities import all_custom_tools
 
 import logging
 
@@ -58,6 +58,7 @@ class BuildRequest(BaseModel):
     writeUrl: str
     prompt: str
     botId: Optional[str] = None
+    capabilities: Optional[list[str]] = None
     readUrl: Optional[str] = None
 
     @model_validator(mode="after")
@@ -75,12 +76,19 @@ class BuildResponse(BaseModel):
     metadata: dict = {}
 
 
-def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None):
+class CapabilitiesResponse(BaseModel):
+    status: str
+    message: str
+    trace_id: str | None
+    capabilities: list[str]
+    
+
+def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Creating bot with prompt: {prompt}")
-        bot = application.create_bot(prompt, bot_id, langfuse_observation_id=trace_id)
+        bot = application.create_bot(prompt, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Baked bot to {tmpdir}")
         interpolator.bake(bot, tmpdir)
         zipfile = shutil.make_archive(
@@ -96,8 +104,13 @@ def generate_bot( write_url: str, prompt: str, trace_id: str, bot_id: str | None
 @app.post("/compile", response_model=BuildResponse)
 def compile(request: BuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
-    background_tasks.add_task(generate_bot, request.writeUrl, request.prompt, trace_id, request.botId)
+    background_tasks.add_task(generate_bot, request.writeUrl, request.prompt, trace_id, request.botId, request.capabilities)
     return BuildResponse(status="success", message="done", trace_id=trace_id)
+
+
+@app.get("/capabilities", response_model=CapabilitiesResponse)
+def capabilities():
+    return CapabilitiesResponse(status="success", message="ok", trace_id=None, capabilities=capabilities.all_custom_tools)
 
 
 @app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
