@@ -25,7 +25,7 @@ def mock_uuid():
 # simplified mock for generate_bot that does nothing but wait a tiny bit and return
 @pytest.fixture
 def mock_generate_bot():
-    def mock_implementation(write_url, prompt, trace_id, bot_id):
+    def mock_implementation(write_url, prompt, trace_id, bot_id, capabilities=None):
         # just wait a tiny bit to simulate some work
         time.sleep(0.1)
         return None
@@ -83,7 +83,8 @@ def test_compile_endpoint(client, mock_uuid, mock_generate_bot, auth_headers):
         request_data["writeUrl"],
         request_data["prompt"],
         "test-trace-id",
-        request_data["botId"]
+        request_data["botId"],
+        None
     )
 
 
@@ -109,6 +110,7 @@ def test_compile_endpoint_without_bot_id(client, mock_uuid, mock_generate_bot, a
         request_data["writeUrl"],
         request_data["prompt"],
         "test-trace-id",
+        None,
         None
     )
 
@@ -199,7 +201,7 @@ def test_generate_bot_mock(auth_headers, mock_env_token):
             
             # verify the mock was called
             mock_fn.assert_called_once_with(
-                "test-url", "test-prompt", "test-trace-id", None
+                "test-url", "test-prompt", "test-trace-id", None, None
             )
 
 

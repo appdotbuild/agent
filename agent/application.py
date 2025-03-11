@@ -78,6 +78,7 @@ class Application:
                 "handler_tests": {k: v.__dict__ for k, v in handler_test_dict.items()},
                 "gherkin": gherkin.__dict__,
                 "scenarios": {f.name: f.scenario for f in typespec.llm_functions},
+                "capabilities": capabilities,
             },
             metadata = {
                 "refined_description_ok": app_prompt.error_output is None,
@@ -89,7 +90,9 @@ class Application:
                 "gherkin_ok": gherkin.error_output is None,
             },
         )
-        return ApplicationOut(app_prompt, capabilities, typespec, drizzle, handlers, handler_test_dict, typescript_schema, gherkin, langfuse_context.get_current_trace_id())
+        # Create capabilities object only if capabilities is not None
+        capabilities_out = CapabilitiesOut(capabilities if capabilities is not None else [], None)
+        return ApplicationOut(app_prompt, capabilities_out, typespec, drizzle, handlers, handler_test_dict, typescript_schema, gherkin, langfuse_context.get_current_trace_id())
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):

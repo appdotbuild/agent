@@ -72,8 +72,9 @@ class Interpolator:
         ]
 
         capability_list = []
-        if application.capabilities and hasattr(application.capabilities, 'capabilities'):
-            capability_list = application.capabilities.capabilities
+        if application.capabilities is not None:
+            if hasattr(application.capabilities, 'capabilities') and application.capabilities.capabilities is not None:
+                capability_list = application.capabilities.capabilities
         custom_tools = [x for x in all_custom_tools if x['name'] in capability_list]
 
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:

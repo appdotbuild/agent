@@ -23,18 +23,17 @@ class InterpolatorTest(unittest.TestCase):
         
     def tearDown(self):
         shutil.rmtree(self.test_dir)
-    
-    def test_custom_tools_interpolation(self):
-        """Test that custom_tools.ts is generated with the CUSTOM_TOOL_TEMPLATE"""
-        # Create test application
-        app = ApplicationOut(
+        
+    def create_base_application(self):
+        """Create a base application for tests"""
+        return ApplicationOut(
             drizzle=DrizzleOut(
                 drizzle_schema="// Test drizzle schema",
                 reasoning=None,
                 error_output=None
             ),
             capabilities=CapabilitiesOut(
-                capabilities=["pica_calendar"],
+                capabilities=["pica.calendar"],
                 error_output=None
             ),
             typescript_schema=TypescriptOut(
@@ -55,12 +54,6 @@ class InterpolatorTest(unittest.TestCase):
                     argument_schema="TestArgSchema",
                     name="test_handler",
                     error_output=None
-                ),
-                "pica_calendar": HandlerOut(
-                    handler="// Pica calendar handler",
-                    argument_schema="PicaCalendarSchema",
-                    name="pica_calendar",
-                    error_output=None
                 )
             },
             handler_tests={
@@ -80,6 +73,19 @@ class InterpolatorTest(unittest.TestCase):
                 error_output=None
             ),
             trace_id="test-trace-id"
+        )
+    
+    def test_custom_tools_interpolation(self):
+        """Test that custom_tools.ts is generated with the CUSTOM_TOOL_TEMPLATE"""
+        # Create test application
+        app = self.create_base_application()
+        
+        # Add a handler for the capability
+        app.handlers["pica.calendar"] = HandlerOut(
+            handler="// Pica calendar handler",
+            argument_schema="PicaCalendarSchema",
+            name="pica.calendar",
+            error_output=None
         )
         
         # Initialize interpolator and bake application
@@ -102,6 +108,43 @@ class InterpolatorTest(unittest.TestCase):
         # Check if imports are generated correctly
         self.assertIn("import * as pica from", content,
                     "Module import not generated correctly")
+                    
+    def test_with_null_capabilities(self):
+        """Test bake with null capabilities field"""
+        app = self.create_base_application()
+        app.capabilities = None
+        
+        # Initialize interpolator and bake application
+        interpolator = Interpolator(self.test_dir)
+        
+        # This should not raise a TypeError
+        interpolator.bake(app, self.output_dir)
+        
+        # Check if custom_tools.ts is generated
+        custom_tools_path = os.path.join(self.output_dir, "app_schema", "src", "custom_tools.ts")
+        self.assertTrue(os.path.exists(custom_tools_path), "custom_tools.ts not generated with null capabilities")
+        
+    def test_with_capabilities_no_capability_attribute(self):
+        """Test bake with capabilities object that doesn't have capabilities attribute"""
+        app = self.create_base_application()
+        
+        # Create a capabilities object without the capabilities attribute
+        class MockCapabilities:
+            def __init__(self):
+                self.error_output = None
+                # No capabilities attribute
+                
+        app.capabilities = MockCapabilities()
+        
+        # Initialize interpolator and bake application
+        interpolator = Interpolator(self.test_dir)
+        
+        # This should not raise an AttributeError
+        interpolator.bake(app, self.output_dir)
+        
+        # Check if custom_tools.ts is generated
+        custom_tools_path = os.path.join(self.output_dir, "app_schema", "src", "custom_tools.ts")
+        self.assertTrue(os.path.exists(custom_tools_path), "custom_tools.ts not generated with missing capabilities attribute")
 
 if __name__ == "__main__":
     unittest.main()

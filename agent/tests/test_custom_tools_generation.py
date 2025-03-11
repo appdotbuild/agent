@@ -26,7 +26,7 @@ class CustomToolsGenerationTest(unittest.TestCase):
                 error_output=None
             ),
             capabilities=CapabilitiesOut(
-                capabilities=["pica_calendar"],
+                capabilities=["pica.calendar"],
                 error_output=None
             ),
             typescript_schema=TypescriptOut(
@@ -39,7 +39,7 @@ class CustomToolsGenerationTest(unittest.TestCase):
                 typespec_definitions="// Test typespec definitions",
                 llm_functions=[
                     LLMFunction(
-                        name="pica_calendar",
+                        name="pica.calendar",
                         description="Get user's calendar events",
                         scenario="User wants to get calendar events"
                     )
@@ -48,10 +48,10 @@ class CustomToolsGenerationTest(unittest.TestCase):
                 error_output=None
             ),
             handlers={
-                "pica_calendar": HandlerOut(
+                "pica.calendar": HandlerOut(
                     handler="// Pica calendar handler code",
                     argument_schema="PicaCalendarSchema",
-                    name="pica_calendar",
+                    name="pica.calendar",
                     error_output=None
                 ),
                 "test_handler": HandlerOut(
@@ -62,9 +62,9 @@ class CustomToolsGenerationTest(unittest.TestCase):
                 )
             },
             handler_tests={
-                "pica_calendar": HandlerTestsOut(
+                "pica.calendar": HandlerTestsOut(
                     content="// Test handler test",
-                    name="pica_calendar",
+                    name="pica.calendar",
                     error_output=None
                 )
             },
@@ -109,7 +109,7 @@ class CustomToolsGenerationTest(unittest.TestCase):
         self.assertIn("import * as pica from", content,
                     "Pica module import not generated correctly")
         
-        # Check if handler name is included correctly
+        # Check if handler name is included correctly with dot replaced by underscore
         self.assertIn("name: 'pica_calendar'", content,
                     "Handler name not included correctly")
 
