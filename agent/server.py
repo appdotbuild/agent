@@ -110,7 +110,8 @@ def compile(request: BuildRequest, background_tasks: BackgroundTasks):
 
 @app.get("/capabilities", response_model=CapabilitiesResponse)
 def capabilities():
-    return CapabilitiesResponse(status="success", message="ok", trace_id=None, capabilities=capabilities.all_custom_tools)
+    trace_id = uuid.uuid4().hex
+    return CapabilitiesResponse(status="success", message="ok", trace_id=trace_id, capabilities=capabilities.all_custom_tools)
 
 
 @app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
