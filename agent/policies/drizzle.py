@@ -39,6 +39,7 @@ export const messagesTable = pgTable("messages", {
 });
 </drizzle>
 
+For user_id (if it exists), use text type.
 Application TypeSpec:
 
 {{typespec_definitions}}
