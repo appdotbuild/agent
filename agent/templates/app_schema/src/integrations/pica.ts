@@ -67,12 +67,7 @@ export const run_agent = async (options: RunAgentParams): Promise<RunAgentRespon
 };
 
 export const can_handle = (): boolean => {
-    try {
-        return env.PICA_SECRET_KEY !== undefined;
-    } catch (error) {
-        console.error("Error checking Pica availability:", error);
-        return false;
-    }
+    return env.PICA_SECRET_KEY !== undefined;
 };
 
 export const calendar_params_schema = z.object({
