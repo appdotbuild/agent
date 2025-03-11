@@ -510,6 +510,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         response = typescript_client.call_anthropic(
             max_tokens=8192,
             messages=input,
+            override_thinking_budget=1024 if len(input) > 3 else 0,
         )
         test_suite: str | None = kwargs.get("test_suite", None)
         try:

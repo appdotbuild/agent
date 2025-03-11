@@ -119,14 +119,6 @@ With full meal breakdown
     @llm_func("Retrieve and summarize dietary history")
     listDishes(options: ListDishesRequest): Dish[];
 }
-
-    @scenario(
-\"\"\"
-Scenario: Historical query with date range
-When user asks "What did I eat between 2024-02-10 and 2024-02-15?"
-Then system returns entries from 2024-02-10 to 2024-02-15
-With full meal breakdown
-\"\"\")
 </typespec>
 
 <description>
@@ -257,10 +249,40 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        pattern = re.compile(
-            r'@scenario\(\s*"""\s*(?P<scenario>.+?)\s*"""\s*\)\s*' +
-            r'@llm_func\(\s*"(?P<description>.+?)"\s*\)\s*(?P<name>\w+)\s*\(',
-            re.DOTALL,
-        )
-        functions = [LLMFunction(**match.groupdict()) for match in pattern.finditer(definitions)]
+        
+        # Find functions with their metadata
+        functions = []
+        
+        # Find all function declarations in the interface
+        func_pattern = re.compile(r'(\s*)(\w+)\s*\(\s*\w+\s*:', re.DOTALL)
+        func_matches = list(func_pattern.finditer(definitions))
+        
+        for i, func_match in enumerate(func_matches):
+            func_name = func_match.group(2)
+            
+            # Determine search scope - from previous function to current function
+            start_pos = 0 if i == 0 else func_matches[i-1].end()
+            end_pos = func_match.start()
+            search_text = definitions[start_pos:end_pos]
+            
+            # Find the preceding llm_func decorator
+            llm_func_pattern = re.compile(r'@llm_func\(\s*"(.+?)"\s*\)', re.DOTALL)
+            llm_func_match = llm_func_pattern.search(search_text)
+            if not llm_func_match:
+                continue
+                
+            description = llm_func_match.group(1)
+            
+            # Find the scenarios
+            scenario_pattern = re.compile(r'@scenario\(\s*"""(.*?)"""\s*\)', re.DOTALL)
+            scenario_matches = list(scenario_pattern.finditer(search_text))
+            
+            if not scenario_matches:
+                continue
+                
+            # Use the last scenario as the representative one
+            scenario = scenario_matches[-1].group(1).strip()
+            
+            functions.append(LLMFunction(name=func_name, description=description, scenario=scenario))
+            
         return reasoning, definitions, functions

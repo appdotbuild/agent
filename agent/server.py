@@ -58,6 +58,7 @@ class BuildRequest(BaseModel):
     writeUrl: str
     prompt: str
     botId: Optional[str] = None
+    readUrl: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_urls(self) -> Self:

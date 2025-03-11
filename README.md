@@ -218,6 +218,23 @@ The framework enforces type safety through:
 
 No error handling yet.
 
+## Testing
+
+The framework includes comprehensive tests to ensure reliability:
+
+```bash
+# Run all tests
+PYTHONPATH=./agent/ uv run pytest -vs agent/tests/
+```
+
+The test suite includes:
+- **Smoke Tests**: End-to-end tests that validate the entire pipeline from code generation to container deployment
+- **Server Tests**: API endpoint testing with request validation and error handling
+
+Additional evaluation tools:
+- `bot_tester.py`: Evaluates generated bots by running full conversations and assessing results
+- `analyze_errors.py`: Analyzes langfuse traces to identify error patterns and performance issues
+
 ## Contributing
 
 ### VS Code Dev Container Setup (Optional)

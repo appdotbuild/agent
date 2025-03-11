@@ -406,11 +406,11 @@ Application Definitions:
 </drizzle>
 
 Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas. 
+Assume that DB is already initialized, all tables are successfully created and wiped out after each test.
 Assume those imports are already provided:
 
 <imports>
 import { afterEach, beforeEach, describe } from "bun:test";
-import { resetDB, createDB } from "../../helpers";
 import {{ function_name }} from "../../common/schema";
 </imports>
 
@@ -484,9 +484,6 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
             messages.extend(node.data.messages)
             content = None
             match node.data.output:
-                case HandlerTestOutput(feedback={"exit_code": exit_code}) if exit_code == 137:
-                    langfuse_context.update_current_observation(output=PolicyException("Seen environment related issues, please fix manually"))
-                    break
                 case HandlerTestOutput(feedback={"exit_code": exit_code, "stdout": stdout}) if exit_code != 0:
                     content = fix_template.render(errors=f"stdout: {stdout}\nexit code: {exit_code}")
                 case HandlerTestOutput():
@@ -503,6 +500,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
         response = typescript_client.call_anthropic(
             max_tokens=8192,
             messages=input,
+            override_thinking_budget=1024 if len(input) > 3 else 0,
         )
         try:
             imports, tests = HandlerTestTaskNode.parse_output(response.content[-1].text)

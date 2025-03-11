@@ -56,13 +56,6 @@ class Interpolator:
             }
             for name, handler in application.handlers.items()
         ]
-        
-        if feature_flags.perplexity:
-            handler_tools.append({
-                "name": "web_search",
-                "description": "search the web for information",
-                "argument_schema": "web_search.webSearchParamsSchema",
-            })
 
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))

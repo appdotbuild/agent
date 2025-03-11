@@ -9,6 +9,7 @@ import re
 from anthropic import AnthropicBedrock
 from fire import Fire
 from functools import reduce
+from dataclasses import dataclass
 
 langfuse = Langfuse()
 memory = jl.Memory("/tmp/jl_cache", verbose=0)
@@ -21,6 +22,7 @@ def pprint(x):
 def get_antropic_response(prompt: str):
     client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
     messages = [{"role": "user", "content": prompt}]
+
     response = client.messages.create(
         messages=messages,
         max_tokens=1024 * 16,
@@ -32,13 +34,16 @@ def get_antropic_response(prompt: str):
 
 @memory.cache
 def get_traces(
-    name: str = "create_bot", start_date: str | None = None, end_date: str | None = None
+    name: str = "create_bot", start_date: str | None = None, end_date: str | None = None, user_id: str | None = None
 ):
     kwargs = {"limit": 100, "name": name}
     if start_date:
         kwargs["from_timestamp"] = datetime.fromisoformat(start_date)
     if end_date:
         kwargs["to_timestamp"] = datetime.fromisoformat(end_date)
+    if user_id:
+        kwargs["user_id"] = user_id
+    
     traces = langfuse.fetch_traces(**kwargs)
     traces_meta = traces.meta
     num_pages = traces_meta.total_pages
@@ -122,24 +127,38 @@ def _parse_tag(msg, tag="errors"):
     return match.group(1).strip()
 
 
-def _extract_errors(data: list) -> list:
+@dataclass
+class ErrorInfo:
+    error_message: str
+    observation_id: str
+    trace_data: dict
+
+
+def _find_last_message(x):
+    try:
+        return x["input"][-1]["content"]
+    except KeyError:
+        return x["input"]["kwargs"]["messages"][-1]["content"]
+
+
+def _extract_errors(data: list) -> list[ErrorInfo]:
     if len(data) <= 1:
         return []
+    
     typespec_calls = [x for x in data if x["name"] == "Anthropic-generation"]
     error_calls = [x for x in typespec_calls if len(x["input"]) > 1]
-
-    def _find_last_message(x):
-        try:
-            return x["input"][-1]["content"]
-        except KeyError:
-            return x["input"]["kwargs"]["messages"][-1]["content"]
-
-    errors = [
-        _parse_tag(_find_last_message(x), "errors")
-        for x in error_calls
-        if len(x["input"])
-    ]
-    return [x for x in errors if x]
+    
+    result = []
+    for call in error_calls:
+        error_message = _parse_tag(_find_last_message(call), "errors")
+        if error_message:
+            result.append(ErrorInfo(
+                error_message=error_message,
+                observation_id=call["id"],
+                trace_data=call
+            ))
+    
+    return result
 
 
 def summarize(t: dict):
@@ -156,9 +175,6 @@ def summarize(t: dict):
         return
 
     created_at = t["createdAt"]
-    # FixMe: ignoring old data
-    if not created_at.startswith("2025-02-"):
-        return
     cost = t["totalCost"]
     generation_calls = sum([1 for o in obs if o["name"] == "Anthropic-generation"])
     obs_tree = make_observation_tree(obs)
@@ -211,61 +227,102 @@ def classify_error(x, taxonomy):
 
 def analyze_column(df: pd.DataFrame, col: str):
     vals = df[col].values
-    errs = reduce(lambda x, y: x + y, [x for x in vals if isinstance(x, list)] + [[]])
-    errs = list(set(errs))
+    errs = []
+    
+    # Collect unique errors
+    for x in vals:
+        if isinstance(x, list):  # This check is needed for None values
+            for item in x:
+                # Check if we already have this error message
+                if not any(e.error_message == item.error_message for e in errs):
+                    errs.append(item)
+    
     print(f"Found {len(errs)} errors in {col}")
 
     if not errs:
         print(f"No errors found in {col}")
         return
-    if len(errs) > 200:
-        print(f"Truncating {len(errs)} errors to 200 ({len(errs) / 200}x)")
-        errs = errs[:200]
+        
+    max_errs = 100
+    max_prompt_size = 100000  # adjust based on model's context window
+    
+    # Adjust max_errs until prompt is within size limit
+    while True:
+        if len(errs) > max_errs:
+            print(f"truncating {len(errs)} errors to {max_errs} ({len(errs) / max_errs:.1f}x)")
+            errs_sample = errs[:max_errs]
+        else:
+            errs_sample = errs
+            
+        n_errors = len(errs_sample)
+        err_texts = [e.error_message for e in errs_sample]
+        
+        prompt = f"""Given the list of errors, identify up to {min(n_errors // 2, 5)} common patterns and gives them short names. The errors are: {err_texts}.
+        Please provide a short name for each pattern encompassing the names with <names>
 
-    prompt = f"""Given the list of errors, identify up to 5 common patterns and gives them short names. The errors are: {errs}.
-    Please provide a short name for each pattern encompassing the names with <names>
-
-    Example output:
-        <names>
-        MissingDependencyFile
-        IncorrectStorageFormat
-        InvalidTargetURL
-        DeadlockWhileParsing
-        InvalidUserInput
-        </names>
-    """
+        Example output:
+            <names>
+            MissingDependencyFile
+            IncorrectStorageFormat
+            InvalidTargetURL
+            DeadlockWhileParsing
+            InvalidUserInput
+            </names>
+        """
+        
+        if len(prompt) <= max_prompt_size or max_errs <= 25:
+            break
+            
+        max_errs = max(5, max_errs // 2)
+        print(f"prompt size: {len(prompt)}, reducing max_errs to {max_errs}")
 
     possible_errors = get_antropic_response(prompt)
     taxonomy = _parse_tag(possible_errors, "names").split("\n")
 
     jobs = (
-        jl.delayed(classify_error)(err, taxonomy)
+        jl.delayed(classify_error)(err.error_message, taxonomy)
         for err in tqdm(errs, desc=f"classifying errors for {col}", disable=False)
     )
 
     pool = jl.Parallel(backend="threading", n_jobs=-1)
     classified_errors = pool(jobs)
-    lut = {x: y for x, y in zip(errs, classified_errors)}
+    
+    # Create lookup table for classifications
+    lut = {}
+    for err, cls in zip(errs, classified_errors):
+        if cls:  # Only store if classification succeeded
+            lut[err.error_message] = cls
 
     counter = {x: 0 for x in taxonomy}
     counter["unknown"] = 0
 
+    # Classify all errors in the dataset
     result = []
     for sample in vals:
         if not isinstance(sample, list):
             result.append(None)
         else:
-            err_classes = [lut[err] for err in sample]
-            result.append(err_classes)
-            for err_class in err_classes:
-                try:
-                    counter[err_class] += 1
-                except KeyError:
-                    # means we can't extract <answer>
-                    counter["unknown"] += 1
+            classified_samples = []
+            for err in sample:
+                err_class = lut.get(err.error_message)
+                
+                if err_class:
+                    # Create a new ErrorInfo with classification as the error message
+                    classified_error = ErrorInfo(
+                        error_message=err_class,
+                        observation_id=err.observation_id,
+                        trace_data=err.trace_data
+                    )
+                    classified_samples.append(classified_error)
+                    
+                    try:
+                        counter[err_class] += 1
+                    except KeyError:
+                        counter["unknown"] += 1
+            
+            result.append(classified_samples if classified_samples else None)
 
-    if counter["unknown"] == 0:
-        counter.pop("unknown")
+    counter = {k: v for k, v in counter.items() if v > 0}
 
     print(col)
     print(counter)
@@ -275,6 +332,7 @@ def analyze_column(df: pd.DataFrame, col: str):
 def generate_error_analysis(df: pd.DataFrame):
     error_categories = [col for col in df.columns if col.endswith("_errors_classified")]
     error_analysis = {}
+    
     for category in error_categories:
         if df[category].isna().all():
             continue
@@ -282,7 +340,7 @@ def generate_error_analysis(df: pd.DataFrame):
         all_errors = []
         for errors in df[category].dropna():
             if isinstance(errors, list):
-                all_errors.extend(errors)
+                all_errors.extend([err.error_message for err in errors])
 
         if not all_errors:
             continue
@@ -292,10 +350,31 @@ def generate_error_analysis(df: pd.DataFrame):
 
         for error in set(all_errors):
             bots_with_error = df[
-                df[category].apply(lambda x: isinstance(x, list) and error in x)
-            ]["trace_id"].tolist()
+                df[category].apply(
+                    lambda x: isinstance(x, list) and any(
+                        err.error_message == error for err in x
+                    )
+                )
+            ]
+            
+            examples = []
+            for _, row in bots_with_error.iterrows():
+                trace_id = row["trace_id"]
+                
+                obs_id = None
+                if isinstance(row[category], list):
+                    for err in row[category]:
+                        if err.error_message == error:
+                            obs_id = err.observation_id
+                            break
+                
+                examples.append((trace_id, obs_id))
+                
+                if len(examples) >= 5:  # Limit to 5 examples
+                    break
+            
             error_counts[error] = all_errors.count(error)
-            error_examples[error] = bots_with_error[:5]  # Limit to 5 examples
+            error_examples[error] = examples
 
         error_analysis[category] = {"counts": error_counts, "examples": error_examples}
 
@@ -307,7 +386,14 @@ def generate_error_analysis(df: pd.DataFrame):
         ):
             msg += f"### {error}\n"
             msg += f"- **Occurrences:** {count}\n"
-            msg += f"- **Example bots:** {', '.join([f'[{id}](https://cloud.langfuse.com/project/cm6j91sap009ux891llzvdjvi/traces/{id})' for id in data['examples'][error]])}\n"
+            links = []
+            for trace_id, obs_id in data['examples'][error]:
+                if obs_id:
+                    link = f'[{trace_id}](https://cloud.langfuse.com/project/cm6j91sap009ux891llzvdjvi/traces/{trace_id}?observation={obs_id})'
+                else:
+                    link = f'[{trace_id}](https://cloud.langfuse.com/project/cm6j91sap009ux891llzvdjvi/traces/{trace_id})'
+                links.append(link)
+            msg += f"- **Example bots:** {', '.join(links)}\n"
             msg += "\n"
 
     with open("/tmp/error_analysis.md", "w") as f:
@@ -320,9 +406,9 @@ def process_traces_and_classify(
     start_date: str | None = None,
     end_date: str | None = None,
     bot_name_pattern: str | None = None,
+    user_id: str | None = None,
 ):
-    traces = get_traces(start_date=start_date, end_date=end_date)
-
+    traces = get_traces(start_date=start_date, end_date=end_date, user_id=user_id)
     pool = jl.Parallel(
         n_jobs=-1, backend="sequential", batch_size=1
     )  # no parallelization for now, maybe later?
@@ -365,11 +451,12 @@ def main(
     start_date: str | None = None,
     end_date: str | None = None,
     bot_name_pattern: str | None = None,
+    user_id: str | None = None,
 ):
     if start_date is None:
         start_date = (datetime.today() - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
     df = process_traces_and_classify(
-        start_date=start_date, end_date=end_date, bot_name_pattern=bot_name_pattern
+        start_date=start_date, end_date=end_date, bot_name_pattern=bot_name_pattern, user_id=user_id
     )
     df.to_csv("/tmp/classified_errors.csv", index=False)
     print(f"Classified errors saved to /tmp/classified_errors.csv")
@@ -379,3 +466,4 @@ def main(
 
 if __name__ == "__main__":
     Fire(main)
+

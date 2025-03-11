@@ -9,6 +9,8 @@ from docker.errors import APIError
 import docker.models.containers
 from logging import getLogger
 
+MAX_RECOMPILE_ATTEMPTS = 5
+
 logger = getLogger(__name__)
 
 class CompileResult(TypedDict):
@@ -96,16 +98,19 @@ class Compiler:
 
     @staticmethod
     def exec_demux(container: docker.models.containers.Container, command: list[str]) -> CompileResult:
-        exit_code, (stdout, stderr) = container.exec_run(
-            command,
-            demux=True,
-            environment={"NO_COLOR": "1", "FORCE_COLOR": "0", "APP_DATABASE_URL": "postgres://postgres:postgres@postgres:5432/postgres"},
-        )
-        return CompileResult(
-            exit_code=exit_code,
-            stdout=stdout.decode("utf-8", errors="replace") if stdout else None,
-            stderr=stderr.decode("utf-8", errors="replace") if stderr else None,
-        )
+        for _ in range(MAX_RECOMPILE_ATTEMPTS):
+            exit_code, (stdout, stderr) = container.exec_run(
+                command,
+                demux=True,
+                environment={"NO_COLOR": "1", "FORCE_COLOR": "0", "APP_DATABASE_URL": "postgres://postgres:postgres@postgres:5432/postgres"},
+            )
+            if exit_code != 137:
+                return CompileResult(
+                    exit_code=exit_code,
+                    stdout=stdout.decode("utf-8", errors="replace") if stdout else None,
+                    stderr=stderr.decode("utf-8", errors="replace") if stderr else None,
+                )
+        raise RuntimeError("Docker issues preventing compilation")
 
     @contextmanager
     def app_container(self):
