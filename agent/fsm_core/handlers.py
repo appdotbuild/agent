@@ -417,12 +417,12 @@ FIX_PROMPT = """
 Make sure to address following errors:
 
 <errors>
-%(errors)s
+{{errors}}
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
 Return fixed complete TypeScript definition encompassed with <handler> tag.
-"""
+""".strip()
 
 
 class HandlersContext(Protocol):
@@ -510,7 +510,7 @@ class FormattingError(HandlersMachine):
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.exception}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.exception)
         return MessageParam(role="user", content=content)
 
 
@@ -537,7 +537,7 @@ class HandlerTestsCompile:
 class TypecheckError(HandlersMachine, HandlerTestsCompile):
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.feedback["stdout"]}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stdout"])
         return MessageParam(role="user", content=content)
 
 
@@ -562,7 +562,7 @@ class TestsError(HandlersMachine, HandlerTestsCompile):
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.test_feedback["stderr"]}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.test_feedback["stderr"])
         return MessageParam(role="user", content=content)
     
     @property

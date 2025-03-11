@@ -1,6 +1,7 @@
 from typing import Protocol, Self
 from dataclasses import dataclass
 import re
+import jinja2
 from anthropic.types import MessageParam
 from compiler.core import Compiler, CompileResult
 from . import llm_common
@@ -128,7 +129,7 @@ With full meal breakdown
 </typespec>
 
 <description>
-%(application_description)s
+{{application_description}}
 </description>
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
@@ -138,12 +139,12 @@ Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 FIX_PROMPT = """
 Make sure to address following TypeSpec compilation errors:
 <errors>
-%(errors)s
+{{errors}}
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
 Return <reasoning> and fixed complete TypeSpec definition encompassed with <typespec> tag.
-"""
+""".strip()
 
 
 @dataclass
@@ -216,7 +217,7 @@ class Entry(TypespecMachine):
     
     @property
     def next_message(self) -> MessageParam | None:
-        content = PROMPT % {"application_description": self.application_description}
+        content = jinja2.Template(PROMPT).render(application_description=self.application_description)
         return MessageParam(role="user", content=content)
 
 

@@ -1,4 +1,5 @@
 from typing import Callable
+from functools import partial
 from anthropic import AnthropicBedrock
 from anthropic.types import MessageParam
 from ..compiler.core import Compiler
@@ -135,6 +136,8 @@ def solve_agent[T](
     trace_name: str,
     m_claude: AnthropicBedrock,
     langfuse: Langfuse,
+    max_depth: int = 3,
+    max_width: int = 2,
 ):
     def llm_fn(
         messages: list[MessageParam],
@@ -156,8 +159,8 @@ def solve_agent[T](
             langfuse,
             trace_id,
             observation_id,
-            max_depth=3,
-            max_width=2,
+            max_depth=max_depth,
+            max_width=max_width,
         )
         return solution
     return _inner()
@@ -168,8 +171,10 @@ def run_sequence():
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     m_claude = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
 
+    solver = partial(solve_agent, m_claude=m_claude, langfuse=langfuse_client)
+
     tsp_start = typespec.Entry("Generate a bot that stores and searches notes")
-    tsp_result, _tsp_root = solve_agent(tsp_start, Context(compiler), "solve_typespec", m_claude, langfuse_client)
+    tsp_result, _tsp_root = solver(tsp_start, Context(compiler), "solve_typespec")
     assert tsp_result and isinstance(tsp_result.data.inner, typespec.Success), "typespec solution failed"
 
     dz_start = drizzle.Entry(tsp_result.data.inner.typespec)

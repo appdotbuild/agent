@@ -91,7 +91,9 @@ Code style:
 
 Note on imports:
 * Use only required imports, reread the code to make sure you are importing only required files,
-* STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA, TYPE NAMES FROM TYPESPEC SCHEMA,
+* STRICTLY FOLLOW TYPE NAMES FROM TYPESPEC SCHEMA, TABLE NAMES FROM DRIZZLE SCHEMA (e.g., greetingRequestsTable, greetingResponsesTable, not greeting_requests, greeting_responses)
+* STRICTLY FOLLOW DATA TYPES FROM DRIZZLE SCHEMA;
+* Remember that in Drizzle, JavaScript properties (userId) and SQL column names ("user_id") differ in casing convention
 * Drizzle schema imports must always be from "../../db/schema/application", for example: import { customTable } from "../../db/schema/application";,
 * Typespec schema imports must always be from "../../common/schema", for example: import { CarPoem } from "../../common/schema";,
 * Drizzle ORM operators imports must come from "drizzle-orm" if required: import { eq } from "drizzle-orm";
@@ -401,15 +403,24 @@ Application Definitions:
 {{drizzle_schema}}
 </drizzle>
 
-Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas.
-Match the output format provided in the Example. Return required imports within <imports> and tests encompassed with <test> tags.
+Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas. 
+Assume that DB is already initialized, all tables are successfully created and wiped out after each test.
+Assume those imports are already provided:
+
+<imports>
+import { afterEach, beforeEach, describe } from "bun:test";
+import {{ function_name }} from "../../common/schema";
+</imports>
+
+Ensure real function and database operations are tested, avoid mocks unless necessary.
+Match the output format provided in the Example. Return new required imports within <imports> and tests encompassed with <test> tags.
 """.strip()
 
 
 FIX_PROMPT = """
-Make sure to address following TypeScript compilation and runtime errors:
+Make sure to address following TypeScript compilation, linting and runtime errors:
 <errors>
-%(errors)s
+{{errors}}
 </errors>
 
 Verify absence of reserved keywords in property names, type names, and function names.
@@ -420,8 +431,10 @@ Follow original formatting, return <imports> and corrected complete test suite w
 HANDLER_TEST_TPL = """
 import { afterEach, beforeEach, describe } from "bun:test";
 import { resetDB, createDB } from "../../helpers";
-{{handler_function_import}}
 {{imports}}
+{% if handler_function_import not in imports %}
+{{handler_function_import}}
+{% endif %}
 
 describe("{{handler_name}}", () => {
     beforeEach(async () => {
@@ -466,17 +479,24 @@ class HandlerTestsMachine(AgentMachine[HandlerTestsContext]):
             imports, tests = self.parse_output(content)
         except ValueError as e:
             return FormattingError(self.function_name, self.typescript_schema, self.drizzle_schema, e)
+        test_file_path = f"src/tests/handlers/{self.function_name}.test.ts"
         source = jinja2.Template(HANDLER_TEST_TPL).render(
             function_name=self.function_name,
             handler_function_import=f'import {{ {self.function_name} }} from "../../common/schema";',
             imports=imports,
             tests=tests,
         )
-        feedback = context.compiler.compile_typescript({
-            f"src/tests/handlers/{self.function_name}.test.ts": source,
-            "src/common/schema.ts": self.typescript_schema,
-            "src/db/schema/application.ts": self.drizzle_schema,
-        })
+        [ts_feedback, linter_feedback] = context.compiler.compile_typescript({
+                test_file_path: source,
+                "src/common/schema.ts": self.typescript_schema,
+                "src/db/schema/application.ts": self.drizzle_schema,
+            }, cmds=[["npx", "eslint", "-c", ".eslintrc.js", test_file_path]]
+        )
+        feedback = CompileResult(
+            exit_code=ts_feedback["exit_code"] or linter_feedback["exit_code"],
+            stdout=(ts_feedback["stdout"] or "") + ("\n" + linter_feedback["stdout"] if linter_feedback["stdout"] else ""),
+            stderr=(ts_feedback["stderr"] or "") + ("\n" + linter_feedback["stderr"] if linter_feedback["stderr"] else ""),
+        )
         if feedback["exit_code"] != 0:
             return CompileError(self.function_name, self.typescript_schema, self.drizzle_schema, imports, tests, feedback)
         return Success(self.function_name, self.typescript_schema, self.drizzle_schema, imports, tests, feedback)
@@ -515,7 +535,7 @@ class FormattingError(HandlerTestsMachine):
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.exception}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.exception)
         return MessageParam(role="user", content=content)
 
 
@@ -540,7 +560,7 @@ class HandlerTestsCompile:
 class CompileError(HandlerTestsMachine, HandlerTestsCompile):
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.feedback["stdout"]}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stdout"])
         return MessageParam(role="user", content=content)
 
 

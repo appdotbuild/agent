@@ -1,5 +1,6 @@
 from typing import Protocol, Self
 import re
+import jinja2
 from anthropic.types import MessageParam
 from compiler.core import Compiler, CompileResult
 from . import llm_common
@@ -38,18 +39,18 @@ export const messagesTable = pgTable("messages", {
 
 Application TypeSpec:
 
-%(typespec_definitions)s
+{{typespec_definitions}}
 """.strip()
 
 
 FIX_PROMPT = """
 Make sure to address following drizzle schema errors:
 <errors>
-%(errors)s
+{{errors}}
 </errors>
 
 Return <reasoning> and fixed complete drizzle schema encompassed with <drizzle> tag.
-"""
+""".strip()
 
 
 class DrizzleContext(Protocol):
@@ -100,7 +101,7 @@ class Entry(DrizzleMachine):
     
     @property
     def next_message(self) -> MessageParam | None:
-        content = PROMPT % {"typespec_definitions": self.typespec_definitions}
+        content = jinja2.Template(PROMPT).render(typespec_definitions=self.typespec_definitions)
         return MessageParam(role="user", content=content)
 
 
@@ -110,7 +111,7 @@ class FormattingError(DrizzleMachine):
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.exception}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.exception)
         return MessageParam(role="user", content=content)
 
 
@@ -124,14 +125,14 @@ class DrizzleCompile:
 class CompileError(DrizzleMachine, DrizzleCompile):
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.feedback["stderr"]}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stderr"])
         return MessageParam(role="user", content=content)
     
 
 class TypecheckError(DrizzleMachine, DrizzleCompile):
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.feedback["stdout"]}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stdout"])
         return MessageParam(role="user", content=content)
 
 
