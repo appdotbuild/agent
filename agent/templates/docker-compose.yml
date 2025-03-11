@@ -30,6 +30,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      - PICA_SECRET_KEY=${PICA_SECRET_KEY}
       - RUN_MODE=http-server # can be http-server or telegram
       
     ports:
