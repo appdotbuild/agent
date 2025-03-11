@@ -8,7 +8,7 @@ import {
 import { z } from 'zod';
 import { handlers } from './tools';
 import { env } from './env';
-import { handleChat, postprocessThread } from './common/chat';
+import { handleChat, postprocessThread, getUserId } from './common/chat';
 import getPort from 'get-port';
 
 const ALLOWED_ORIGINS = [
