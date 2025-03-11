@@ -11,6 +11,45 @@ import { handlers } from '../tools';
 import { custom_handlers } from '../custom_tools';
 import { getHistory, putMessageBatch } from './crud';
 import type { ContentBlock } from './llm';
+
+/**
+ * Simple utility to get user ID from various sources
+ * 
+ * @param source Optional source object (Telegram context or string ID)
+ * @param defaultId Optional default ID to use if none found
+ * @returns string user ID
+ * 
+ * Examples:
+ *   getUserId() - returns "unknown_user" or TEST_USER_ID if set
+ *   getUserId("user123") - returns "user123"
+ *   getUserId(telegramCtx) - returns telegram user ID
+ *   getUserId(telegramCtx, "fallback") - returns telegram ID or "fallback"
+ */
+export function getUserId(source?: any, defaultId = "unknown_user"): string {
+  // From test environment (highest priority)
+  if (process.env['TEST_USER_ID']) {
+    return process.env['TEST_USER_ID'];
+  }
+  
+  // If no source provided
+  if (!source) {
+    return defaultId;
+  }
+  
+  // If source is a Telegram context
+  if (source.from && source.from.id) {
+    return source.from.id.toString();
+  }
+  
+  // If source is already a string (direct user ID)
+  if (typeof source === 'string') {
+    return source;
+  }
+  
+  // Default fallback
+  return defaultId;
+}
+
 const makeSchema = (schema: z.ZodObject<any>) => {
   const jsonSchema = zodToJsonSchema(schema, {
     target: 'jsonSchema7',
