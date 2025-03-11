@@ -1,24 +1,20 @@
+import type { CustomToolHandler } from './common/tool-handler';
 import * as perplexity from './integrations/perplexity';
 import * as pica from './integrations/pica';
-import type { ToolHandler } from './tools';
-
-interface CustomToolHandler extends ToolHandler<any> {
-  can_handle: () => boolean;
-}
 
 export const custom_handlers = [
   {
-      name: "web_search",
+      name: "perplexity_web_search",
       description: "search the web for information",
-      handler: perplexity.handle_search_web,
+      handler: perplexity.web_search,
       can_handle: perplexity.can_handle,
-      inputSchema: perplexity.webSearchParamsSchema,
+      inputSchema: perplexity.web_search_params_schema,
   },
   {
-    name: "run_agent",
+    name: "pica_calendar",
     description: "run an agent with following integrations enabled: calendar, notion",
-    handler: pica.handle_run_agent,
+    handler: pica.calendar,
     can_handle: pica.can_handle,
-    inputSchema: pica.runAgentParamsSchema,
+    inputSchema: pica.calendar_params_schema,
   }
 ] satisfies CustomToolHandler[];

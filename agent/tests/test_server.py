@@ -25,7 +25,7 @@ def mock_uuid():
 # simplified mock for generate_bot that does nothing but wait a tiny bit and return
 @pytest.fixture
 def mock_generate_bot():
-    def mock_implementation(write_url, prompt, trace_id, bot_id):
+    def mock_implementation(write_url, read_url, prompts, trace_id, bot_id, capabilities=None):
         # just wait a tiny bit to simulate some work
         time.sleep(0.1)
         return None
@@ -81,9 +81,11 @@ def test_compile_endpoint(client, mock_uuid, mock_generate_bot, auth_headers):
     # verify that generate_bot was called with correct parameters
     mock_generate_bot.assert_called_once_with(
         request_data["writeUrl"],
-        request_data["prompt"],
+        None,  # read_url is None
+        [request_data["prompt"]],  # prompt is wrapped in a list
         "test-trace-id",
-        request_data["botId"]
+        request_data["botId"],
+        None
     )
 
 
@@ -107,14 +109,16 @@ def test_compile_endpoint_without_bot_id(client, mock_uuid, mock_generate_bot, a
     # verify that generate_bot was called with correct parameters
     mock_generate_bot.assert_called_once_with(
         request_data["writeUrl"],
-        request_data["prompt"],
+        None,  # read_url is None
+        [request_data["prompt"]],  # prompt is wrapped in a list
         "test-trace-id",
+        None,
         None
     )
 
 
 def test_compile_endpoint_with_read_url(client, auth_headers, mock_generate_bot, mock_uuid):
-    # prepare test data with readUrl which should be rejected
+    # prepare test data with readUrl
     request_data = {
         "readUrl": "https://example.com/read",
         "writeUrl": "https://example.com/write",
@@ -124,15 +128,21 @@ def test_compile_endpoint_with_read_url(client, auth_headers, mock_generate_bot,
     # call the endpoint
     response = client.post("/compile", json=request_data, headers=auth_headers)
     
-    # verify response indicates validation error
-    assert response.status_code == 422
+    # verify response - readUrl is acceptable in current implementation
+    assert response.status_code == 200
     data = response.json()
-    assert "detail" in data
-    # verify the error message mentions readUrl
-    assert any("readUrl" in str(error["msg"]) for error in data["detail"])
+    assert data["status"] == "success"
+    assert data["message"] == "done"
     
-    # verify generate_bot was not called since validation should fail first
-    mock_generate_bot.assert_not_called()
+    # verify generate_bot was called with the readUrl
+    mock_generate_bot.assert_called_once_with(
+        request_data["writeUrl"],
+        request_data["readUrl"],
+        [request_data["prompt"]],
+        "test-trace-id",
+        None,
+        None
+    )
 
 
 def test_unauthorized_access(client, mock_generate_bot, mock_uuid):
@@ -197,9 +207,9 @@ def test_generate_bot_mock(auth_headers, mock_env_token):
             # verify the response
             assert response.status_code == 200
             
-            # verify the mock was called
+            # verify the mock was called with the correct arguments
             mock_fn.assert_called_once_with(
-                "test-url", "test-prompt", "test-trace-id", None
+                "test-url", None, ["test-prompt"], "test-trace-id", None, None
             )
 
 

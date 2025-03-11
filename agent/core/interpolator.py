@@ -1,22 +1,14 @@
 import os
 import jinja2
 from shutil import copytree, ignore_patterns
-
-from core import feature_flags
+from capabilities import all_custom_tools
 from .datatypes import *
 
 TOOL_TEMPLATE = """
-import { z } from 'zod';
 import * as schema from './common/schema';
+import type { ToolHandler } from './common/tool-handler';
 {% for handler in handlers %}import * as {{ handler.name }} from './handlers/{{ handler.name }}';
 {% endfor %}
-
-interface ToolHandler<argSchema extends z.ZodObject<any>> {
-    name: string;
-    description: string;
-    handler: (options: z.infer<argSchema>) => any;
-    inputSchema: argSchema;
-}
 
 export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
     {
@@ -28,7 +20,29 @@ export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
 ];
 """.strip()
 
+CUSTOM_TOOL_TEMPLATE = """
+import type { CustomToolHandler } from './common/tool-handler';
+import * as schema from './common/schema';
+{% set imported_modules = [] %}
+{% for handler in handlers %}
+{% set module_name = handler.name.split('.')[0] %}
+{% if module_name not in imported_modules %}
+import * as {{ module_name }} from './integrations/{{ module_name }}';
+{% set _ = imported_modules.append(module_name) %}
+{% endif %}
+{% endfor %}
 
+export const custom_handlers: CustomToolHandler[] = [{% for handler in handlers %}
+{% set module_name = handler.name.split('.')[0] %}
+    {
+        name: '{{ handler.name.replace('.', '_') }}',
+        description: `{{ handler.description }}`,
+        handler: {{ handler.name }},
+        inputSchema: {{ handler.name }}_params_schema,
+        can_handle: {{ module_name }}.can_handle,
+    },{% endfor %}
+];
+""".strip()
 
 class Interpolator:
     def __init__(self, root_dir: str):
@@ -57,8 +71,18 @@ class Interpolator:
             for name, handler in application.handlers.items()
         ]
 
+        capability_list = []
+        if application.capabilities is not None:
+            if hasattr(application.capabilities, 'capabilities') and application.capabilities.capabilities is not None:
+                capability_list = application.capabilities.capabilities
+        custom_tools = [x for x in all_custom_tools if x['name'] in capability_list]
+
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))
+
+        # TODO: customize tools based on included capabilities from user
+        with open(os.path.join(output_dir, "app_schema", "src", "custom_tools.ts"), "w") as f:
+            f.write(self.environment.from_string(CUSTOM_TOOL_TEMPLATE).render(handlers=custom_tools))
         
         for name, handler in application.handlers.items():
             with open(os.path.join(output_dir, "app_schema", "src", "handlers", f"{name}.ts"), "w") as f:
