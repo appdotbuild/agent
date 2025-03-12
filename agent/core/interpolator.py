@@ -1,7 +1,6 @@
 import os
 import jinja2
 from shutil import copytree, ignore_patterns
-
 from .datatypes import *
 
 TOOL_TEMPLATE = """
