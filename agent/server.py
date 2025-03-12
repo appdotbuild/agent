@@ -8,7 +8,7 @@ import requests
 import sentry_sdk
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, model_validator, Field
+from pydantic import BaseModel
 
 from anthropic import AnthropicBedrock
 from core.interpolator import Interpolator
@@ -62,6 +62,14 @@ class BuildRequest(BaseModel):
     capabilities: Optional[list[str]] = None
     readUrl: Optional[str] = None
 
+class PrepareRequest(BaseModel):
+    readUrl: Optional[str] = None
+    writeUrl: str
+    readUrl: Optional[str] = None
+    prompts: Optional[list[str]] = None
+    botId: Optional[str] = None
+    capabilities: Optional[list[str]] = None
+
 
 class BuildResponse(BaseModel):
     status: str
@@ -93,6 +101,21 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
         with open(zipfile, "rb") as f:
             upload_result = requests.put(write_url, data=f.read())
             upload_result.raise_for_status()
+
+
+def prepare_bot(prompts: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        application = Application(client, compiler)
+        logger.info(f"Creating bot with prompts: {prompts}")
+        bot = application.prepare_bot(prompts[0], bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        logger.info(f"Baked bot to {tmpdir}")
+        return bot
+
+@app.post("/prepare", response_model=BuildResponse)
+def prepare(request: PrepareRequest):
+    trace_id = uuid.uuid4().hex
+    bot = prepare_bot(request.prompts, trace_id, request.botId, request.capabilities)
+    return BuildResponse(status="success", message="done", trace_id=trace_id, metadata=bot.typespec) # TODO: add separate field for scenarios
 
 
 @app.post("/compile", response_model=BuildResponse)

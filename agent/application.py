@@ -10,8 +10,6 @@ from policies import common, handlers, typespec, drizzle, typescript, app_testca
 from core import feature_flags
 from core.datatypes import *
 
-
-
 class Application:
     def __init__(self, client: AnthropicBedrock, compiler: Compiler, branch_factor: int = 2, max_depth: int = 4, max_workers: int = 5, dfs_budget: int = 20, thinking_budget: int = 0):
         self.client = TracingClient(client, thinking_budget=thinking_budget)
@@ -21,6 +19,53 @@ class Application:
         self.MAX_DEPTH = max_depth
         self.MAX_WORKERS = max_workers
         self.DFS_BUDGET = dfs_budget
+
+
+    @observe(capture_output=False)
+    def prepare_bot(self, application_description: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
+        langfuse_context.update_current_trace(user_id=os.environ.get("USER_ID", socket.gethostname()))
+        if bot_id is not None:
+            langfuse_context.update_current_observation(metadata={"bot_id": bot_id})
+
+        if feature_flags.refine_initial_prompt:
+            print("Refining Initial Description...")
+            app_prompt = self._refine_initial_prompt(application_description)
+        else:
+            print("Skipping Initial Description Refinement")
+            app_prompt = RefineOut(application_description, None)
+
+        print("Compiling TypeSpec...")
+        typespec = self._make_typespec(app_prompt.refined_description)
+        if typespec.error_output is not None:
+            raise Exception(f"Failed to generate typespec: {typespec.error_output}")
+        typespec_definitions = typespec.typespec_definitions
+
+        if feature_flags.gherkin:
+            print("Compiling Gherkin Test Cases...")
+            gherkin = self._make_testcases(typespec_definitions)
+            if gherkin.error_output is not None:
+                raise Exception(f"Failed to generate gherkin test cases: {gherkin.error_output}")
+        else:
+            gherkin = GherkinOut(None, None, None)
+
+        langfuse_context.update_current_observation(
+            output = {
+                "refined_description": app_prompt.__dict__,
+                "typespec": typespec.__dict__,
+                "gherkin": gherkin.__dict__,
+                "scenarios": {f.name: f.scenario for f in typespec.llm_functions}, # TODO: get gherkin scenarios from typespec
+                "capabilities": capabilities,
+            },
+            metadata = {
+                "refined_description_ok": app_prompt.error_output is None,
+                "typespec_ok": typespec.error_output is None,
+                "gherkin_ok": gherkin.error_output is None,
+            },
+        )
+        # Create capabilities object only if capabilities is not None
+        capabilities_out = CapabilitiesOut(capabilities if capabilities is not None else [], None)
+        return ApplicationOut(app_prompt, capabilities_out, typespec, None, None, None, None, gherkin, langfuse_context.get_current_trace_id())
+    
 
     @observe(capture_output=False)
     def create_bot(self, application_description: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
