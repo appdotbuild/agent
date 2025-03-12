@@ -415,9 +415,6 @@ import {{ function_name }} from "../../common/schema";
 </imports>
 
 Ensure real function and database operations are tested, avoid mocks unless necessary.
-If user_id is required, use getUserId function to get it:
-import { getUserId } from "../../common/chat"; 
-const userId = getUserId(); (or const userId = getUserId(ctx); if ctx is provided)
 Match the output format provided in the Example. Return new required imports within <imports> and tests encompassed with <test> tags.
 """.strip()
 
