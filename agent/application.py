@@ -22,17 +22,17 @@ class Application:
 
 
     @observe(capture_output=False)
-    def prepare_bot(self, application_description: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
+    def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
         langfuse_context.update_current_trace(user_id=os.environ.get("USER_ID", socket.gethostname()))
         if bot_id is not None:
             langfuse_context.update_current_observation(metadata={"bot_id": bot_id})
 
         if feature_flags.refine_initial_prompt:
             print("Refining Initial Description...")
-            app_prompt = self._refine_initial_prompt(application_description)
+            app_prompt = self._refine_initial_prompt(prompts[0])
         else:
             print("Skipping Initial Description Refinement")
-            app_prompt = RefineOut(application_description, None)
+            app_prompt = RefineOut(prompts[0], None)
 
         print("Compiling TypeSpec...")
         typespec = self._make_typespec(app_prompt.refined_description)

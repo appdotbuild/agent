@@ -15,7 +15,7 @@ from core.interpolator import Interpolator
 from application import Application
 from compiler.core import Compiler
 import capabilities as cap_module
-
+from iteration import get_typespec_metadata, get_scenarios_message
 import logging
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,9 @@ def prepare_bot(prompts: list[str], trace_id: str, bot_id: str | None, capabilit
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
         logger.info(f"Creating bot with prompts: {prompts}")
+        if not prompts:
+            logger.error("No prompts provided")
+            raise ValueError("No prompts provided")
         bot = application.prepare_bot(prompts[0], bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Baked bot to {tmpdir}")
         return bot
@@ -113,7 +116,13 @@ def prepare_bot(prompts: list[str], trace_id: str, bot_id: str | None, capabilit
 def prepare(request: PrepareRequest):
     trace_id = uuid.uuid4().hex
     bot = prepare_bot(request.prompts, trace_id, request.botId, request.capabilities)
-    return BuildResponse(status="success", message="done", trace_id=trace_id, metadata=bot.typespec) # TODO: add separate field for scenarios
+    
+    typespec_dict = get_typespec_metadata(bot)
+    scenarios = get_scenarios_message(bot)
+    
+    message = f"Your bot's type specification has been prepared. Use cases implemented: {scenarios}"
+    
+    return BuildResponse(status="success", message=message, trace_id=trace_id, metadata=typespec_dict)
 
 
 @app.post("/compile", response_model=BuildResponse)
