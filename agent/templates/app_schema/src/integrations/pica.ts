@@ -6,8 +6,8 @@ import { z } from "zod";
 import type { CustomToolHandler } from "../common/tool-handler";
 
 export const runAgentParamsSchema = z.object({
-    query: z.string(),
-  });
+  query: z.string(),
+});
 
 // Lazy initialization - only create when needed
 let picaInstance: Pica | null = null;
@@ -32,22 +32,22 @@ async function runAgentTask(message: string): Promise<string> {
     const pica = getPica();
     const system = await pica.generateSystemPrompt();
 
-    const { text } = await generateText({
-        model: anthropic("claude-3-5-sonnet-20240620"),
-        system,
-        prompt: message,
-        tools: { ...pica.oneTool },
-        maxSteps: 10,
-    });
+  const { text } = await generateText({
+    model: anthropic('claude-3-5-sonnet-20240620'),
+    system,
+    prompt: message,
+    tools: { ...pica.oneTool },
+    maxSteps: 10,
+  });
 
-    return text;
+  return text;
 }
 
 interface RunAgentResponse {
-    query: string;
-    result: string;
-  }
-  
+  query: string;
+  result: string;
+}
+
 export type RunAgentParams = z.infer<typeof runAgentParamsSchema>;
 
 export const run_agent = async (options: RunAgentParams): Promise<RunAgentResponse> => {
@@ -67,7 +67,7 @@ export const run_agent = async (options: RunAgentParams): Promise<RunAgentRespon
 };
 
 export const can_handle = (): boolean => {
-    return env.PICA_SECRET_KEY !== undefined;
+  return env.PICA_SECRET_KEY !== undefined;
 };
 
 export const calendar_params_schema = z.object({
@@ -115,4 +115,3 @@ export const get_all_tools = (): CustomToolHandler[] => {
 //    console.log(text);
 //  })
 //  .catch(console.error);
-

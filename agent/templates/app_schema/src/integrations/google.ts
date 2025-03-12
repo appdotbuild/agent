@@ -10,7 +10,7 @@ export const calendarEventParamsSchema = z.object({
   startDateTime: z.string(), // ISO 8601 format
   endDateTime: z.string(), // ISO 8601 format
   attendees: z.array(z.string()).optional(),
-  timeZone: z.string().optional().default('UTC')
+  timeZone: z.string().optional().default('UTC'),
 });
 
 export const getEventsParamsSchema = z.object({
@@ -18,7 +18,7 @@ export const getEventsParamsSchema = z.object({
   timeMax: z.string().optional(), // ISO 8601 format
   maxResults: z.number().optional().default(10),
   orderBy: z.enum(['startTime', 'updated']).optional(),
-  calendarId: z.string().optional().default('primary')
+  calendarId: z.string().optional().default('primary'),
 });
 
 export type CalendarEventParams = z.infer<typeof calendarEventParamsSchema>;
@@ -29,7 +29,7 @@ const initializeCalendar = (): calendar_v3.Calendar => {
   const auth = new google.auth.JWT({
     email: env.GOOGLE_CLIENT_EMAIL,
     key: env.GOOGLE_PRIVATE_KEY,
-    scopes: ['https://www.googleapis.com/auth/calendar']
+    scopes: ['https://www.googleapis.com/auth/calendar'],
   });
 
   return google.calendar({ version: 'v3', auth });
@@ -53,7 +53,7 @@ export const handle_add_calendar_event = async (
       dateTime: params.endDateTime,
       timeZone: params.timeZone,
     },
-    attendees: params.attendees?.map(email => ({ email })),
+    attendees: params.attendees?.map((email) => ({ email })),
   };
 
   try {
@@ -64,7 +64,9 @@ export const handle_add_calendar_event = async (
 
     return `Event created successfully. Event ID: ${response.data.id}`;
   } catch (error) {
-    throw new Error(`Failed to create calendar event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to create calendar event: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 };
 
@@ -90,13 +92,15 @@ export const handle_get_calendar_events = async (
     }
 
     return events
-      .map(event => {
+      .map((event) => {
         const start = event.start?.dateTime || event.start?.date;
         return `${event.summary} (${start})`;
       })
       .join('\n');
   } catch (error) {
-    throw new Error(`Failed to fetch calendar events: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to fetch calendar events: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 };
 

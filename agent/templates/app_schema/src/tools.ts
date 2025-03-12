@@ -7,5 +7,5 @@ export const handlers = [
     description: 'create a greeting message',
     handler: greet.handle,
     inputSchema: greet.greetUserParamsSchema,
-    },
+  },
 ] satisfies ToolHandler<any>[];

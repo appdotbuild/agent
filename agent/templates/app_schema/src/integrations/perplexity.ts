@@ -83,7 +83,7 @@ export const news_search_params_schema = z.object({
   include_videos: z.boolean().optional(),
   include_sources: z.boolean().optional(),
   region: z.string().optional(),
-  language: z.string().optional()
+  language: z.string().optional(),
 });
 
 export type NewsSearchParams = z.infer<typeof news_search_params_schema>;
@@ -99,7 +99,31 @@ export const news_search = async (options: NewsSearchParams): Promise<string> =>
 // market search
 export const market_search_params_schema = z.object({
   symbol: z.string(),
-  currency: z.enum(['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD', 'CNY', 'HKD', 'INR', 'BRL', 'ARS', 'CLP', 'COP', 'MXN', 'PEN', 'PYG', 'UYU', 'VND', 'ZAR']).optional(),
+  currency: z
+    .enum([
+      'USD',
+      'EUR',
+      'GBP',
+      'JPY',
+      'CHF',
+      'CAD',
+      'AUD',
+      'NZD',
+      'CNY',
+      'HKD',
+      'INR',
+      'BRL',
+      'ARS',
+      'CLP',
+      'COP',
+      'MXN',
+      'PEN',
+      'PYG',
+      'UYU',
+      'VND',
+      'ZAR',
+    ])
+    .optional(),
   include_forecast: z.boolean().optional(),
   include_chart: z.boolean().optional(),
   include_news: z.boolean().optional(),

@@ -101,7 +101,6 @@ Note on imports:
 * Typespec schema imports must always be from "../common/schema", for example: import { CarPoem } from "../common/schema";,
 * Drizzle ORM operators imports must come from "drizzle-orm" if required: import { eq } from "drizzle-orm";
 * If using db instance, use: import { db } from "../db";,
-* If using getUserId, use: import { getUserId } from "../common/chat"; - it gets user id string from the current request context, e.g. const userId = getUserId();
 
 Drizzle style guide:
 
