@@ -14,7 +14,7 @@ from anthropic import AnthropicBedrock
 from core.interpolator import Interpolator
 from application import Application
 from compiler.core import Compiler
-from capabilities import all_custom_tools
+import capabilities as cap_module
 
 import logging
 
@@ -60,12 +60,10 @@ class BuildRequest(BaseModel):
     prompts: Optional[list[str]] = None
     botId: Optional[str] = None
     capabilities: Optional[list[str]] = None
-    readUrl: Optional[str] = None
 
 class PrepareRequest(BaseModel):
     readUrl: Optional[str] = None
     writeUrl: str
-    readUrl: Optional[str] = None
     prompts: Optional[list[str]] = None
     botId: Optional[str] = None
     capabilities: Optional[list[str]] = None
@@ -126,9 +124,9 @@ def compile(request: BuildRequest, background_tasks: BackgroundTasks):
 
 
 @app.get("/capabilities", response_model=CapabilitiesResponse)
-def capabilities():
+def get_capabilities():
     trace_id = uuid.uuid4().hex
-    return CapabilitiesResponse(status="success", message="ok", trace_id=trace_id, capabilities=capabilities.all_custom_tools)
+    return CapabilitiesResponse(status="success", message="ok", trace_id=trace_id, capabilities=cap_module.all_custom_tools)
 
 
 @app.get("/healthcheck", response_model=BuildResponse, include_in_schema=False)
