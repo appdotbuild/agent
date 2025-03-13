@@ -16,7 +16,7 @@ const getPica = (): Pica => {
     if (!picaInstance && env.PICA_SECRET_KEY) {
         try {
             picaInstance = new Pica(env.PICA_SECRET_KEY);
-        } catch (error) {
+        } catch {
             throw new Error("Failed to initialize Pica client");
         }
     }

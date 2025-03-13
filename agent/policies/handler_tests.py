@@ -517,7 +517,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
                 "src/db/schema/application.ts": kwargs['drizzle_schema']
             }
             
-            linting_cmd = ["npx", "eslint", "-c", "eslint.config.mjs", f"./src/tests/handlers/{kwargs['function_name']}.test.ts"]
+            linting_cmd = ["npx", "eslint", "-c", "eslint.config.mjs", "--fix", f"./src/tests/handlers/{kwargs['function_name']}.test.ts"]
             compilation_result, linting_result = typescript_compiler.compile_typescript(file_map, [linting_cmd])
             combined_feedback = {
                 "exit_code": compilation_result["exit_code"] or linting_result["exit_code"],

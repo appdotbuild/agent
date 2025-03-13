@@ -1,6 +1,7 @@
 import { defineConfig } from 'eslint/config';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
+import unusedImportsPlugin from 'eslint-plugin-unused-imports';
 
 export default defineConfig([
   {
@@ -16,6 +17,7 @@ export default defineConfig([
     // using plugins directly
     plugins: {
       '@typescript-eslint': tsPlugin,
+      'unused-imports': unusedImportsPlugin,
       // custom plugin for renamed imports
       'no-renamed': {
         rules: {
@@ -42,13 +44,15 @@ export default defineConfig([
     },
     // providing rules directly
     rules: {
-      // typescript rules - added directly
-      '@typescript-eslint/no-unused-vars': [
+      'no-unused-vars': 'off',
+      'unused-imports/no-unused-imports': 'error',
+      'unused-imports/no-unused-vars': [
         'error',
         {
           vars: 'all',
+          varsIgnorePattern: '^_',
           args: 'after-used',
-          ignoreRestSiblings: false,
+          argsIgnorePattern: '^_',
         },
       ],
       // rule to prevent renamed imports
