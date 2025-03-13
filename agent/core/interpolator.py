@@ -10,13 +10,6 @@ import type { ToolHandler } from './common/tool-handler';
 {% for handler in handlers %}import * as {{ handler.name }} from './handlers/{{ handler.name }}';
 {% endfor %}
 
-export interface ToolHandler<TArgSchema extends z.ZodObject<any>> {
-    name: string;
-    description: string;
-    handler: (options: z.infer<TArgSchema>) => any;
-    inputSchema: TArgSchema;
-}
-
 export const handlers: ToolHandler<any>[] = [{% for handler in handlers %}
     {
         name: '{{ handler.name }}',
