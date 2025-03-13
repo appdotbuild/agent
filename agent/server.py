@@ -108,7 +108,7 @@ def prepare_bot(prompts: list[str], trace_id: str, bot_id: str | None, capabilit
         if not prompts:
             logger.error("No prompts provided")
             raise ValueError("No prompts provided")
-        bot = application.prepare_bot(prompts[0], bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        bot = application.prepare_bot(prompts, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Baked bot to {tmpdir}")
         return bot
 
