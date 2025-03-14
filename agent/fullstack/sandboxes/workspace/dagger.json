@@ -1,0 +1,7 @@
+{
+  "name": "workspace",
+  "engineVersion": "v0.16.3",
+  "sdk": {
+    "source": "python"
+  }
+}
