@@ -49,9 +49,13 @@ class Interpolator:
         self.root_dir = root_dir
         self.environment = jinja2.Environment()
 
-    def bake(self, application: ApplicationOut, output_dir: str):
+    def bake(self, application: ApplicationOut, output_dir: str, overwrite: bool = False):
+        """
+        Bake the application into the output directory.
+        The template directory is copied to the output directory overwriting existing files.
+        """
         template_dir = os.path.join(self.root_dir, "templates")
-        copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True)
+        copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True, overwrite=True)
 
         with open(os.path.join(output_dir, "tsp_schema", "main.tsp"), "a") as f:
             f.write(application.typespec.typespec_definitions)
@@ -80,7 +84,6 @@ class Interpolator:
         with open(os.path.join(output_dir, "app_schema", "src", "tools.ts"), "w") as f:
             f.write(self.environment.from_string(TOOL_TEMPLATE).render(handlers=handler_tools))
 
-        # TODO: customize tools based on included capabilities from user
         with open(os.path.join(output_dir, "app_schema", "src", "custom_tools.ts"), "w") as f:
             f.write(self.environment.from_string(CUSTOM_TOOL_TEMPLATE).render(handlers=custom_tools))
         

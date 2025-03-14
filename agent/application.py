@@ -66,6 +66,116 @@ class Application:
         capabilities_out = CapabilitiesOut(capabilities if capabilities is not None else [], None)
         return ApplicationOut(app_prompt, capabilities_out, typespec, None, None, None, None, gherkin, langfuse_context.get_current_trace_id())
     
+    @observe(capture_output=False)
+    def update_bot(self, typespec: str, scenarios: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
+        """
+        Update an existing bot with new typespec and scenarios.
+        Works with the ReBuildRequest structure.
+        
+        Args:
+            typespec: The typespec definitions for the updated bot
+            scenarios: List of scenarios for the updated bot
+            bot_id: Optional bot ID
+            capabilities: Optional list of capabilities
+        
+        Returns:
+            Updated ApplicationOut object with the generated components
+        """
+        langfuse_context.update_current_trace(user_id=os.environ.get("USER_ID", socket.gethostname()))
+        if bot_id is not None:
+            langfuse_context.update_current_observation(metadata={"bot_id": bot_id})
+        
+        # Create a refined description from the typespec
+        print("Creating prompt from TypeSpec...")
+        app_prompt = RefineOut(typespec, None)
+        
+        # We already have the typespec, so create a TypespecOut object
+        print("Processing TypeSpec...")
+        # Extract LLM functions from scenarios
+        llm_functions = []
+        for i, scenario in enumerate(scenarios):
+            # Create a simplified LLM function representation from the scenario
+            func_name = f"function_{i+1}"
+            llm_functions.append(LLMFunction(
+                name=func_name,
+                description=f"Implementation for scenario {i+1}",
+                scenario=scenario
+            ))
+        
+        typespec_out = TypespecOut(
+            reasoning="Imported from existing typespec",
+            typespec_definitions=typespec,
+            llm_functions=llm_functions,
+            error_output=None
+        )
+        
+        if feature_flags.gherkin:
+            print("Generating Gherkin Test Cases...")
+            gherkin = self._make_testcases(typespec)
+            if gherkin.error_output is not None:
+                raise Exception(f"Failed to generate gherkin test cases: {gherkin.error_output}")
+        else:
+            gherkin = GherkinOut(None, None, None)
+        
+        print("Generating Typescript Schema...")
+        typescript_schema = self._make_typescript_schema(typespec)
+        if typescript_schema.error_output is not None:
+            raise Exception(f"Failed to generate typescript schema: {typescript_schema.error_output}")
+        typescript_schema_definitions = typescript_schema.typescript_schema
+        typescript_functions = typescript_schema.functions
+        
+        print("Generating Drizzle Schema...")
+        drizzle = self._make_drizzle(typespec)
+        if drizzle.error_output is not None:
+            raise Exception(f"Failed to generate drizzle schema: {drizzle.error_output}")
+        drizzle_schema = drizzle.drizzle_schema
+        
+        print("Generating Handler Tests...")
+        handler_test_dict = self._make_handler_tests(typescript_functions, typescript_schema_definitions, drizzle_schema)
+        
+        print("Generating Handlers...")
+        handlers = self._make_handlers(typescript_functions, handler_test_dict, typespec, typescript_schema_definitions, drizzle_schema)
+        
+        updated_capabilities = capabilities if capabilities is not None else []
+        
+        langfuse_context.update_current_observation(
+            output = {
+                "refined_description": app_prompt.__dict__,
+                "typespec": typespec_out.__dict__,
+                "typescript_schema": typescript_schema.__dict__,
+                "drizzle": drizzle.__dict__,
+                "handlers": {k: v.__dict__ for k, v in handlers.items()},
+                "handler_tests": {k: v.__dict__ for k, v in handler_test_dict.items()},
+                "gherkin": gherkin.__dict__,
+                "scenarios": {f.name: f.scenario for f in typespec_out.llm_functions},
+                "capabilities": updated_capabilities,
+            },
+            metadata = {
+                "refined_description_ok": app_prompt.error_output is None,
+                "typespec_ok": True,  # We trust the provided typespec
+                "typescript_schema_ok": typescript_schema.error_output is None,
+                "drizzle_ok": drizzle.error_output is None,
+                "all_handlers_ok": all(handler.error_output is None for handler in handlers.values()),
+                "all_handler_tests_ok": all(handler_test.error_output is None for handler_test in handler_test_dict.values()),
+                "gherkin_ok": gherkin.error_output is None,
+                "is_update": True,
+            },
+        )
+        
+        capabilities_out = CapabilitiesOut(updated_capabilities, None)
+        return ApplicationOut(
+            app_prompt, 
+            capabilities_out, 
+            typespec_out, 
+            drizzle, 
+            handlers, 
+            handler_test_dict, 
+            typescript_schema, 
+            gherkin, 
+            langfuse_context.get_current_trace_id()
+        )
+
+    
 
     @observe(capture_output=False)
     def create_bot(self, application_description: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
@@ -138,6 +248,7 @@ class Application:
         # Create capabilities object only if capabilities is not None
         capabilities_out = CapabilitiesOut(capabilities if capabilities is not None else [], None)
         return ApplicationOut(app_prompt, capabilities_out, typespec, drizzle, handlers, handler_test_dict, typescript_schema, gherkin, langfuse_context.get_current_trace_id())
+
 
     @observe(capture_input=False, capture_output=False)
     def _make_typescript_schema(self, typespec_definitions: str):

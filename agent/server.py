@@ -5,6 +5,7 @@ import uuid
 import shutil
 import tempfile
 import requests
+import zipfile
 import sentry_sdk
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
@@ -60,11 +61,21 @@ class BuildRequest(BaseModel):
     prompts: Optional[list[str]] = None
     botId: Optional[str] = None
     capabilities: Optional[list[str]] = None
-
+    
+    
 class PrepareRequest(BaseModel):
     readUrl: Optional[str] = None
     writeUrl: str
     prompts: Optional[list[str]] = None
+    botId: Optional[str] = None
+    capabilities: Optional[list[str]] = None
+
+
+class ReBuildRequest(BaseModel):
+    typespec: str
+    writeUrl: str
+    scenarios: list[str]
+    readUrl: Optional[str] = None
     botId: Optional[str] = None
     capabilities: Optional[list[str]] = None
 
@@ -82,7 +93,7 @@ class CapabilitiesResponse(BaseModel):
     trace_id: str | None
     capabilities: list[str]
     
-
+    
 def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
@@ -97,6 +108,42 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
             root_dir=tmpdir,
         )
         with open(zipfile, "rb") as f:
+            upload_result = requests.put(write_url, data=f.read())
+            upload_result.raise_for_status()
+
+
+def generate_update_bot(write_url: str, read_url: str, typespec: str, scenarios: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        application = Application(client, compiler)
+        interpolator = Interpolator(".")
+        logger.info(f"Updating bot with typespec: {typespec} and scenarios: {scenarios}")
+        
+        # Use the update_bot method instead of create_bot
+        bot = application.update_bot(typespec, scenarios, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        logger.info(f"Updated bot successfully")
+        
+        # download the bot from read_url
+        if read_url:
+            with requests.get(read_url) as r:
+                r.raise_for_status()
+                with open(os.path.join(tmpdir, "bot.zip"), "wb") as f:
+                    f.write(r.content)
+                # unzip the bot
+                with zipfile.ZipFile(os.path.join(tmpdir, "bot.zip"), "r") as zip_ref:
+                    zip_ref.extractall(tmpdir)
+            # bake the bot overwriting parts of the existing bot
+            interpolator.bake(bot, tmpdir, overwrite=True)
+        else:
+            interpolator.bake(bot, tmpdir)
+            
+        # zip the bot
+        zip_path = shutil.make_archive(
+            base_name=tmpdir,
+            format="zip",
+            root_dir=tmpdir,
+        )
+        # upload the bot
+        with open(zip_path, "rb") as f:
             upload_result = requests.put(write_url, data=f.read())
             upload_result.raise_for_status()
 
@@ -125,8 +172,16 @@ def prepare(request: PrepareRequest):
     return BuildResponse(status="success", message=message, trace_id=trace_id, metadata=typespec_dict)
 
 
+@app.post("/rebuild", response_model=BuildResponse)
+def compile(request: ReBuildRequest, background_tasks: BackgroundTasks):
+    trace_id = uuid.uuid4().hex
+    background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.prompts if request.prompts else [request.prompt], trace_id, request.botId, request.capabilities)
+    return BuildResponse(status="success", message="done", trace_id=trace_id)
+
+
+# TODO: remove this once we have the new build endpoint
 @app.post("/compile", response_model=BuildResponse)
-def compile(request: BuildRequest, background_tasks: BackgroundTasks):
+def compile_legacy(request: BuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
     background_tasks.add_task(generate_bot, request.writeUrl, request.readUrl, request.prompts if request.prompts else [request.prompt], trace_id, request.botId, request.capabilities)
     return BuildResponse(status="success", message="done", trace_id=trace_id)
