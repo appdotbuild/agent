@@ -55,7 +55,7 @@ class Application:
         )
         # Create capabilities object only if capabilities is not None
         capabilities_out = CapabilitiesOut(capabilities if capabilities is not None else [], None)
-        return ApplicationOut(app_prompt, capabilities_out, typespec, None, None, None, None, gherkin, langfuse_context.get_current_trace_id())
+        return ApplicationOut(None, capabilities_out, typespec, None, None, None, None, gherkin, langfuse_context.get_current_trace_id())
     
     @observe(capture_output=False)
     def update_bot(self, typespec: str, scenarios: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
