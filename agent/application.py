@@ -27,15 +27,8 @@ class Application:
         if bot_id is not None:
             langfuse_context.update_current_observation(metadata={"bot_id": bot_id})
 
-        if feature_flags.refine_initial_prompt:
-            print("Refining Initial Description...")
-            app_prompt = self._refine_initial_prompt(prompts[0])
-        else:
-            print("Skipping Initial Description Refinement")
-            app_prompt = RefineOut(prompts[0], None)
-
         print("Compiling TypeSpec...")
-        typespec = self._make_typespec(app_prompt.refined_description)
+        typespec = self._make_typespec(prompts)
         if typespec.error_output is not None:
             raise Exception(f"Failed to generate typespec: {typespec.error_output}")
         typespec_definitions = typespec.typespec_definitions
@@ -50,14 +43,12 @@ class Application:
 
         langfuse_context.update_current_observation(
             output = {
-                "refined_description": app_prompt.__dict__,
                 "typespec": typespec.__dict__,
                 "gherkin": gherkin.__dict__,
                 "scenarios": {f.name: f.scenario for f in typespec.llm_functions}, # TODO: get gherkin scenarios from typespec
                 "capabilities": capabilities,
             },
             metadata = {
-                "refined_description_ok": app_prompt.error_output is None,
                 "typespec_ok": typespec.error_output is None,
                 "gherkin_ok": gherkin.error_output is None,
             },
@@ -280,8 +271,8 @@ class Application:
                 return GherkinOut(output.reasoning, output.gherkin, output.error_or_none)
 
     @observe(capture_input=False, capture_output=False)
-    def _make_typespec(self, application_description: str):
-        content = self.jinja_env.from_string(typespec.PROMPT).render(application_description=application_description)
+    def _make_typespec(self, prompts: list[str]):
+        content = self.jinja_env.from_string(typespec.PROMPT).render(user_requests=prompts)
         message = {"role": "user", "content": content}
         with typespec.TypespecTaskNode.platform(self.client, self.compiler, self.jinja_env):
             tsp_data = typespec.TypespecTaskNode.run([message], init=True)

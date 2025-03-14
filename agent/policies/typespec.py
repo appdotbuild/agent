@@ -10,9 +10,9 @@ from compiler.core import Compiler, CompileResult
 
 
 PROMPT = """
-Given user application description generate TypeSpec models and interface for the application.
+Given a history of a chat with user, generate TypeSpec models and interface for the application.
 
-TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use scenario.
+TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use case.
 extern dec llm_func(target: unknown, description: string);
 
 TypeSpec is extended with an @scenario decorator that defines gherkin scenario for the function use case.
@@ -121,9 +121,11 @@ With full meal breakdown
 }
 </typespec>
 
-<description>
-{{application_description}}
-</description>
+<user-requests>
+{% for request in user_requests %}
+{{request}}
+{% endfor %}
+</user-requests>
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 """.strip()
