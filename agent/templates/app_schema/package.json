@@ -34,7 +34,8 @@
     "tsc-files": "^1.1.4",
     "eslint": "^9.21.0",
     "@typescript-eslint/eslint-plugin": "^8.26.0",
-    "@typescript-eslint/parser": "^8.26.0"
+    "@typescript-eslint/parser": "^8.26.0",
+    "remove-unused-vars": "0.0.4"
   },
   "scripts": {
     "build": "tsc",
@@ -42,7 +43,9 @@
     "start:http-server": "export RUN_MODE=http-server && bun run start",
     "db:push": "drizzle-kit push --force",
     "format": "prettier --write .",
-    "lint": "eslint .",
-    "lint:fix": "eslint --fix"
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "lint:clean-unused-vars": "eslint --rule 'no-unused-vars: [\"error\", { \"args\": \"none\" }]' --quiet -f json | remove-unused-vars",
+    "lint:fix-all": "bun run lint:clean-unused-vars && bun run lint:fix"
   }
 }
