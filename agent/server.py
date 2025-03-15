@@ -72,12 +72,11 @@ class PrepareRequest(BaseModel):
 
 
 class ReBuildRequest(BaseModel):
-    typespec: str
+    typespecSchema: str
     writeUrl: str
-    scenarios: list[str]
     readUrl: Optional[str] = None
-    botId: Optional[str] = None
     capabilities: Optional[list[str]] = None
+    botId: Optional[str] = None
 
 
 class BuildResponse(BaseModel):
@@ -112,14 +111,14 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
             upload_result.raise_for_status()
 
 
-def generate_update_bot(write_url: str, read_url: str, typespec: str, scenarios: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
+def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
         interpolator = Interpolator(".")
-        logger.info(f"Updating bot with typespec: {typespec} and scenarios: {scenarios}")
+        logger.info(f"Updating bot with typespec: {typespec}")
         
         # Use the update_bot method instead of create_bot
-        bot = application.update_bot(typespec, scenarios, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        bot = application.update_bot(typespec, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Updated bot successfully")
         
         # download the bot from read_url
@@ -163,19 +162,16 @@ def prepare_bot(prompts: list[str], trace_id: str, bot_id: str | None, capabilit
 def prepare(request: PrepareRequest):
     trace_id = uuid.uuid4().hex
     bot = prepare_bot(request.prompts, trace_id, request.botId, request.capabilities)
-    
     typespec_dict = get_typespec_metadata(bot)
     scenarios = get_scenarios_message(bot)
-    
     message = f"Your bot's type specification has been prepared. Use cases implemented: {scenarios}"
-    
     return BuildResponse(status="success", message=message, trace_id=trace_id, metadata=typespec_dict)
 
 
-@app.post("/rebuild", response_model=BuildResponse)
+@app.post("/recompile", response_model=BuildResponse)
 def compile(request: ReBuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
-    background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.prompts if request.prompts else [request.prompt], trace_id, request.botId, request.capabilities)
+    background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.typespecSchema, trace_id, request.botId, request.capabilities)
     return BuildResponse(status="success", message="done", trace_id=trace_id)
 
 

@@ -55,8 +55,10 @@ class Interpolator:
         The template directory is copied to the output directory overwriting existing files.
         """
         template_dir = os.path.join(self.root_dir, "templates")
-        copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True, overwrite=True)
+        if not overwrite: # if overwrite is False, we are creating a new application, otherwise no need to update the template
+            copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True)
 
+        # TODO: optimize overwriting some files below of user wants to update only some handlers / capabilities / etc
         with open(os.path.join(output_dir, "tsp_schema", "main.tsp"), "a") as f:
             f.write(application.typespec.typespec_definitions)
 
