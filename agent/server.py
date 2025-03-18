@@ -133,6 +133,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
         bot = application.update_bot(typespec, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Updated bot successfully")
         
+        
         # download the bot from read_url
         if read_url:
             try:
@@ -197,7 +198,8 @@ def prepare(request: PrepareRequest):
 def compile(request: ReBuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
     background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.typespecSchema, trace_id, request.botId, request.capabilities)
-    return BuildResponse(status="success", message="done", trace_id=trace_id)
+    message = f"Your bot's implementation is being updated in the background"
+    return BuildResponse(status="success", message=message, trace_id=trace_id)
 
 
 # TODO: remove this once we have the new build endpoint
