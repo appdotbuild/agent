@@ -10,6 +10,8 @@ from fsm_core.helpers import agent_dfs, span_claude_bedrock
 from fsm_core import typespec, drizzle, typescript, handler_tests, handlers
 from fsm_core.common import Node, AgentState, AgentMachine
 import statemachine
+from core.datatypes import ApplicationPrepareOut, CapabilitiesOut, DrizzleOut, TypespecOut, ApplicationOut
+from core.datatypes import RefineOut, GherkinOut, TypescriptOut, HandlerTestsOut, HandlerOut
 
 
 def solve_agent[T](
@@ -207,7 +209,7 @@ class Application3:
         self.compiler = compiler
         self.langfuse_client = Langfuse()
     
-    def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
+    def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationPrepareOut:
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
             name="create_bot",
@@ -222,18 +224,33 @@ class Application3:
         print(fsm.context)
 
         result = {"capabilities": capabilities}
+        error_output = None
+        
         match fsm.stack_path[-1]:
             case FsmState.COMPLETE:
-                result.update({"typespec": fsm.context["typespec_schema"]})
+                typespec_schema = fsm.context["typespec_schema"]
+                result.update({"typespec": typespec_schema})
             case FsmState.FAILURE:
-                result.update({"error": fsm.context["error"]})
+                error_output = fsm.context["error"]
+                result.update({"error": error_output})
             case _:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
         
         trace.update(output=result)
-        return result
+        
+        refined = RefineOut(refined_description="", error_output=error_output)
+        return ApplicationPrepareOut(
+            refined_description=refined,
+            capabilities=CapabilitiesOut(capabilities if capabilities is not None else [], error_output),
+            typespec=TypespecOut(
+                reasoning=getattr(result.get("typespec"), "reasoning", None),
+                typespec_definitions=getattr(result.get("typespec"), "typespec", None),
+                llm_functions=getattr(result.get("typespec"), "llm_functions", None),
+                error_output=error_output
+            )
+        )
     
-    def update_bot(self, typespec_schema: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs):
+    def update_bot(self, typespec_schema: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationOut:
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
             name="update_bot",
@@ -251,16 +268,68 @@ class Application3:
         fsm.send(FsmEvent.CONFIRM)
 
         result = {"capabilities": capabilities}
+        error_output = None
+        
         match fsm.stack_path[-1]:
             case FsmState.COMPLETE:
                 result.update(fsm.context)
             case FsmState.FAILURE:
-                result.update({"error": fsm.context["error"]})
+                error_output = fsm.context["error"]
+                result.update({"error": error_output})
             case _:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
         
         trace.update(output=result)
-        return result
+        refined = RefineOut(refined_description="", error_output=error_output)
+        
+        # Process typescript_schema if available
+        typescript_result = result.get("typescript_schema")
+        typescript_out = TypescriptOut(
+            reasoning=getattr(typescript_result, "reasoning", None),
+            typescript_schema=getattr(typescript_result, "typescript_schema", None),
+            functions=getattr(typescript_result, "functions", None),
+            error_output=error_output
+        ) if typescript_result else None
+        
+        # Convert handler test outputs
+        handler_tests_dict = {}
+        for name, test in result.get("handler_tests", {}).items():
+            handler_tests_dict[name] = HandlerTestsOut(
+                name=name,
+                content=getattr(test, "source", None),
+                error_output=error_output
+            )
+        
+        # Convert handler outputs
+        handlers_dict = {}
+        for name, handler in result.get("handlers", {}).items():
+            handlers_dict[name] = HandlerOut(
+                name=name,
+                handler=getattr(handler, "source", None),
+                argument_schema=None,
+                error_output=error_output
+            )
+        
+        return ApplicationOut(
+            refined_description=refined,
+            capabilities=CapabilitiesOut(capabilities if capabilities is not None else [], error_output),
+            typespec=TypespecOut(
+                reasoning=getattr(result.get("typespec_schema"), "reasoning", None),
+                typespec_definitions=getattr(result.get("typespec_schema"), "typespec", None),
+                llm_functions=getattr(result.get("typespec_schema"), "llm_functions", None),
+                error_output=error_output
+            ),
+            drizzle=DrizzleOut(
+                reasoning=getattr(result.get("drizzle_schema"), "reasoning", None),
+                drizzle_schema=getattr(result.get("drizzle_schema"), "drizzle_schema", None),
+                error_output=error_output
+            ),
+            handlers=handlers_dict,
+            handler_tests=handler_tests_dict,
+            typescript_schema=typescript_out,
+            gherkin=GherkinOut(reasoning=None, gherkin=None, error_output=error_output),
+            trace_id=trace.id
+        )
 
     def make_fsm_states(self, trace_id: str, observation_id: str) -> statemachine.State:
         typespec_actor = TypespecActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
