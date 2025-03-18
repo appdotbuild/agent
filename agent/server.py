@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from anthropic import AnthropicBedrock
 from core.interpolator import Interpolator
-from application import Application
+from application3 import Application3
 from compiler.core import Compiler
 import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
@@ -106,10 +106,12 @@ class CapabilitiesResponse(BaseModel):
     
 def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
-        application = Application(client, compiler)
+        application = Application3(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Creating bot with prompts: {prompts}")
-        bot = application.create_bot(prompts[0].prompt, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        # Extract prompt text if it's a Prompt object, otherwise use as is
+        prompt_texts = [p.prompt if hasattr(p, 'prompt') else p for p in prompts]
+        bot = application.prepare_bot(prompt_texts, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Baked bot to {tmpdir}")
         interpolator.bake(bot, tmpdir)
         zipfile = shutil.make_archive(
@@ -125,58 +127,57 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
 def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     try:
         logger.info(f"Staring background job to update bot")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            application = Application(client, compiler)
+        application = Application3(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Updating bot with typespec: {typespec}")
         
         bot = application.update_bot(typespec, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Updated bot successfully")
         
-        
-        # download the bot from read_url
-        if read_url:
-            try:
-                logger.info(f"Reading bot from {read_url}")
-                with requests.get(read_url) as r:
-                    r.raise_for_status()
-                    with open(os.path.join(tmpdir, "bot.zip"), "wb") as f:
-                        f.write(r.content)
-                    # unzip the bot
-                    with zipfile.ZipFile(os.path.join(tmpdir, "bot.zip"), "r") as zip_ref:
-                        zip_ref.extractall(tmpdir)
-                    logger.info(f"Extracted bot from successfully to {tmpdir}")
-                # bake the bot overwriting parts of the existing bot
-                interpolator.bake(bot, tmpdir, overwrite=True)
-                logger.info(f"Baked bot successfully to {tmpdir}")
-            except Exception as e:
-                logger.warning(f"Failed to read or process existing bot from {read_url}: {str(e)}")
-                logger.info(f"Falling back to fresh bot build")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # download the bot from read_url
+            if read_url:
+                try:
+                    logger.info(f"Reading bot from {read_url}")
+                    with requests.get(read_url) as r:
+                        r.raise_for_status()
+                        with open(os.path.join(tmpdir, "bot.zip"), "wb") as f:
+                            f.write(r.content)
+                        # unzip the bot
+                        with zipfile.ZipFile(os.path.join(tmpdir, "bot.zip"), "r") as zip_ref:
+                            zip_ref.extractall(tmpdir)
+                        logger.info(f"Extracted bot from successfully to {tmpdir}")
+                    # bake the bot overwriting parts of the existing bot
+                    interpolator.bake(bot, tmpdir, overwrite=True)
+                    logger.info(f"Baked bot successfully to {tmpdir}")
+                except Exception as e:
+                    logger.warning(f"Failed to read or process existing bot from {read_url}: {str(e)}")
+                    logger.info(f"Falling back to fresh bot build")
+                    interpolator.bake(bot, tmpdir)
+                    logger.info(f"Baked fresh bot successfully to {tmpdir}")
+            else:
                 interpolator.bake(bot, tmpdir)
-                logger.info(f"Baked fresh bot successfully to {tmpdir}")
-        else:
-            interpolator.bake(bot, tmpdir)
-            logger.info(f"Baked bot successfully to {tmpdir}")
-            
-        # zip the bot
-        zip_path = shutil.make_archive(
-            base_name=tmpdir,
-            format="zip",
-            root_dir=tmpdir,
-        )
-        logger.info(f"Zipped bot successfully to {zip_path}")
-        # upload the bot
-        with open(zip_path, "rb") as f:
-            upload_result = requests.put(write_url, data=f.read())
-            upload_result.raise_for_status()
-            logger.info(f"Uploaded bot successfully to {write_url}")
+                logger.info(f"Baked bot successfully to {tmpdir}")
+                
+            # zip the bot
+            zip_path = shutil.make_archive(
+                base_name=tmpdir,
+                format="zip",
+                root_dir=tmpdir,
+            )
+            logger.info(f"Zipped bot successfully to {zip_path}")
+            # upload the bot
+            with open(zip_path, "rb") as f:
+                upload_result = requests.put(write_url, data=f.read())
+                upload_result.raise_for_status()
+                logger.info(f"Uploaded bot successfully to {write_url}")
     except Exception as e:
         logger.error(f"Failed to update bot: {str(e)}")
         raise e
 
 
 def prepare_bot(prompts: list[Prompt], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
-    application = Application(client, compiler)
+    application = Application3(client, compiler)
     logger.info(f"Creating bot with prompts: {prompts}")
     if not prompts:
         logger.error("No prompts provided")
