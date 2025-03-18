@@ -9,9 +9,9 @@ from .common import AgentMachine
 
 
 PROMPT = """
-Given user application description generate TypeSpec models and interface for the application.
+Given a history of a chat with user, generate TypeSpec models and interface for the application.
 
-TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use scenario.
+TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use case.
 extern dec llm_func(target: unknown, description: string);
 
 TypeSpec is extended with an @scenario decorator that defines gherkin scenario for the function use case.
@@ -118,19 +118,13 @@ With full meal breakdown
     @llm_func("Retrieve and summarize dietary history")
     listDishes(options: ListDishesRequest): Dish[];
 }
-
-    @scenario(
-\"\"\"
-Scenario: Historical query with date range
-When user asks "What did I eat between 2024-02-10 and 2024-02-15?"
-Then system returns entries from 2024-02-10 to 2024-02-15
-With full meal breakdown
-\"\"\")
 </typespec>
 
-<description>
-{{application_description}}
-</description>
+<user-requests>
+{% for request in user_requests %}
+{{request}}
+{% endfor %}
+</user-requests>
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 """.strip()
@@ -212,12 +206,12 @@ class TypespecMachine(AgentMachine[TypespecContext]):
 
 
 class Entry(TypespecMachine):
-    def __init__(self, application_description: str):
-        self.application_description = application_description
+    def __init__(self, user_requests: list[str]):
+        self.user_requests = user_requests
     
     @property
     def next_message(self) -> MessageParam | None:
-        content = jinja2.Template(PROMPT).render(application_description=self.application_description)
+        content = jinja2.Template(PROMPT).render(user_requests=self.user_requests)
         return MessageParam(role="user", content=content)
 
 
