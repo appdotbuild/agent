@@ -85,6 +85,12 @@ class CapabilitiesOut:
     error_output: str | None
 
 @dataclass
+class ApplicationPrepareOut:
+    refined_description: RefineOut
+    capabilities: CapabilitiesOut
+    typespec: TypespecOut
+
+@dataclass
 class ApplicationOut:
     refined_description: RefineOut
     capabilities: CapabilitiesOut
