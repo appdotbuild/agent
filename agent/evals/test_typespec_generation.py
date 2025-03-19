@@ -5,7 +5,7 @@ from anthropic import AnthropicBedrock
 from tracing_client import TracingClient
 from compiler.core import Compiler
 from policies import typespec
-from application import Application
+from application3 import Application3
 
 DATASET_DIR = "evals/dataset.min"
 SCHEMA_SUFFIXES = {

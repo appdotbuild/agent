@@ -3,7 +3,7 @@ import tempfile
 import shutil
 import unittest
 from unittest.mock import MagicMock
-from application import Application
+from application3 import Application3
 from core.interpolator import Interpolator, CUSTOM_TOOL_TEMPLATE
 
 class CustomToolsGenerationTest(unittest.TestCase):

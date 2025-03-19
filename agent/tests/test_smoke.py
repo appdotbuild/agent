@@ -14,7 +14,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from application3 import Application3
-from application import langfuse_context, feature_flags
+from core import feature_flags
+from langfuse.decorators import langfuse_context
 from compiler.core import Compiler
 from core.interpolator import Interpolator
 

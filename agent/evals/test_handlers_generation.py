@@ -5,7 +5,7 @@ from typing import Dict
 from anthropic import AnthropicBedrock
 from compiler.core import Compiler
 from policies import handlers
-from application import Application
+from application3 import Application3
 
 DATASET_DIR = "evals/dataset.min"
 SCHEMA_SUFFIXES = {

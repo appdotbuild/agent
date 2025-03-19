@@ -1,5 +1,5 @@
 from anthropic import AnthropicBedrock
-from application import Application
+from application3 import Application3
 from compiler.core import Compiler
 import tempfile
 import coloredlogs
@@ -66,9 +66,12 @@ def main(prefix: str, save_dir: str | None = None):
     for name, prompt in ideas:
         print(prompt)
 
-        application = Application(client, compiler)
+        application = Application3(client, compiler)
 
-        my_bot = application.create_bot(prompt, f"{prefix}_{name}")
+        # First prepare the bot
+        prepared_bot = application.prepare_bot([prompt], f"{prefix}_{name}")
+        # Then update with the prepared bot's typespec
+        my_bot = application.update_bot(prepared_bot.typespec.typespec_definitions, f"{prefix}_{name}")
         print("Bot created:", my_bot)
 
         if save_dir:

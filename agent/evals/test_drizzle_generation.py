@@ -4,7 +4,7 @@ from typing import Dict
 from anthropic import AnthropicBedrock
 from compiler.core import Compiler
 from policies import drizzle
-from application import Application
+from application3 import Application3
 from tracing_client import TracingClient
 
 DATASET_DIR = "evals/dataset.min"
