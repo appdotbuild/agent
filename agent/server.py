@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from anthropic import AnthropicBedrock
 from core.interpolator import Interpolator
-from application3 import Application3
+from application import Application
 from compiler.core import Compiler
 import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
@@ -106,7 +106,7 @@ class CapabilitiesResponse(BaseModel):
     
 def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
-        application = Application3(client, compiler)
+        application = Application(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Creating bot with prompts: {prompts}")
         # Extract prompt text if it's a Prompt object, otherwisse use as is
@@ -130,7 +130,7 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
 def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     try:
         logger.info(f"Staring background job to update bot")
-        application = Application3(client, compiler)
+        application = Application(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Updating bot with typespec: {typespec}")
         
@@ -180,7 +180,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
 
 
 def prepare_bot(prompts: list[Prompt], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
-    application = Application3(client, compiler)
+    application = Application(client, compiler)
     logger.info(f"Creating bot with prompts: {prompts}")
     if not prompts:
         logger.error("No prompts provided")

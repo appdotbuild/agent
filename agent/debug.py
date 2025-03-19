@@ -1,5 +1,5 @@
 from anthropic import AnthropicBedrock
-from application3 import Application3
+from application import Application
 from compiler.core import Compiler
 import os
 import coloredlogs
@@ -18,7 +18,7 @@ def prepare_only(initial_description: str):
     """Just test the prepare_bot functionality"""
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
-    application = Application3(client, compiler)
+    application = Application(client, compiler)
 
     my_bot = application.prepare_bot([initial_description])
     print("Bot prepared:", my_bot)
@@ -29,7 +29,7 @@ def main(initial_description: str, final_directory: str | None = None, update: b
     # Use the correct Docker image names from prepare_containers.sh
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
-    application = Application3(client, compiler)
+    application = Application(client, compiler)
 
     my_bot = application.prepare_bot([initial_description])
     print("Bot prepared successfully!")

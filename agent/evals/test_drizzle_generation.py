@@ -4,7 +4,7 @@ from typing import Dict
 from anthropic import AnthropicBedrock
 from compiler.core import Compiler
 from policies import drizzle
-from application3 import Application3
+from application import Application
 from tracing_client import TracingClient
 
 DATASET_DIR = "evals/dataset.min"
@@ -33,7 +33,7 @@ def evaluate_drizzle_generation() -> float:
     total_attempts = 10
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        application = Application(client, compiler, "templates", tmpdir, branch_factor=1, max_depth=1, max_workers=1)
+        application = Application(client, compiler)
 
         for i in range(total_attempts):
             try:

@@ -216,7 +216,7 @@ class FSMContext(TypedDict):
 
 
 
-class Application3:
+class Application:
     def __init__(self, client: AnthropicBedrock, compiler: Compiler):
         self.client = client
         self.compiler = compiler

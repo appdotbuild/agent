@@ -1,5 +1,5 @@
 from anthropic import AnthropicBedrock
-from application3 import Application3
+from application import Application
 from compiler.core import Compiler
 import logging
 import coloredlogs
@@ -12,7 +12,7 @@ def test_update():
     # Initialize the components
     client = AnthropicBedrock(aws_profile='dev', aws_region='us-west-2')
     compiler = Compiler('botbuild/tsp_compiler', 'botbuild/app_schema')
-    app = Application3(client, compiler)
+    app = Application(client, compiler)
     
     # Create a simple typespec
     typespec = '''<reasoning>

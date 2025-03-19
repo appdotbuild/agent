@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from compiler.core import Compiler
-from application3 import Application3
+from application import Application
 from anthropic import AnthropicBedrock
 
-def test_application3_no_llm_calls():
+def test_application_no_llm_calls():
     """
-    Test Application3 by mocking the solve_agent function to avoid any LLM invocations.
+    Test Application by mocking the solve_agent function to avoid any LLM invocations.
     Verify the structure and types of the outputs.
     """
     from fsm_core.common import AgentState
@@ -191,7 +191,7 @@ def test_application3_no_llm_calls():
             return cls
 
         def send(self, event):
-            from application3 import FsmState
+            from application import FsmState
             
             if event == "PROMPT":
                 # Set the typespec data in context directly
@@ -217,7 +217,7 @@ def test_application3_no_llm_calls():
     mock_langfuse.trace.return_value.id = "mock-trace-id"
     
     # Replace solve_agent with our mock and statemachine with our mock
-    with patch('application3.solve_agent', side_effect=mock_solve_agent):
+    with patch('application.solve_agent', side_effect=mock_solve_agent):
         with patch('langfuse.Langfuse', return_value=mock_langfuse):
             with patch('statemachine.StateMachine', MockStateMachine):
                 # Set up test
@@ -225,7 +225,7 @@ def test_application3_no_llm_calls():
                 client = MagicMock(spec=AnthropicBedrock)
                 
                 # Create application and run test
-                application = Application3(client, compiler)
+                application = Application(client, compiler)
                 
                 # Test prepare_bot with known trace IDs for predictable output
                 prepared_bot = application.prepare_bot(
