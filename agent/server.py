@@ -109,11 +109,14 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
         application = Application3(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Creating bot with prompts: {prompts}")
-        # Extract prompt text if it's a Prompt object, otherwise use as is
+        # Extract prompt text if it's a Prompt object, otherwisse use as is
         prompt_texts = [p.prompt if hasattr(p, 'prompt') else p for p in prompts]
         bot = application.prepare_bot(prompt_texts, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        logger.info(f"Prepared bot {tmpdir}")
+        updated_bot = application.update_bot(bot.typespec.typespec_schema, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        logger.info(f"Updated bot {tmpdir}")
+        interpolator.bake(updated_bot, tmpdir)
         logger.info(f"Baked bot to {tmpdir}")
-        interpolator.bake(bot, tmpdir)
         zipfile = shutil.make_archive(
             base_name=tmpdir,
             format="zip",
