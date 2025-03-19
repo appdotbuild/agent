@@ -56,7 +56,22 @@ Make sure to address following drizzle schema errors:
 {{errors}}
 </errors>
 
+{% if additional_feedback %}
+Additional feedback:
+<feedback>
+{{additional_feedback}}
+</feedback>
+{% endif %}
+
+{% if schema %}
+Current version:
+<drizzle>
+{{schema}}
+</drizzle>
+{% endif %}
+
 Return <reasoning> and fixed complete drizzle schema encompassed with <drizzle> tag.
+Do not change things that are not broken!
 """
 
 

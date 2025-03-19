@@ -125,7 +125,7 @@ const multi = await db.insert(users).values([
   { name: 'Bob' }
 ]);
 
-// Update 
+// Update
 await db.update(users)
   .set({ name: 'John' })
   .where(eq(users.id, 1));
@@ -207,15 +207,15 @@ interface QueryOptions {
 // Type-safe query building
 function buildQuery(options: QueryOptions) {
   let query = db.select().from(table);
-  
+
   if (options.exercise) {
     query = query.where(eq(table.exercise, options.exercise));
   }
-  
+
   if (options.muscleGroup) {
     query = query.where(eq(table.muscleGroup, options.muscleGroup));
   }
-  
+
   return query;
 }
 
@@ -253,7 +253,7 @@ query = query.limit(10); // Error: Property 'limit' is missing
 
 // ✅ Correct - Preserve type inference
 const baseQuery = db.select().from(table);
-const whereQuery = condition 
+const whereQuery = condition
   ? baseQuery.where(eq(table.column, value))
   : baseQuery;
 const finalQuery = whereQuery.limit(10);
@@ -278,19 +278,19 @@ function buildWorkoutQuery(
   options: QueryOptions
 ): PgSelect {
   const baseQuery = db.select().from(table);
-  
+
   let query = baseQuery;
-  
+
   if (options.exerciseName) {
     query = query.where(
       eq(table.exercise_name, options.exerciseName)
     );
   }
-  
+
   if (options.limit) {
     query = query.limit(options.limit);
   }
-  
+
   return query;
 }
 
@@ -311,17 +311,17 @@ export async function getProgress(
   const baseQuery = db
     .select()
     .from(progressTable);
-  
+
   const withExercise = options.exerciseName
     ? baseQuery.where(
         eq(progressTable.exercise_name, options.exerciseName)
       )
     : baseQuery;
-    
+
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-    
+
   return await withLimit;
 }
 
@@ -343,17 +343,17 @@ export async function listWorkoutHistory(
     .select()
     .from(exerciseRecordsTable)
     .$dynamic();  // Enable dynamic queries
-    
+
   const withExercise = options.exerciseId
     ? query.where(
         eq(exerciseRecordsTable.exercise_id, options.exerciseId)
       )
     : query;
-    
+
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-    
+
   return await withLimit;
 }
 
@@ -405,7 +405,7 @@ Application Definitions:
 {{drizzle_schema}}
 </drizzle>
 
-Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas. 
+Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas.
 Assume that DB is already initialized, all tables are successfully created and wiped out after each test.
 Assume those imports are already provided:
 
@@ -425,8 +425,40 @@ Make sure to address following TypeScript compilation, linting and runtime error
 {{errors}}
 </errors>
 
+{% if additional_feedback %}
+Additional feedback:
+<feedback>
+{{additional_feedback}}
+</feedback>
+{% endif %}
+
+{% if imports or handler_test %}
+Current version:
+{% endif %}
+{% if imports %}
+<imports>
+{{imports}}
+</imports>
+{% endif %}
+{% if handler_test %}
+<test>
+{{handler_test}}
+</test>
+{% endif %}
+
 Verify absence of reserved keywords in property names, type names, and function names.
 Follow original formatting, return <imports> and corrected complete test suite with each test encompassed within <test> tag.
+
+Assume that DB is already initialized, all tables are successfully created and wiped out after each test.
+Assume those imports are already provided:
+
+<imports>
+import { afterEach, beforeEach, describe } from "bun:test";
+import {{ function_name }} from "../../common/schema";
+</imports>
+
+Ensure real function and database operations are tested, avoid mocks unless necessary.
+Match the output format provided in the Example. Return new required imports within <imports> and tests encompassed with <test> tags.
 """
 
 
@@ -493,7 +525,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages          
+        return messages
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
@@ -511,13 +543,12 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
                 "imports": imports,
                 "tests": tests,
             }
-            content = typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(**params)            
+            content = typescript_jinja_env.from_string(HANDLER_TEST_TPL).render(**params)
             file_map = {
                 f"src/tests/handlers/{kwargs['function_name']}.test.ts": content,
                 "src/common/schema.ts": kwargs['typescript_schema'],
                 "src/db/schema/application.ts": kwargs['drizzle_schema']
             }
-            
             remove_unused_vars_cmd = [
                 "sh",
                 "-c",  
@@ -530,7 +561,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
                 "stdout": (compilation_result["stdout"] or "") + ("\n" + linting_result["stdout"] if linting_result["stdout"] else ""),
                 "stderr": (compilation_result["stderr"] or "") + ("\n" + linting_result["stderr"] if linting_result["stderr"] else "")
             }
-            
+
             # TODO: import location should be handled in interpolator bake method
             params["handler_function_import"] = f'import {{ handle as {kwargs["function_name"]} }} from "../../handlers/{kwargs["function_name"]}.ts";'
 
@@ -557,7 +588,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
             not isinstance(self.data.output, Exception)
             and self.data.output.feedback["exit_code"] == 0
         )
-    
+
     @staticmethod
     @contextmanager
     def platform(client: TracingClient, compiler: Compiler, jinja_env: jinja2.Environment):
@@ -573,7 +604,7 @@ class HandlerTestTaskNode(TaskNode[HandlerTestData, list[MessageParam]]):
             del typescript_client
             del typescript_compiler
             del typescript_jinja_env
-    
+
     @staticmethod
     def parse_output(output: str) -> tuple[str, str]:
         pattern = re.compile(r"<imports>(.*?)</imports>", re.DOTALL)

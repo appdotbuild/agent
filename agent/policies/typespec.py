@@ -133,9 +133,26 @@ Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 
 FIX_PROMPT = """
 Make sure to address following TypeSpec compilation errors:
+{% if errors %}
 <errors>
 {{errors}}
 </errors>
+{% endif %}
+
+{% if additional_feedback %}
+Additional feedback:
+<feedback>
+{{additional_feedback}}
+</feedback>
+{% endif %}
+
+{% if typespec %}
+Current version:
+<typespec>
+{{typespec}}
+</typespec>
+{% endif %}
+
 
 Verify absence of reserved keywords in property names, type names, and function names.
 Return <reasoning> and fixed complete TypeSpec definition encompassed with <typespec> tag.
@@ -152,7 +169,7 @@ class LLMFunction:
 class TypespecOutput:
     reasoning: str
     typespec_definitions: str
-    llm_functions: list[LLMFunction]    
+    llm_functions: list[LLMFunction]
     feedback: CompileResult
 
     @property
@@ -183,7 +200,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages            
+        return messages
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
@@ -216,14 +233,14 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
         messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return TypespecData(messages=messages, output=output)
-    
+
     @property
     def is_successful(self) -> bool:
         return (
             not isinstance(self.data.output, Exception)
             and self.data.output.feedback["exit_code"] == 0
         )
-    
+
     @staticmethod
     @contextmanager
     def platform(client: TracingClient, compiler: Compiler, jinja_env: jinja2.Environment):
@@ -239,7 +256,7 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             del typespec_client
             del typespec_compiler
             del typespec_jinja_env
-    
+
     @staticmethod
     def parse_output(output: str) -> tuple[str, str, list[LLMFunction]]:
         pattern = re.compile(
@@ -251,40 +268,40 @@ class TypespecTaskNode(TaskNode[TypespecData, list[MessageParam]]):
             raise PolicyException("Failed to parse output, expected <reasoning> and <typespec> tags")
         reasoning = match.group(1).strip()
         definitions = match.group(2).strip()
-        
+
         # Find functions with their metadata
         functions = []
-        
+
         # Find all function declarations in the interface
         func_pattern = re.compile(r'(\s*)(\w+)\s*\(\s*\w+\s*:', re.DOTALL)
         func_matches = list(func_pattern.finditer(definitions))
-        
+
         for i, func_match in enumerate(func_matches):
             func_name = func_match.group(2)
-            
+
             # Determine search scope - from previous function to current function
             start_pos = 0 if i == 0 else func_matches[i-1].end()
             end_pos = func_match.start()
             search_text = definitions[start_pos:end_pos]
-            
+
             # Find the preceding llm_func decorator
             llm_func_pattern = re.compile(r'@llm_func\(\s*"(.+?)"\s*\)', re.DOTALL)
             llm_func_match = llm_func_pattern.search(search_text)
             if not llm_func_match:
                 continue
-                
+
             description = llm_func_match.group(1)
-            
+
             # Find the scenarios
             scenario_pattern = re.compile(r'@scenario\(\s*"""(.*?)"""\s*\)', re.DOTALL)
             scenario_matches = list(scenario_pattern.finditer(search_text))
-            
+
             if not scenario_matches:
                 continue
-                
+
             # Use the last scenario as the representative one
             scenario = scenario_matches[-1].group(1).strip()
-            
+
             functions.append(LLMFunction(name=func_name, description=description, scenario=scenario))
-            
+
         return reasoning, definitions, functions
