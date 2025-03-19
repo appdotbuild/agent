@@ -34,8 +34,8 @@ class State(TypedDict):
     initial: NotRequired[str]
 
 
-class StateMachine:
-    def __init__(self, root: State, context: Any):
+class StateMachine[T]:
+    def __init__(self, root: State, context: T):
         self.root = root
         self.context = context
         self.state_stack: list[State] = [root]

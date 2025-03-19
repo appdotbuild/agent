@@ -181,10 +181,14 @@ def test_application3_no_llm_calls():
     
     # Mock state machine to directly set context values without running the FSM
     class MockStateMachine:
-        def __init__(self, states, context):
-            self.states = states
+        def __init__(self, root, context):
+            self.root = root
             self.context = context
             self.stack_path = []
+            
+        # Support generic typing syntax
+        def __class_getitem__(cls, item):
+            return cls
 
         def send(self, event):
             from application3 import FsmState

@@ -202,6 +202,19 @@ class FsmEvent(str, enum.Enum):
     CONFIRM = "CONFIRM"
 
 
+from typing import TypedDict, NotRequired
+
+
+class FSMContext(TypedDict):
+    description: str
+    capabilities: NotRequired[list[str]]
+    typespec_schema: NotRequired[typespec.Success]
+    drizzle_schema: NotRequired[drizzle.Success]
+    typescript_schema: NotRequired[typescript.Success]
+    handler_tests: NotRequired[dict[str, handler_tests.Success]]
+    handlers: NotRequired[dict[str, handlers.Success | handlers.TestsError]]
+
+
 
 class Application3:
     def __init__(self, client: AnthropicBedrock, compiler: Compiler):
@@ -217,9 +230,9 @@ class Application3:
             metadata={"bot_id": bot_id},
         )
 
-        fsm_context = {"user_requests": prompts}
+        fsm_context: FSMContext = {"description": "", "user_requests": prompts}
         fsm_states = self.make_fsm_states(trace.id, trace.id)
-        fsm = statemachine.StateMachine(fsm_states, fsm_context)
+        fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
         fsm.send(FsmEvent.PROMPT)
         print(fsm.context)
 
@@ -276,9 +289,9 @@ class Application3:
         reasoning, typespec_parsed, llm_functions = typespec.TypespecMachine.parse_output(typespec_schema)
         typespec_input = typespec.Success(reasoning, typespec_parsed, llm_functions, {"exit_code": 0})
 
-        fsm_context = {"typespec_schema": typespec_input}
+        fsm_context: FSMContext = {"description": "", "typespec_schema": typespec_input}
         fsm_states = self.make_fsm_states(trace.id, trace.id)
-        fsm = statemachine.StateMachine(fsm_states, fsm_context)
+        fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
         fsm.send(FsmEvent.CONFIRM)
 
         result = {"capabilities": capabilities}
