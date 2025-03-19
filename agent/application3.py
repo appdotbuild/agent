@@ -259,6 +259,20 @@ class Application3:
         )
 
         # hack typespec output
+        print(f"Typespec schema: {typespec_schema}")
+        # Check if typespec already has tags
+        if not (("<reasoning>" in typespec_schema and "</reasoning>" in typespec_schema) and 
+                ("<typespec>" in typespec_schema and "</typespec>" in typespec_schema)):
+            # Wrap the schema in the expected format
+            typespec_schema = f"""
+            <reasoning>
+            Auto-generated reasoning.
+            </reasoning>
+            
+            <typespec>
+            {typespec_schema}
+            </typespec>
+            """
         reasoning, typespec_parsed, llm_functions = typespec.TypespecMachine.parse_output(typespec_schema)
         typespec_input = typespec.Success(reasoning, typespec_parsed, llm_functions, {"exit_code": 0})
 
@@ -280,38 +294,38 @@ class Application3:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
         
         trace.update(output=result)
-        refined = RefineOut(refined_description="", error_output=error_output)
         
-        # Process typescript_schema if available
-        typescript_result = result.get("typescript_schema")
-        typescript_out = TypescriptOut(
-            reasoning=getattr(typescript_result, "reasoning", None),
-            typescript_schema=getattr(typescript_result, "typescript_schema", None),
-            functions=getattr(typescript_result, "functions", None),
-            error_output=error_output
-        ) if typescript_result else None
-        
-        # Convert handler test outputs
-        handler_tests_dict = {}
-        for name, test in result.get("handler_tests", {}).items():
-            handler_tests_dict[name] = HandlerTestsOut(
+        # Create dictionary comprehensions for handlers and tests
+        handler_tests_dict = {
+            name: HandlerTestsOut(
                 name=name,
                 content=getattr(test, "source", None),
                 error_output=error_output
-            )
+            ) for name, test in result.get("handler_tests", {}).items()
+        }
         
-        # Convert handler outputs
-        handlers_dict = {}
-        for name, handler in result.get("handlers", {}).items():
-            handlers_dict[name] = HandlerOut(
+        handlers_dict = {
+            name: HandlerOut(
                 name=name,
                 handler=getattr(handler, "source", None),
                 argument_schema=None,
                 error_output=error_output
+            ) for name, handler in result.get("handlers", {}).items()
+        }
+        
+        # Create TypescriptOut conditionally
+        typescript_result = result.get("typescript_schema")
+        typescript_out = None
+        if typescript_result:
+            typescript_out = TypescriptOut(
+                reasoning=getattr(typescript_result, "reasoning", None),
+                typescript_schema=getattr(typescript_result, "typescript_schema", None),
+                functions=getattr(typescript_result, "functions", None),
+                error_output=error_output
             )
         
         return ApplicationOut(
-            refined_description=refined,
+            refined_description=RefineOut(refined_description="", error_output=error_output),
             capabilities=CapabilitiesOut(capabilities if capabilities is not None else [], error_output),
             typespec=TypespecOut(
                 reasoning=getattr(result.get("typespec_schema"), "reasoning", None),

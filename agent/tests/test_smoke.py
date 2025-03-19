@@ -10,7 +10,11 @@ import httpx
 from unittest.mock import MagicMock
 from anthropic import AnthropicBedrock
 from anthropic.types import Message, TextBlock, Usage, ToolUseBlock
-from application import Application, langfuse_context, feature_flags
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from application3 import Application3
+from application import langfuse_context, feature_flags
 from compiler.core import Compiler
 from core.interpolator import Interpolator
 
@@ -78,7 +82,7 @@ def _get_pseudo_llm_response(*args, **kwargs):
             When the user input is a number, the bot should generate a response
             When the user input is a mixed input, the bot should generate a response
             \"\"\")
-        @llm_func("process user input and generate response")
+            @llm_func("process user input and generate response")
             processInput(options: InputMessage): ResponseMessage;
         }
         </typespec>
@@ -302,8 +306,11 @@ def test_end2end():
     feature_flags.perplexity = True
     
     with tempfile.TemporaryDirectory() as tempdir:
-        application = Application(client, compiler)
-        my_bot = application.create_bot("Create a bot that does something please")
+        application = Application3(client, compiler)
+        # First prepare the bot to get the typespec
+        prepared_bot = application.prepare_bot(["Create a bot that does something please"])
+        # Then update the bot to get the full ApplicationOut object
+        my_bot = application.update_bot(prepared_bot.typespec.typespec_definitions)
 
         interpolator = Interpolator(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
         interpolator.bake(my_bot, tempdir)
