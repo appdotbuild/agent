@@ -7,7 +7,7 @@ from compiler.core import Compiler
 from application import Application
 from anthropic import AnthropicBedrock
 
-def test_application_no_llm_calls():
+def test_application_no_docker():
     """
     Test Application by mocking the solve_agent function to avoid any LLM invocations.
     Verify the structure and types of the outputs.
