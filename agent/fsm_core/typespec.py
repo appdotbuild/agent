@@ -131,10 +131,18 @@ Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 
 
 FIX_PROMPT = """
+{{ if errors }}
 Make sure to address following TypeSpec compilation errors:
 <errors>
 {{errors}}
 </errors>
+{% endif %}
+
+{% if additional_feedback %}
+Additional feedback:
+<feedback>
+{{additional_feedback}}
+</feedback>
 
 Verify absence of reserved keywords in property names, type names, and function names.
 Return <reasoning> and fixed complete TypeSpec definition encompassed with <typespec> tag.
@@ -173,7 +181,7 @@ class TypespecMachine(AgentMachine[TypespecContext]):
         if not functions:
             raise ValueError("Failed to parse output, expected at least one function definition")
         return reasoning, definitions, functions
-    
+
     def on_message(self: Self, context: TypespecContext, message: MessageParam) -> "TypespecMachine":
         content = llm_common.pop_first_text(message)
         if content is None:
@@ -191,7 +199,7 @@ class TypespecMachine(AgentMachine[TypespecContext]):
             "",
             typespec
         ])
-        feedback = context.compiler.compile_typespec(typespec_schema)  
+        feedback = context.compiler.compile_typespec(typespec_schema)
         if feedback["exit_code"] != 0:
             return CompileError(reasoning, typespec, llm_functions, feedback)
         return Success(reasoning, typespec, llm_functions, feedback)
@@ -199,16 +207,16 @@ class TypespecMachine(AgentMachine[TypespecContext]):
     @property
     def is_done(self) -> bool:
         return False
-    
+
     @property
     def score(self) -> float:
-        return 0.0      
+        return 0.0
 
 
 class Entry(TypespecMachine):
     def __init__(self, user_requests: list[str]):
         self.user_requests = user_requests
-    
+
     @property
     def next_message(self) -> MessageParam | None:
         content = jinja2.Template(PROMPT).render(user_requests=self.user_requests)
@@ -233,10 +241,21 @@ class TypespecCompile:
         self.feedback = feedback
 
 
-class CompileError(TypespecMachine, TypespecCompile):    
+class CompileError(TypespecMachine, TypespecCompile):
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.feedback["stdout"]}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stderr"])
+        return MessageParam(role="user", content=content)
+
+
+class UserFeedback(TypespecMachine, TypespecCompile):
+    def __init__(self, reasoning: str, typespec: str, llm_functions: list[LLMFunction], feedback: CompileResult, additional_feedback: str):
+        super().__init__(reasoning, typespec, llm_functions, feedback)
+        self.additional_feedback = additional_feedback
+
+    @property
+    def next_message(self) -> MessageParam | None:
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stderr"], additional_feedback=self.additional_feedback)
         return MessageParam(role="user", content=content)
 
 
@@ -244,11 +263,11 @@ class Success(TypespecMachine, TypespecCompile):
     @property
     def next_message(self) -> MessageParam | None:
         return None
-    
+
     @property
     def is_done(self) -> bool:
         return True
-    
+
     @property
     def score(self) -> float:
         return 1.0

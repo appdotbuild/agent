@@ -1,18 +1,21 @@
 from dataclasses import dataclass
-from typing import Optional, Any, Dict, Callable, List, Tuple
+from typing import Optional, Any, Dict, Callable, List, Tuple, TypeVar, Generic, Type
 import jinja2
 import threading
 from anthropic.types import MessageParam
 from anthropic import AnthropicBedrock
 import os
+import uuid
 from tracing_client import TracingClient
 from compiler.core import Compiler
-from policies import drizzle
-from policies import typespec as tsp
-from policies import typescript as ts
-from policies.handlers import HandlerTaskNode, PROMPT as HANDLER_PROMPT, FIX_PROMPT as HANDLER_FIX_PROMPT
-from policies.handler_tests import HandlerTestTaskNode, PROMPT as HANDLER_TEST_PROMPT, FIX_PROMPT as HANDLER_TEST_FIX_PROMPT
-from application import langfuse_context
+from fsm_core import drizzle
+from fsm_core import typespec as tsp
+from fsm_core import typescript as ts
+from fsm_core import handlers
+from fsm_core import handler_tests
+from application import TypespecActor, DrizzleActor, TypescriptActor, HandlerTestsActor, HandlersActor
+from langfuse import Langfuse
+from langfuse.decorators import langfuse_context
 import logging
 import coloredlogs
 from fire import Fire
@@ -120,13 +123,50 @@ class Processor:
         self.jinja_env = jinja_env
         self.context = Context()
         self.expected_keys = []
+        self._langfuse_client = None
+
+    @property
+    def langfuse_client(self) -> Langfuse:
+        """Lazy-loaded Langfuse client."""
+        if self._langfuse_client is None:
+            self._langfuse_client = Langfuse()
+        return self._langfuse_client
+
+    def execute_actor(self, actor_class, *args) -> Tuple[bool, Any, Optional[str]]:
+        """
+        Execute an actor with proper error handling.
+
+        Args:
+            actor_class: The actor class to instantiate and execute
+            *args: Arguments to pass to the actor's execute method
+
+        Returns:
+            Tuple of (success, result, error_message)
+        """
+        try:
+            # Create trace and observation IDs
+            trace_id = uuid.uuid4().hex
+            observation_id = uuid.uuid4().hex
+
+            # Create the actor instance
+            actor = actor_class(
+                self.tracing_client.m_claude,
+                self.compiler,
+                self.langfuse_client,
+                trace_id,
+                observation_id
+            )
+
+            # Execute the actor
+            result = actor.execute(*args)
+            return True, result, None
+
+        except Exception as e:
+            logger.error(f"Error executing {actor_class.__name__}: {str(e)}")
+            return False, None, f"Error executing {actor_class.__name__}: {str(e)}"
 
     def create(self, *args, **kwargs) -> StepResult:
         """Create initial implementation."""
-        raise NotImplementedError("Subclasses must implement this method")
-
-    def verify(self, *args, **kwargs) -> StepResult:
-        """Verify implementation with tests or compilation."""
         raise NotImplementedError("Subclasses must implement this method")
 
     def fix(self, *args, **kwargs) -> StepResult:
@@ -167,39 +207,34 @@ class Processor:
 
         1. First, create a TypeSpec definition:
            - Call make_typespec to generate TypeSpec from the app description
-           - Call verify_typespec to check if it's valid
            - If needed, use fix_typespec to fix any issues or address user feedback;
 
         2. Then, create TypeScript code from the TypeSpec:
            - Call make_typescript to generate TypeScript from the TypeSpec
-           - Call verify_typescript to check if it's valid
            - If needed, use fix_typescript to fix any issues or address user feedback;
 
         3. Next, create a Drizzle database schema:
            - Call make_drizzle to generate a Drizzle schema from the TypeSpec
-           - Call verify_drizzle to check if it's valid
            - If needed, use fix_drizzle to fix any issues or address user feedback;
 
         4. Ask user if they want to create handlers. If yes, follow these steps:
 
             4a. Next, for each feature, create a tests for handlers. Tests are created before the handlers themselves.
                 - Call make_handler_test to generate a test for a handler
-                - Call verify_handler_test to check if it's valid
                 - If needed, use fix_handler_test to fix any issues or address user feedback;
 
             4b. Finally, create handlers for each feature.
                 - Call make_handler to generate a handler
-                - Call verify_handler to check if it's valid
                 - If needed, use fix_handler to fix any issues or address user feedback;
 
         Otherwise call complete to finish the task.
 
         At any point, if you encounter problems that require fixing the TypeSpec, you can go back to
-        make_typespec/fix_typespec/verify_typespec as needed. Similarly, if TypeScript needs to be
+        make_typespec/fix_typespec as needed. Similarly, if TypeScript needs to be
         regenerated after TypeSpec changes, you can do that too. The same applies to handler tests and handlers.
 
         If the same error persists after three attempts or you're completely stuck, stop and ask for user feedback.
-        Call complete only when you have successfully generated and verified all three components.
+        Call complete only when you have successfully generated and all components.
       """
         return StepResult(success=True, data="The app creation context has been initialized. " + init_prompt, error=None)
 
@@ -348,15 +383,6 @@ class TypeSpecProcessor(Processor):
                 }
             },
             {
-                "name": "verify_typespec",
-                "description": "verify if the last TypeSpec definition in context is valid (no parameters needed)",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
                 "name": "fix_typespec",
                 "description": "try to fix the last TypeSpec definition that failed verification or got additional user feedback",
                 "input_schema": {
@@ -382,7 +408,6 @@ class TypeSpecProcessor(Processor):
         # Add TypeSpec-specific tool mappings
         typespec_mapping = {
             "make_typespec": self.create,
-            "verify_typespec": self.verify,
             "fix_typespec": self.fix
         }
 
@@ -395,100 +420,53 @@ class TypeSpecProcessor(Processor):
         Returns:
             StepResult with the generated TypeSpec
         """
+        # Get application description from context
         app_description = self.context.get("app_description")
-        logger.info(f"[make_typespec] Generating TypeSpec from description, length: {len(app_description)}")
-
-        with tsp.TypespecTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            # Prepare prompt with application description
-            template = self.jinja_env.from_string(tsp.PROMPT)
-            prompt = template.render(application_description=app_description)
-
-            logger.info("[make_typespec] Running TypespecTaskNode")
-            result = tsp.TypespecTaskNode.run(
-                [{"role": "user", "content": prompt}],
-                init=True
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[make_typespec] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                self.context.set("last_error", error_msg)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            # Check if there's a compile error in the feedback
-            if result.output.feedback["exit_code"] != 0:
-                error_msg = result.output.feedback["stdout"]
-                logger.error(f"[make_typespec] Compilation error: {error_msg[:100]}...")
-                self.context.set("last_error", error_msg)
-                self.context.set("last_typespec", result.output.typespec_definitions)
-                return StepResult(
-                    success=False,
-                    data={
-                        "reasoning": result.output.reasoning,
-                        "typespec": result.output.typespec_definitions,
-                        "llm_functions": [f.name for f in result.output.llm_functions]
-                    },
-                    error=error_msg
-                )
-
-            logger.info("[make_typespec] Successfully generated TypeSpec")
-            typespec = result.output.typespec_definitions
-            self.context.set("last_typespec", typespec)
-            self.context.set("llm_functions", result.output.llm_functions)
-
+        if not app_description:
             return StepResult(
-                success=True,
-                data={
-                    "reasoning": result.output.reasoning,
-                    "typespec": typespec,
-                    "llm_functions": [f.name for f in result.output.llm_functions]
-                }
+                success=False,
+                data=None,
+                error="Application description not found in context. Use start_app_creation first."
             )
 
-    def verify(self) -> StepResult:
-        """
-        Verify a TypeSpec definition by compiling it.
+        logger.info(f"Generating TypeSpec for application: {app_description}")
 
-        Returns:
-            StepResult with compilation results
-        """
-        typespec = self.context.get("last_typespec")
-        logger.info(f"[verify_typespec] Verifying TypeSpec, length: {len(typespec)}")
+        # Execute the TypespecActor
+        success, result, error = self.execute_actor(TypespecActor, [app_description])
 
-        # Prepare the TypeSpec for compilation
-        typespec_schema = "\n".join([
+        if not success or not isinstance(result, tsp.Success):
+            return StepResult(
+                success=False,
+                data=None,
+                error=error or f"Failed to generate valid TypeSpec: {result.__class__.__name__ if result else 'None'}"
+            )
+
+        # Generate complete typespec content with imports
+        typespec_content = "\n".join([
             'import "./helpers.js";',
             "",
             "extern dec llm_func(target: unknown, description: string);",
             "",
             "extern dec scenario(target: unknown, gherkin: string);",
             "",
-            typespec
+            result.typespec
         ])
 
-        result = self.compiler.compile_typespec(typespec_schema)
-        logger.info(f"[verify_typespec] Compile result: exit_code={result['exit_code']}")
+        # Store the results in context
+        self.context.set("last_typespec", typespec_content)
+        self.context.set("last_typespec_feedback", result.feedback)
 
-        # Check success
-        success = result["exit_code"] == 0
+        # Set expected keys for this processor
+        self.expected_keys = ["last_typespec"]
 
-        # Extract error message if any
-        error = None
-        if not success:
-            if result["stdout"]:
-                error = result["stdout"]
-                logger.error(f"[verify_typespec] Error in stdout: {error[:100]}...")
+        return StepResult(
+            success=True,
+            data={
+                "typespec": typespec_content,
+                "feedback": result.feedback
+            }
+        )
 
-            # Store error in context
-            self.context.set("last_error", error)
-        else:
-            logger.info("[verify_typespec] TypeSpec verified successfully")
-
-        return StepResult(success=success, data=result, error=error)
 
     def fix(self, additional_feedback: Optional[str] = None) -> StepResult:
         """
@@ -500,59 +478,7 @@ class TypeSpecProcessor(Processor):
         Returns:
             StepResult with the fixed TypeSpec
         """
-        typespec = self.context.get("last_typespec")
-        error = self.context.get("last_error") or ""
-        logger.info(f"[fix_typespec] Attempting to fix TypeSpec, error length: {len(error)}")
 
-        if additional_feedback:
-            logger.info(f"[fix_typespec] Additional feedback provided: {additional_feedback}")
-
-        if not error and not additional_feedback:
-            raise RuntimeError("No error or additional feedback provided, cannot fix TypeSpec")
-
-        with tsp.TypespecTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            render_params = {
-                "errors": error,
-                "typespec": typespec
-            }
-
-            if additional_feedback is not None:
-                render_params["additional_feedback"] = additional_feedback
-
-            logger.info(f"[fix_typespec] Rendering template with params: {render_params.keys()}")
-            fix_template = self.jinja_env.from_string(tsp.FIX_PROMPT)
-            fix_content = fix_template.render(**render_params)
-
-            logger.info("[fix_typespec] Running TypespecTaskNode to fix TypeSpec")
-            result = tsp.TypespecTaskNode.run(
-                [{"role": "user", "content": fix_content}],
-                init=True
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[fix_typespec] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            logger.info("[fix_typespec] Successfully processed fix request")
-            fixed_typespec = result.output.typespec_definitions
-            self.context.set("last_typespec", fixed_typespec)
-            self.context.set("llm_functions", result.output.llm_functions)
-
-            return StepResult(
-                success=True,
-                data={
-                    "reasoning": result.output.reasoning,
-                    "typespec": fixed_typespec,
-                    "llm_functions": [f.name for f in result.output.llm_functions],
-                    "status": "probably fixed, need to verify"
-                },
-                error=None
-            )
 
 
 class TypeScriptProcessor(Processor):
@@ -577,15 +503,7 @@ class TypeScriptProcessor(Processor):
                     "required": []
                 }
             },
-            {
-                "name": "verify_typescript",
-                "description": "verify if the last TypeScript code in context is valid (no parameters needed)",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
+
             {
                 "name": "fix_typescript",
                 "description": "try to fix the last TypeScript code that failed verification or got user feedback",
@@ -612,7 +530,6 @@ class TypeScriptProcessor(Processor):
         # Add TypeScript-specific tool mappings
         typescript_mapping = {
             "make_typescript": self.create,
-            "verify_typescript": self.verify,
             "fix_typescript": self.fix
         }
 
@@ -626,89 +543,7 @@ class TypeScriptProcessor(Processor):
             StepResult with the generated TypeScript code
         """
         typespec = self.context.get("last_typespec")
-        logger.info(f"[make_typescript] Generating TypeScript from TypeSpec, length: {len(typespec)}")
 
-        with ts.TypescriptTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            # Prepare prompt with TypeSpec definitions
-            template = self.jinja_env.from_string(ts.PROMPT)
-            prompt = template.render(typespec_definitions=typespec)
-
-            logger.info("[make_typescript] Running TypescriptTaskNode")
-            result = ts.TypescriptTaskNode.run(
-                [{"role": "user", "content": prompt}],
-                init=True
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[make_typescript] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                self.context.set("last_error", error_msg)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            # Check if there's a compile error in the feedback
-            if result.output.feedback["exit_code"] != 0:
-                error_msg = result.output.feedback["stdout"]
-                logger.error(f"[make_typescript] Compilation error: {error_msg[:100]}...")
-                self.context.set("last_error", error_msg)
-                self.context.set("last_typescript", result.output.typescript_schema)
-                return StepResult(
-                    success=False,
-                    data={
-                        "reasoning": result.output.reasoning,
-                        "typescript": result.output.typescript_schema,
-                        "functions": [f.name for f in result.output.functions]
-                    },
-                    error=error_msg
-                )
-
-            logger.info("[make_typescript] Successfully generated TypeScript")
-            typescript = result.output.typescript_schema
-            self.context.set("last_typescript", typescript)
-            self.context.set("functions", result.output.functions)
-            self.context.set("type_to_zod", result.output.type_to_zod)
-
-            return StepResult(
-                success=True,
-                data={
-                    "reasoning": result.output.reasoning,
-                    "typescript": typescript,
-                    "functions": [f.name for f in result.output.functions]
-                }
-            )
-
-    def verify(self) -> StepResult:
-        """
-        Verify TypeScript code by compiling it.
-
-        Returns:
-            StepResult with compilation results
-        """
-        typescript = self.context.get("last_typescript")
-        logger.info(f"[verify_typescript] Verifying TypeScript, length: {len(typescript)}")
-
-        result = self.compiler.compile_typescript({"src/common/schema.ts": typescript})
-        logger.info(f"[verify_typescript] Compile result: exit_code={result['exit_code']}")
-
-        # Check success
-        success = result["exit_code"] == 0
-
-        # Extract error message if any
-        error = None
-        if not success:
-            if result["stdout"]:
-                error = result["stdout"]
-                logger.error(f"[verify_typescript] Error in stdout: {error[:100]}...")
-
-            # Store error in context
-            self.context.set("last_error", error)
-        else:
-            logger.info("[verify_typescript] TypeScript verified successfully")
-
-        return StepResult(success=success, data=result, error=error)
 
     def fix(self, additional_feedback: Optional[str] = None) -> StepResult:
         """
@@ -720,57 +555,6 @@ class TypeScriptProcessor(Processor):
         Returns:
             StepResult with the fixed TypeScript code
         """
-        typescript = self.context.get("last_typescript")
-        error = self.context.get("last_error")
-        logger.info(f"[fix_typescript] Attempting to fix TypeScript, error length: {len(error)}")
-
-        if additional_feedback:
-            logger.info(f"[fix_typescript] Additional feedback provided: {additional_feedback}")
-
-        with ts.TypescriptTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            render_params = {
-                "errors": error,
-                "typescript": typescript
-            }
-
-            if additional_feedback is not None:
-                render_params["additional_feedback"] = additional_feedback
-
-            logger.info(f"[fix_typescript] Rendering template with params: {render_params.keys()}")
-            fix_template = self.jinja_env.from_string(ts.FIX_PROMPT)
-            fix_content = fix_template.render(**render_params)
-
-            logger.info("[fix_typescript] Running TypescriptTaskNode to fix TypeScript")
-            result = ts.TypescriptTaskNode.run(
-                [{"role": "user", "content": fix_content}],
-                init=True
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[fix_typescript] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            logger.info("[fix_typescript] Successfully processed fix request")
-            fixed_typescript = result.output.typescript_schema
-            self.context.set("last_typescript", fixed_typescript)
-            self.context.set("functions", result.output.functions)
-            self.context.set("type_to_zod", result.output.type_to_zod)
-
-            return StepResult(
-                success=True,
-                data={
-                    "reasoning": result.output.reasoning,
-                    "typescript": fixed_typescript,
-                    "functions": [f.name for f in result.output.functions],
-                    "status": "probably fixed, need to verify"
-                },
-                error=None
-            )
 
 
 class DrizzleProcessor(Processor):
@@ -789,15 +573,6 @@ class DrizzleProcessor(Processor):
             {
                 "name": "make_drizzle",
                 "description": "generate an initial drizzle schema from the last typespec in context (no parameters needed)",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "verify_drizzle",
-                "description": "verify if the last drizzle schema in context is valid (no parameters needed)",
                 "input_schema": {
                     "type": "object",
                     "properties": {},
@@ -830,7 +605,6 @@ class DrizzleProcessor(Processor):
         # Add Drizzle-specific tool mappings
         drizzle_mapping = {
             "make_drizzle": self.create,
-            "verify_drizzle": self.verify,
             "fix_drizzle": self.fix
         }
 
@@ -845,80 +619,6 @@ class DrizzleProcessor(Processor):
         """
         typespec = self.context.get("last_typespec")
 
-        logger.info(f"[make_drizzle] Generating schema from typespec, length: {len(typespec)}")
-        # Create the task platform
-        with drizzle.DrizzleTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            # Prepare prompt with TypeSpec definitions
-            template = self.jinja_env.from_string(drizzle.PROMPT)
-            prompt = template.render(typespec_definitions=typespec)
-
-            logger.info("[make_drizzle] Running DrizzleTaskNode")
-            result = drizzle.DrizzleTaskNode.run(
-                [{"role": "user", "content": prompt}],
-                init=True
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[make_drizzle] Error: {str(result.output)}")
-                error_msg = str(result.output.feedback)
-                self.context.set("last_error", error_msg)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            logger.info("[make_drizzle] Successfully generated schema")
-            # break it on purpose once, to test the fix tool
-            if not "drizzle-orm/pg-core" in result.output.drizzle_schema:
-                raise RuntimeError("Wow, not sure how to break it!")
-            schema = result.output.drizzle_schema.replace("drizzle-orm/pg-core", "drizzle-orm/pg-kozel")
-            self.context.set("last_schema", schema)
-
-            return StepResult(
-                success=True,
-                data={
-                    "schema": schema,
-                }
-            )
-
-    def verify(self) -> StepResult:
-        """
-        Verify a drizzle schema by compiling it.
-
-        Returns:
-            StepResult with compilation results
-        """
-        schema = self.context.get("last_schema")
-        logger.info(f"[verify_drizzle] Verifying schema, length: {len(schema)}")
-        result = self.compiler.compile_drizzle(schema)
-        logger.info(f"[verify_drizzle] Compile result: exit_code={result['exit_code']}")
-
-        # Store schema in context
-        self.context.set("last_schema", schema)
-
-        # Check success
-        success = (
-            result["exit_code"] == 0 and
-            result["stderr"] is None
-        )
-
-        # Extract error message if any
-        error = None
-        if not success:
-            if result["stderr"]:
-                error = result["stderr"]
-                logger.error(f"[verify_drizzle] Error in stderr: {error[:100]}...")
-            elif result["stdout"] and result["exit_code"] != 0:
-                error = result["stdout"]
-                logger.error(f"[verify_drizzle] Error in stdout: {error[:100]}...")
-
-            # Store error in context
-            self.context.set("last_error", error)
-        else:
-            logger.info("[verify_drizzle] Schema verified successfully")
-
-        return StepResult(success=success, data=result, error=error)
 
     def fix(self, additional_feedback: Optional[str] = None) -> StepResult:
         """
@@ -932,106 +632,8 @@ class DrizzleProcessor(Processor):
         """
         schema = self.context.get("last_schema")
         error = self.context.get("last_error")
-        logger.info(f"[fix_drizzle] Attempting to fix schema, error length: {len(error)}")
-
-        if additional_feedback:
-            logger.info(f"[fix_drizzle] Additional feedback provided: {additional_feedback}")
 
 
-        with drizzle.DrizzleTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            render_params = {
-                "errors": error,
-                "schema": schema
-            }
-
-            if additional_feedback is not None:
-                render_params["additional_feedback"] = additional_feedback
-
-            logger.info(f"[fix_drizzle] Rendering template with params: {render_params.keys()}")
-            fix_template = self.jinja_env.from_string(drizzle.FIX_PROMPT)
-            fix_content = fix_template.render(**render_params)
-
-            logger.info("[fix_drizzle] Running DrizzleTaskNode to fix schema")
-            result = drizzle.DrizzleTaskNode.run(
-                [{"role": "user", "content": fix_content}],
-                init=True
-            ).output.drizzle_schema
-            logger.info("[fix_drizzle] Successfully processed fix request")
-
-            # Store the fixed schema in context
-            self.context.set("last_schema", result)
-
-            return StepResult(success=True, data={"schema": result, "status": "probably fixed, need to verify"}, error=None)
-
-
-def run_with_claude(processor: Processor, client: AnthropicBedrock, messages: List[MessageParam]) -> Tuple[List[MessageParam], bool]:
-    """
-    Send messages to Claude with tool definitions and process tool use responses.
-
-    Args:
-        processor: Processor instance with tool implementation
-        client: AnthropicBedrock client instance
-        messages: List of messages to send to Claude
-
-    Returns:
-        Tuple of (followup_messages, is_complete)
-    """
-    response = client.messages.create(
-        messages=messages,
-        max_tokens=1024 * 16,
-        # model="us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-        model="anthropic.claude-3-5-haiku-20241022-v1:0",
-        stream=False,
-        tools=processor.tool_definitions,
-    )
-
-    # Record if any tool was used (requiring further processing)
-    is_complete = True
-    tool_results = []
-
-    # Process all content blocks in the response
-    for message in response.content:
-        if message.type == "text":
-            is_complete = True  # No tools used, so the task is complete
-            logger.info(f"[Claude Response] Message: {message.text}")
-        elif message.type == "tool_use":
-            is_complete = False  # Tool was used, so we need to continue
-            tool_use = message.to_dict()
-            logger.info(f"[Claude Response] Tool use: {tool_use['name']}")
-
-            tool_params = tool_use['input']
-            tool_method = processor.tool_mapping.get(tool_use['name'])
-
-            if tool_method:
-                result = tool_method(**tool_params)
-                logger.info(f"[Claude Response] Tool result: {result.to_dict()}")
-
-                if tool_use["name"] == "complete" and result.success:
-                    is_complete = True
-                    continue
-
-                # Create a new message with the tool results
-                tool_results.append({
-                    "tool": tool_use['name'],
-                    "result": result.to_dict()
-                })
-            else:
-                logger.error(f"[Claude Response] Unknown tool: {tool_use['name']}")
-                tool_results.append({
-                    "tool": tool_use['name'],
-                    "result": {"success": False, "error": f"Unknown tool '{tool_use['name']}'"}
-                })
-
-    # Create a single new message with all tool results
-    if tool_results:
-        new_message = {
-            "role": "user",
-            "content": f"Tool results:\n{tool_results}\n\nPlease continue based on these results."
-        }
-        return messages + [new_message], is_complete
-    else:
-        # No tools were used or complete was called
-        return messages, is_complete
 
 
 class HandlerProcessor(Processor):
@@ -1061,20 +663,7 @@ class HandlerProcessor(Processor):
                     "required": ["function_name"]
                 }
             },
-            {
-                "name": "verify_handler",
-                "description": "verify if the last handler implementation is valid",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "function_name": {
-                            "type": "string",
-                            "description": "name of the function to verify"
-                        }
-                    },
-                    "required": ["function_name"]
-                }
-            },
+
             {
                 "name": "fix_handler",
                 "description": "try to fix the last handler implementation that failed verification",
@@ -1105,7 +694,6 @@ class HandlerProcessor(Processor):
         # Add Handler-specific tool mappings
         handler_mapping = {
             "make_handler": self.create,
-            "verify_handler": self.verify,
             "fix_handler": self.fix
         }
 
@@ -1125,113 +713,6 @@ class HandlerProcessor(Processor):
         typescript = self.context.get("last_typescript")
         drizzle_schema = self.context.get("last_schema")
 
-        logger.info(f"[make_handler] Generating handler for function: {function_name}")
-
-        with HandlerTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            # Prepare prompt with schemas
-            template = self.jinja_env.from_string(HANDLER_PROMPT)
-            prompt = template.render(
-                function_name=function_name,
-                typesspec_schema=typespec,
-                typescript_schema=typescript,
-                drizzle_schema=drizzle_schema
-            )
-
-            logger.info("[make_handler] Running HandlerTaskNode")
-            result = HandlerTaskNode.run(
-                [{"role": "user", "content": prompt}],
-                init=True,
-                function_name=function_name,
-                typescript_schema=typescript,
-                drizzle_schema=drizzle_schema
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[make_handler] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                self.context.set("last_error", error_msg)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            # Check if there's a compile error
-            if result.output.feedback["exit_code"] != 0:
-                error_msg = result.output.feedback["stdout"]
-                logger.error(f"[make_handler] Compilation error: {error_msg[:100]}...")
-                self.context.set("last_error", error_msg)
-                self.context.set(f"handler_{function_name}", result.output.handler)
-                return StepResult(
-                    success=False,
-                    data={
-                        "function_name": function_name,
-                        "handler": result.output.handler
-                    },
-                    error=error_msg
-                )
-
-            logger.info(f"[make_handler] Successfully generated handler for {function_name}")
-            handler = result.output.handler
-            self.context.set(f"handler_{function_name}", handler)
-            self.context.set("last_handler_function", function_name)
-
-            return StepResult(
-                success=True,
-                data={
-                    "function_name": function_name,
-                    "handler": handler
-                }
-            )
-
-    def verify(self, function_name: str) -> StepResult:
-        """
-        Verify a handler implementation by compiling it.
-
-        Args:
-            function_name: Name of the function to verify
-
-        Returns:
-            StepResult with compilation results
-        """
-        handler = self.context.get(f"handler_{function_name}")
-        typescript = self.context.get("last_typescript")
-        drizzle_schema = self.context.get("last_schema")
-
-        if not handler:
-            return StepResult(
-                success=False,
-                data=None,
-                error=f"No handler found for function: {function_name}"
-            )
-
-        logger.info(f"[verify_handler] Verifying handler for {function_name}, length: {len(handler)}")
-
-        files = {
-            f"src/handlers/{function_name}.ts": handler,
-            "src/common/schema.ts": typescript,
-            "src/db/schema/application.ts": drizzle_schema,
-        }
-
-        result = self.compiler.compile_typescript(files)[0]
-        logger.info(f"[verify_handler] Compile result: exit_code={result['exit_code']}")
-
-        # Check success
-        success = result["exit_code"] == 0
-
-        # Extract error message if any
-        error = None
-        if not success:
-            if result["stdout"]:
-                error = result["stdout"]
-                logger.error(f"[verify_handler] Error in stdout: {error[:100]}...")
-
-            # Store error in context
-            self.context.set("last_error", error)
-        else:
-            logger.info(f"[verify_handler] Handler for {function_name} verified successfully")
-
-        return StepResult(success=success, data=result, error=error)
 
     def fix(self, function_name: str, additional_feedback: Optional[str] = None) -> StepResult:
         """
@@ -1248,66 +729,6 @@ class HandlerProcessor(Processor):
         error = self.context.get("last_error")
         typescript = self.context.get("last_typescript")
         drizzle_schema = self.context.get("last_schema")
-
-        if not handler:
-            return StepResult(
-                success=False,
-                data=None,
-                error=f"No handler found for function: {function_name}"
-            )
-
-        logger.info(f"[fix_handler] Attempting to fix handler for {function_name}, error length: {len(error)}")
-
-        if additional_feedback:
-            logger.info(f"[fix_handler] Additional feedback provided: {additional_feedback}")
-
-        with HandlerTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            render_params = {
-                "errors": error,
-                "handler": handler
-            }
-
-            if additional_feedback is not None:
-                render_params["additional_feedback"] = additional_feedback
-
-            logger.info(f"[fix_handler] Rendering template with params: {render_params.keys()}")
-            fix_template = self.jinja_env.from_string(HANDLER_FIX_PROMPT)
-            fix_content = fix_template.render(**render_params)
-
-            logger.info(f"[fix_handler] Running HandlerTaskNode to fix handler for {function_name}")
-            result = HandlerTaskNode.run(
-                [
-                    {"role": "user", "content": f"Original handler for {function_name}:\n\n<handler>{handler}</handler>"},
-                    {"role": "user", "content": fix_content}
-                ],
-                init=True,
-                function_name=function_name,
-                typescript_schema=typescript,
-                drizzle_schema=drizzle_schema
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[fix_handler] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            logger.info(f"[fix_handler] Successfully processed fix request for {function_name}")
-            fixed_handler = result.output.handler
-            self.context.set(f"handler_{function_name}", fixed_handler)
-
-            return StepResult(
-                success=True,
-                data={
-                    "function_name": function_name,
-                    "handler": fixed_handler,
-                    "status": "probably fixed, need to verify"
-                },
-                error=None
-            )
 
 
 class HandlerTestProcessor(Processor):
@@ -1332,20 +753,6 @@ class HandlerTestProcessor(Processor):
                         "function_name": {
                             "type": "string",
                             "description": "name of the function to test"
-                        }
-                    },
-                    "required": ["function_name"]
-                }
-            },
-            {
-                "name": "verify_handler_test",
-                "description": "verify if the last handler test implementation is valid",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "function_name": {
-                            "type": "string",
-                            "description": "name of the function to verify tests for"
                         }
                     },
                     "required": ["function_name"]
@@ -1381,7 +788,6 @@ class HandlerTestProcessor(Processor):
         # Add HandlerTest-specific tool mappings
         handler_test_mapping = {
             "make_handler_test": self.create,
-            "verify_handler_test": self.verify,
             "fix_handler_test": self.fix
         }
 
@@ -1400,139 +806,6 @@ class HandlerTestProcessor(Processor):
         typescript = self.context.get("last_typescript")
         drizzle_schema = self.context.get("last_schema")
 
-        # FixMe: TDD - we want to generate tests before implementing handlers
-        # No need to check for existing handler since we're promoting test-first approach
-        logger.info(f"[make_handler_test] Generating tests for function: {function_name}")
-
-        with HandlerTestTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            # Prepare prompt with schemas
-            template = self.jinja_env.from_string(HANDLER_TEST_PROMPT)
-            prompt = template.render(
-                function_name=function_name,
-                typescript_schema=typescript,
-                drizzle_schema=drizzle_schema
-            )
-
-            logger.info("[make_handler_test] Running HandlerTestTaskNode")
-            result = HandlerTestTaskNode.run(
-                [{"role": "user", "content": prompt}],
-                init=True,
-                function_name=function_name,
-                typescript_schema=typescript,
-                drizzle_schema=drizzle_schema
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[make_handler_test] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                self.context.set("last_error", error_msg)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            # Check if there's a compile error
-            if result.output.feedback["exit_code"] != 0:
-                error_msg = result.output.feedback["stdout"]
-                logger.error(f"[make_handler_test] Compilation error: {error_msg[:100]}...")
-                self.context.set("last_error", error_msg)
-                self.context.set(f"handler_test_{function_name}", result.output.content)
-                return StepResult(
-                    success=False,
-                    data={
-                        "function_name": function_name,
-                        "test_content": result.output.content,
-                        "imports": result.output.imports,
-                        "tests": result.output.tests
-                    },
-                    error=error_msg
-                )
-
-            logger.info(f"[make_handler_test] Successfully generated tests for {function_name}")
-            test_content = result.output.content
-            self.context.set(f"handler_test_{function_name}", test_content)
-
-            return StepResult(
-                success=True,
-                data={
-                    "function_name": function_name,
-                    "test_content": test_content,
-                    "imports": result.output.imports,
-                    "tests": result.output.tests
-                }
-            )
-
-    def verify(self, function_name: str) -> StepResult:
-        """
-        Verify tests for a handler implementation by compiling them.
-
-        Args:
-            function_name: Name of the function to verify tests for
-
-        Returns:
-            StepResult with compilation results
-        """
-        test_content = self.context.get(f"handler_test_{function_name}")
-        typescript = self.context.get("last_typescript")
-        drizzle_schema = self.context.get("last_schema")
-
-        if not test_content:
-            return StepResult(
-                success=False,
-                data=None,
-                error=f"No tests found for function: {function_name}"
-            )
-
-        logger.info(f"[verify_handler_test] Verifying tests for {function_name}")
-
-        # FixMe: TDD approach - we're creating a stub handler to verify tests
-        # This allows tests to be created before implementing the handler function
-        stub_handler = f"""
-import {{ db }} from "../db";
-import {{ {function_name} }} from "../common/schema";
-
-export const handle = {function_name};
-"""
-
-        files = {
-            f"src/handlers/{function_name}.ts": stub_handler,
-            f"src/tests/handlers/{function_name}.test.ts": test_content,
-            "src/common/schema.ts": typescript,
-            "src/db/schema/application.ts": drizzle_schema,
-        }
-
-        linting_cmd = ["npx", "eslint", "-c", ".eslintrc.js", f"./src/tests/handlers/{function_name}.test.ts"]
-        compilation_result, linting_result = self.compiler.compile_typescript(files, [linting_cmd])
-
-        combined_feedback = {
-            "exit_code": compilation_result["exit_code"] or linting_result["exit_code"],
-            "stdout": (compilation_result["stdout"] or "") + ("\n" + linting_result["stdout"] if linting_result["stdout"] else ""),
-            "stderr": (compilation_result["stderr"] or "") + ("\n" + linting_result["stderr"] if linting_result["stderr"] else "")
-        }
-
-        logger.info(f"[verify_handler_test] Compile result: exit_code={combined_feedback['exit_code']}")
-
-        # Check success
-        success = combined_feedback["exit_code"] == 0
-
-        # Extract error message if any
-        error = None
-        if not success:
-            if combined_feedback["stdout"]:
-                error = combined_feedback["stdout"]
-                logger.error(f"[verify_handler_test] Error in stdout: {error[:100]}...")
-            elif combined_feedback["stderr"]:
-                error = combined_feedback["stderr"]
-                logger.error(f"[verify_handler_test] Error in stderr: {error[:100]}...")
-
-            # Store error in context
-            self.context.set("last_error", error)
-        else:
-            logger.info(f"[verify_handler_test] Tests for {function_name} verified successfully")
-
-        return StepResult(success=success, data=combined_feedback, error=error)
-
     def fix(self, function_name: str, additional_feedback: Optional[str] = None) -> StepResult:
         """
         Attempt to fix tests for a handler implementation that failed verification.
@@ -1544,73 +817,6 @@ export const handle = {function_name};
         Returns:
             StepResult with the fixed tests
         """
-        test_content = self.context.get(f"handler_test_{function_name}")
-        error = self.context.get("last_error")
-        typescript = self.context.get("last_typescript")
-        drizzle_schema = self.context.get("last_schema")
-
-        if not test_content:
-            return StepResult(
-                success=False,
-                data=None,
-                error=f"No tests found for function: {function_name}"
-            )
-
-        logger.info(f"[fix_handler_test] Attempting to fix tests for {function_name}, error length: {len(error)}")
-
-        if additional_feedback:
-            logger.info(f"[fix_handler_test] Additional feedback provided: {additional_feedback}")
-
-        with HandlerTestTaskNode.platform(self.tracing_client, self.compiler, self.jinja_env):
-            render_params = {
-                "errors": error,
-                "imports": "",  # Pass empty imports
-                "handler_test": test_content
-            }
-
-            if additional_feedback is not None:
-                render_params["additional_feedback"] = additional_feedback
-
-            logger.info(f"[fix_handler_test] Rendering template with params: {render_params.keys()}")
-            fix_template = self.jinja_env.from_string(HANDLER_TEST_FIX_PROMPT)
-            fix_content = fix_template.render(**render_params)
-
-            logger.info(f"[fix_handler_test] Running HandlerTestTaskNode to fix tests for {function_name}")
-            result = HandlerTestTaskNode.run(
-                [
-                    {"role": "user", "content": f"Original tests for {function_name}:\n\n```typescript\n{test_content}\n```"},
-                    {"role": "user", "content": fix_content}
-                ],
-                init=True,
-                function_name=function_name,
-                typescript_schema=typescript,
-                drizzle_schema=drizzle_schema
-            )
-
-            if isinstance(result.output, Exception):
-                logger.error(f"[fix_handler_test] Error: {str(result.output)}")
-                error_msg = str(result.output)
-                return StepResult(
-                    success=False,
-                    data=None,
-                    error=error_msg
-                )
-
-            logger.info(f"[fix_handler_test] Successfully processed fix request for {function_name}")
-            fixed_tests = result.output.content
-            self.context.set(f"handler_test_{function_name}", fixed_tests)
-
-            return StepResult(
-                success=True,
-                data={
-                    "function_name": function_name,
-                    "test_content": fixed_tests,
-                    "imports": result.output.imports,
-                    "tests": result.output.tests,
-                    "status": "probably fixed, need to verify"
-                },
-                error=None
-            )
 
 
 class IntegratedProcessor(Processor):
