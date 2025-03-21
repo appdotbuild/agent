@@ -8,7 +8,7 @@ import logic
 import playbooks
 import statemachine
 from workspace import Workspace
-from shared_fsm import BFSExpandActor, NodeData, FileXML, ModelParams, grab_file_ctx, set_error
+from shared_fsm import BFSExpandActor, NodeData, FileXML, ModelParams, grab_file_ctx, set_error, print_error
 
 
 class AgentContext(TypedDict):
@@ -402,7 +402,7 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
                 ]
             },
             FSMState.BACKEND_INDEX_DONE: {},
-            FSMState.FAILED: {},
+            FSMState.FAILED: {"entry": [print_error]},
         }
     }
     return m_states

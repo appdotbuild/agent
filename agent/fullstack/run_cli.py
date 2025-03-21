@@ -1,7 +1,7 @@
 import os
 import dagger
 from dagger import dag
-from anthropic import AsyncAnthropicBedrock
+from anthropic import AsyncAnthropic
 import statemachine
 import backend_fsm
 import frontend_fsm
@@ -17,13 +17,13 @@ def checkpoint_context(context: dict, path: str):
 
 
 async def run_agent(export_dir: str):
-    m_client = AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+    m_client = AsyncAnthropic()
     backend_m_params: ModelParams = {
-        "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        "model": "claude-3-7-sonnet-20250219",
         "max_tokens": 8192,
     }
     frontend_m_params: ModelParams = {
-        "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        "model": "claude-3-7-sonnet-20250219",
         "max_tokens": 8192,
         "tools": frontend_fsm.WS_TOOLS,
     }

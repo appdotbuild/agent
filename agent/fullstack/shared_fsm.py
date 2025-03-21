@@ -3,7 +3,7 @@ import dataclasses
 import re
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
-from anthropic import AsyncAnthropicBedrock
+from anthropic import AsyncAnthropic
 from anthropic.types import ToolParam, ToolUseBlock, ToolResultBlockParam, MessageParam, ContentBlockParam
 import logic
 from workspace import Workspace
@@ -41,10 +41,10 @@ class WorkspaceTool(TypedDict):
 
 
 class BFSExpandActor:
-    m_client: AsyncAnthropicBedrock
+    m_client: AsyncAnthropic
     model_params: ModelParams
 
-    def __init__(self, m_client: AsyncAnthropicBedrock, model_params: ModelParams, beam_width: int = 5):
+    def __init__(self, m_client: AsyncAnthropic, model_params: ModelParams, beam_width: int = 5):
         self.m_client = m_client
         self.model_params = model_params
         self.beam_width = beam_width
@@ -105,3 +105,7 @@ async def grab_file_ctx(workspace: Workspace, files: list[str]) -> str:
 
 async def set_error(ctx: dict, error: Exception):
     ctx["error"] = error
+
+
+async def print_error(ctx: dict):
+    print(ctx["error"])

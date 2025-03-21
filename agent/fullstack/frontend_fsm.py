@@ -1,13 +1,13 @@
 from typing import TypedDict, NotRequired
 import enum
 from dagger import dag
-from anthropic import AsyncAnthropicBedrock
+from anthropic import AsyncAnthropic
 from anthropic.types import TextBlock, ToolParam, ToolUseBlock, ToolResultBlockParam, MessageParam, ContentBlockParam
 import logic
 import playbooks
 import statemachine
 from workspace import Workspace
-from shared_fsm import BFSExpandActor, ModelParams, NodeData, FileXML, grab_file_ctx, set_error
+from shared_fsm import BFSExpandActor, ModelParams, NodeData, FileXML, grab_file_ctx, set_error, print_error
 
 
 class AgentContext(TypedDict):
@@ -119,7 +119,7 @@ Task:
 """.strip()
 
 
-async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelParams, beam_width: int = 3):
+async def make_fsm_states(m_client: AsyncAnthropic, model_params: ModelParams, beam_width: int = 3):
     workspace = await Workspace.create(
         base_image="oven/bun:1.2.5-alpine",
         context=dag.host().directory("./prefabs/trpc_fullstack"),
@@ -193,7 +193,7 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
                 ]
             },
             FSMState.SUCCEEDED: {},
-            FSMState.FAILED: {},
+            FSMState.FAILED: {"entry": [print_error]},
         }
     }
     return m_states
