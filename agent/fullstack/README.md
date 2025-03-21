@@ -10,4 +10,26 @@ Generates full stack apps using trpc + shadcn components.
 
 ## Usage:
 
-`uv run main.py`
+`uv run main.py --num_beams 1 --export_dir demo_app`
+
+### Running generated code
+
+Chande directory:
+
+`cd demo_app`
+
+Configure postgres address:
+
+`export DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres`
+
+Apply migrations:
+
+`bun run db:push`
+
+Start the app:
+
+`bun run dev:all`
+
+(Optional) resetting the database:
+
+`bun run server/src/helpers/reset.ts `
