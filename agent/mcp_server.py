@@ -2,7 +2,7 @@ from mcp.server.fastmcp import FastMCP
 from jinja2 import Environment
 
 from anthropic import AnthropicBedrock
-from policies.experimental import IntegratedProcessor
+from fsm_tools import FSMToolProcessor
 from tracing_client import TracingClient
 from compiler.core import Compiler
 from langfuse.decorators import langfuse_context
@@ -19,14 +19,11 @@ mcp = FastMCP("AppBuild", port=7758)  # Use a specific port to avoid conflicts, 
 langfuse_context.configure(enabled=False)
 
 client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
-processor = IntegratedProcessor(
-    tracing_client=TracingClient(client),
-    compiler=Compiler("botbuild/tsp_compiler", "botbuild/app_schema"),
-    jinja_env=Environment()
-)
+processor = FSMToolProcessor()
 
-tools_description = processor.get_tool_definitions()
-tools_fns = processor.get_tool_mapping()
+tools_description = processor.tool_definitions
+tools_fns = processor.tool_mapping
+
 
 # Add wrapper function to log all parameters
 def create_debug_wrapper(fn, tool_name):

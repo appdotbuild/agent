@@ -79,20 +79,6 @@ Make sure to address following typescript compilation errors:
 {{errors}}
 </errors>
 
-{% if additional_feedback %}
-Additional feedback:
-<feedback>
-{{additional_feedback}}
-</feedback>
-{% endif %}
-
-{% if typescript %}
-Current version:
-<typescript>
-{{typescript}}
-</typescript>
-{% endif %}
-
 Return <reasoning> and fixed complete typescript definition encompassed with <typescript> tag.
 """
 
@@ -140,7 +126,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages
+        return messages            
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
@@ -165,14 +151,14 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
         messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return TypescriptData(messages=messages, output=output)
-
+    
     @property
     def is_successful(self) -> bool:
         return (
             not isinstance(self.data.output, Exception)
             and self.data.output.feedback["exit_code"] == 0
         )
-
+    
     @staticmethod
     @contextmanager
     def platform(client: TracingClient, compiler: Compiler, jinja_env: jinja2.Environment):
@@ -188,7 +174,7 @@ class TypescriptTaskNode(TaskNode[TypescriptData, list[MessageParam]]):
             del typescript_client
             del typescript_compiler
             del typescript_jinja_env
-
+    
     @staticmethod
     def parse_output(output: str) -> tuple[str, str, list[FunctionDeclaration], dict[str, str]]:
         pattern = re.compile(

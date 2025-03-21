@@ -39,11 +39,6 @@ export const messagesTable = pgTable("messages", {
 });
 </drizzle>
 
-<best_practices>
-- use `text` type for user_id (if it exists)
-- use `timestamp({ withTimezone: true })` type for any date field
-</best_practices>
-
 Application TypeSpec:
 
 {{typespec_definitions}}
@@ -56,22 +51,7 @@ Make sure to address following drizzle schema errors:
 {{errors}}
 </errors>
 
-{% if additional_feedback %}
-Additional feedback:
-<feedback>
-{{additional_feedback}}
-</feedback>
-{% endif %}
-
-{% if schema %}
-Current version:
-<drizzle>
-{{schema}}
-</drizzle>
-{% endif %}
-
 Return <reasoning> and fixed complete drizzle schema encompassed with <drizzle> tag.
-Do not change things that are not broken!
 """
 
 

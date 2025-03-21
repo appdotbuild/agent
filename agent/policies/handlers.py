@@ -75,7 +75,7 @@ Handler function code should make use of:
 must contain to handle user input:
 1. explicit business logic
 such as:
-1. database operations,
+1. database operations, 
 2. performing calculations etc.
 
 Code style:
@@ -93,7 +93,7 @@ Code style:
     - Generic type parameters should be PascalCase: `Array<UserData>`
     - Enum names should be PascalCase: `enum UserRole`
 
-
+  
 Note on imports:
 * Use only required imports, reread the code to make sure you are importing only required files,
 * STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA, TYPE NAMES FROM TYPESPEC SCHEMA,
@@ -125,7 +125,7 @@ const multi = await db.insert(users).values([
   { name: 'Bob' }
 ]);
 
-// Update
+// Update 
 await db.update(users)
   .set({ name: 'John' })
   .where(eq(users.id, 1));
@@ -207,15 +207,15 @@ interface QueryOptions {
 // Type-safe query building
 function buildQuery(options: QueryOptions) {
   let query = db.select().from(table);
-
+  
   if (options.exercise) {
     query = query.where(eq(table.exercise, options.exercise));
   }
-
+  
   if (options.muscleGroup) {
     query = query.where(eq(table.muscleGroup, options.muscleGroup));
   }
-
+  
   return query;
 }
 
@@ -253,7 +253,7 @@ query = query.limit(10); // Error: Property 'limit' is missing
 
 // ✅ Correct - Preserve type inference
 const baseQuery = db.select().from(table);
-const whereQuery = condition
+const whereQuery = condition 
   ? baseQuery.where(eq(table.column, value))
   : baseQuery;
 const finalQuery = whereQuery.limit(10);
@@ -278,19 +278,19 @@ function buildWorkoutQuery(
   options: QueryOptions
 ): PgSelect {
   const baseQuery = db.select().from(table);
-
+  
   let query = baseQuery;
-
+  
   if (options.exerciseName) {
     query = query.where(
       eq(table.exercise_name, options.exerciseName)
     );
   }
-
+  
   if (options.limit) {
     query = query.limit(options.limit);
   }
-
+  
   return query;
 }
 
@@ -311,17 +311,17 @@ export async function getProgress(
   const baseQuery = db
     .select()
     .from(progressTable);
-
+  
   const withExercise = options.exerciseName
     ? baseQuery.where(
         eq(progressTable.exercise_name, options.exerciseName)
       )
     : baseQuery;
-
+    
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-
+    
   return await withLimit;
 }
 
@@ -343,17 +343,17 @@ export async function listWorkoutHistory(
     .select()
     .from(exerciseRecordsTable)
     .$dynamic();  // Enable dynamic queries
-
+    
   const withExercise = options.exerciseId
     ? query.where(
         eq(exerciseRecordsTable.exercise_id, options.exerciseId)
       )
     : query;
-
+    
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-
+    
   return await withLimit;
 }
 
@@ -422,20 +422,6 @@ Make sure to address following errors:
 {{errors}}
 </errors>
 
-{% if additional_feedback %}
-Additional feedback:
-<feedback>
-{{additional_feedback}}
-</feedback>
-{% endif %}
-
-{% if handler %}
-Current version:
-<handler>
-{{handler}}
-</handler>
-{% endif %}
-
 Verify absence of reserved keywords in property names, type names, and function names.
 Return fixed complete TypeScript definition encompassed with <handler> tag.
 """
@@ -459,7 +445,7 @@ class HandlerOutput:
             return 0.0
         pass_count, fail_count = test_score
         return pass_count / (pass_count + fail_count)
-
+    
     @staticmethod
     def parse_test_output(output: str) -> tuple[float, float] | None:
         pattern = re.compile(r"(\d+) pass\s+(\d+) fail", re.MULTILINE)
@@ -469,7 +455,7 @@ class HandlerOutput:
             case match:
                 return float(match.group(1)), float(match.group(2))
         return None
-
+    
     @property
     def is_successful(self) -> bool:
         if self.feedback["exit_code"] != 0:
@@ -516,7 +502,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
                     content = fix_template.render(errors=str(e))
             if content:
                 messages.append({"role": "user", "content": content})
-        return messages
+        return messages          
 
     @staticmethod
     @observe(capture_input=False, capture_output=False)
@@ -556,7 +542,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         messages.append({"role": "assistant", "content": response.content[-1].text})
         langfuse_context.update_current_observation(output=output)
         return HandlerData(messages=messages, output=output)
-
+    
     @property
     def score(self):
         if isinstance(self.data.output, Exception):
@@ -568,10 +554,10 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
         if isinstance(self.data.output, Exception):
             return False
         return (
-            self.data.output.is_successful
+            self.data.output.is_successful 
             or (self.depth > 1 and self.score > 0 and self.data.output.feedback["exit_code"] == 0)
         )
-
+    
     @staticmethod
     @contextmanager
     def platform(client: TracingClient, compiler: Compiler, jinja_env: jinja2.Environment):
@@ -587,7 +573,7 @@ class HandlerTaskNode(TaskNode[HandlerData, list[MessageParam]]):
             del typescript_client
             del typescript_compiler
             del typescript_jinja_env
-
+    
     @staticmethod
     def parse_output(output: str) -> str:
         pattern = re.compile(r"<handler>(.*?)</handler>", re.DOTALL)
