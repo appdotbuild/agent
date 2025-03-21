@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, TypedDict
 import uuid
 import logging
 import coloredlogs
@@ -7,33 +7,31 @@ from dataclasses import dataclass
 from anthropic import AnthropicBedrock
 from anthropic.types import MessageParam
 from fire import Fire
+import jinja2
 
 from fsm_api import (
     start_fsm,
     confirm_state,
     provide_feedback,
-    complete_fsm, 
+    complete_fsm,
     is_active
 )
 from application import FsmState
 
 # Configure logging to use stderr instead of stdout
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    handlers=[logging.StreamHandler(sys.stderr)]
-)
 coloredlogs.install(level="INFO", stream=sys.stderr)
-logger = logging.getLogger("FSM_TOOLS")
+logger = logging.getLogger(__name__)
+
+
 
 @dataclass
 class ToolResult:
     """Result of a tool execution"""
     success: bool
-    data: Dict[str, Any] = None
-    error: str = None
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self):
         result = {"success": self.success}
         if self.data is not None:
             result["data"] = self.data
@@ -116,24 +114,24 @@ class FSMToolProcessor:
         """Tool implementation for starting a new FSM session"""
         try:
             logger.info(f"[FSMTools] Starting new FSM session with description: {app_description}")
-            
+
             # Check if there's an active session first
             if is_active():
                 logger.warning("[FSMTools] There's an active FSM session already. Completing it before starting a new one.")
                 complete_fsm()
-                
+
             result = start_fsm(user_input=app_description)
-            
+
             # Check for any form of failure
             has_error = False
             error_msg = ""
-            
+
             # Check for explicit errors
             if "error" in result:
                 error_msg = result["error"]
                 logger.error(f"[FSMTools] Error starting FSM: {error_msg}")
                 has_error = True
-            
+
             # Check state - might be failure or complete (indicates something went wrong)
             current_state = result.get("current_state")
             if current_state == "failure" or current_state == FsmState.FAILURE:
@@ -144,15 +142,15 @@ class FSMToolProcessor:
                 error_msg = "FSM immediately entered COMPLETE state, which indicates the process did not run properly"
                 logger.error(f"[FSMTools] {error_msg}")
                 has_error = True
-                
+
             # Return error if any checks failed
             if has_error:
                 return ToolResult(success=False, error=error_msg, data=result)
-                
+
             # Success case
             self.last_update = uuid.uuid4().hex
             self.current_state = current_state
-                
+
             logger.info(f"[FSMTools] Started FSM session")
             return ToolResult(success=True, data=result)
 
@@ -166,13 +164,13 @@ class FSMToolProcessor:
             if not is_active():
                 logger.error("[FSMTools] No active FSM session")
                 return ToolResult(success=False, error="No active FSM session")
-                
+
             logger.info("[FSMTools] Confirming current state")
             result = confirm_state()
 
             # Update session tracking
             current_state = result.get("current_state")
-            
+
             # Check for FAILURE state or errors
             if current_state == "failure" or "error" in result:
                 error_msg = result.get("error", "Unknown error occurred")
@@ -185,7 +183,7 @@ class FSMToolProcessor:
                 self.current_state = current_state
                 self.last_update = uuid.uuid4().hex
                 success = True
-                
+
             logger.info(f"[FSMTools] FSM advanced to state {current_state}")
             return ToolResult(success=success, data=result,
                              error=result.get("error"))
@@ -212,7 +210,7 @@ class FSMToolProcessor:
             if "error" not in result:
                 self.current_state = result.get("current_state")
                 self.last_update = uuid.uuid4().hex
-            
+
             # Check if we entered FAILURE state, which means FSM encountered an error
             current_state = result.get("current_state")
             if current_state == FsmState.FAILURE:
@@ -251,7 +249,7 @@ class FSMToolProcessor:
                 error_msg = "FSM completed without generating any artifacts"
                 logger.error(f"[FSMTools] {error_msg}")
                 result["error"] = error_msg
-                result["status"] = "failed" 
+                result["status"] = "failed"
                 success = False
             else:
                 # Success case
@@ -294,122 +292,71 @@ def run_with_claude(processor: FSMToolProcessor, client: AnthropicBedrock,
 
     # Process all content blocks in the response
     for message in response.content:
-        if message.type == "text":
-            is_complete = True  # No tools used, so the task is complete
-            logger.info(f"[Claude Response] Message: {message.text}")
-        elif message.type == "tool_use":
-            is_complete = False  # Tool was used, so we need to continue
-            tool_use = message.to_dict()
-            logger.info(f"[Claude Response] Tool use: {tool_use['name']}")
+        match message.type:
+            case "text":
+                is_complete = True  # No tools used, so the task is complete
+                logger.info(f"[Claude Response] Message: {message.text}")
+            case "tool_use":
+                is_complete = False  # Tool was used, so we need to continue
+                tool_use = message.to_dict()
+                logger.info(f"[Claude Response] Tool use: {tool_use['name']}")
 
-            tool_params = tool_use['input']
-            tool_method = processor.tool_mapping.get(tool_use['name'])
+                tool_params = tool_use['input']
+                tool_method = processor.tool_mapping.get(tool_use['name'])
 
-            if tool_method:
-                result = tool_method(**tool_params)
-                logger.info(f"[Claude Response] Tool result: {result.to_dict()}")
+                if tool_method:
+                    result: ToolResult = tool_method(**tool_params)
+                    logger.info(f"[Claude Response] Tool result: {result.to_dict()}")
 
-                # Check if the tool execution failed
-                if not result.success:
-                    logger.error(f"[Claude Response] Tool {tool_use['name']} failed: {result.error}")
-                    # For tool failures, we should return the error information but still consider
-                    # the interaction complete to prevent loops
-                    is_complete = True
+                    # Special cases for determining if the interaction is complete
+                    if tool_use["name"] == "complete_fsm" and result.success:
+                        is_complete = True
 
-                # Special cases for determining if the interaction is complete
-                if tool_use["name"] == "complete_fsm" and result.success:
-                    is_complete = True
-
-                # Add result to the tool results list
-                tool_results.append({
-                    "tool": tool_use['name'],
-                    "result": result.to_dict()
-                })
-            else:
-                logger.error(f"[Claude Response] Unknown tool: {tool_use['name']}")
-                tool_results.append({
-                    "tool": tool_use['name'],
-                    "result": {"success": False, "error": f"Unknown tool '{tool_use['name']}'"}
-                })
+                    # Add result to the tool results list
+                    tool_results.append({
+                        "tool": tool_use['name'],
+                        "result": result
+                    })
+            case _:
+                raise ValueError(f"Unexpected message type: {message.type}")
 
     # Create a single new message with all tool results
+
     if tool_results:
+        _template = """
+        <tool>
+        {{ tool_name }}
+        </tool>
+
+        {% if data %}
+        <result>
+        {{ data | safe }}
+        </result>
+        {% endif %}
+
+        {% if error %}
+        <error>
+        {{ error }}
+        </error>
+        {% endif %}
+
+        """.rstrip()
+        template = jinja2.Template(_template)
         # Format the tool results nicely
         formatted_results = []
         for result in tool_results:
             tool_name = result["tool"]
-            tool_result = result["result"]
-            
-            # Explicitly check for success and failure conditions
-            # A result might claim success but contain error data
-            success = tool_result.get("success", False)
-            if "data" in tool_result and tool_result["data"]:
-                data = tool_result["data"]
-                if "error" in data or data.get("status") == "failed":
-                    success = False
-                    
-                # Check for FAILURE state which always indicates a failure even if not explicitly marked
-                current_state = data.get("current_state")
-                if current_state == FsmState.FAILURE:
-                    success = False
-                    
-            status = "SUCCESS" if success else "FAILURE"
-            
-            result_str = f"Tool: {tool_name} - Status: {status}\n"
-            
-            # Handle error cases
-            if not success:
-                # For failures, always show the error prominently
-                if "error" in tool_result:
-                    result_str += f"Error: {tool_result['error']}\n"
-                
-                # Include data even for failures to help with debugging
-                if "data" in tool_result and tool_result["data"]:
-                    data = tool_result["data"]
-                    if "error" in data:
-                        result_str += f"Detailed error: {data['error']}\n"
-                    if "current_state" in data:
-                        result_str += f"Current state: {data['current_state']}\n"
-                    
-                # Add guidance for failures
-                if tool_name == "start_fsm":
-                    result_str += "Guidance: The FSM initialization failed. Please analyze the error and report it. Consider restarting with a simpler app description.\n"
-                elif tool_name == "confirm_state":
-                    result_str += "Guidance: The state transition failed. Please analyze the error and report it. The FSM encountered an error while processing.\n"
-                elif tool_name == "provide_feedback":
-                    result_str += "Guidance: The feedback could not be processed. Check if your feedback format matches what the current state expects (string vs structured input) and ensure all required parameters are provided properly.\n"
-            else:
-                # Success cases
-                if "data" in tool_result and tool_result["data"]:
-                    data = tool_result["data"]
-                    if "current_state" in data:
-                        result_str += f"Current state: {data['current_state']}\n"
-                    if "status" in data:
-                        result_str += f"Status: {data['status']}\n"
-                    # Still show errors even for "successful" operations if they exist in the data
-                    if "error" in data:
-                        result_str += f"Warning: Operation succeeded but returned error: {data['error']}\n"
-            
-            formatted_results.append(result_str)
-        
-        results_text = "\n\n".join(formatted_results)
-        
-        # Add a summary of errors at the top for easy reference
-        has_errors = any(not result["result"].get("success", True) for result in tool_results)
-        
-        if has_errors:
-            error_summary = "❌ ERRORS DETECTED: The FSM encountered critical errors:\n"
-            for result in tool_results:
-                if not result["result"].get("success", True):
-                    tool_name = result["tool"]
-                    error = result["result"].get("error", "Unknown error")
-                    error_summary += f"- {tool_name}: {error}\n"
-            error_summary += "\nThis indicates issues with the FSM that must be fixed before proceeding.\n\n"
-            results_text = error_summary + results_text
-        
+            tool_result: ToolResult = result["result"]
+
+            is_success = tool_result.success
+            data = tool_result.data
+            error = tool_result.error
+
+            formatted_results.append(template.render(tool_name=tool_name, data=data, error=error))
+
         new_message = {
             "role": "user",
-            "content": f"Tool execution results:\n\n{results_text}\n\nPlease continue based on these results, addressing any failures or errors if they exist."
+            "content": f"Tool execution results:\n{"\n".join(formatted_results)}\nPlease continue based on these results, addressing any failures or errors if they exist."
         }
         return messages + [new_message], is_complete
     else:
@@ -474,6 +421,11 @@ When in doubt, you show ask for clarification or more information and later cont
             client,
             current_messages
         )
+
+        # breaking for test purposes
+        if len(current_messages) < 3 and "typespec_review" in current_messages[-1]["content"]:
+            current_messages[-1]["content"] += "<errors>Too many handlers , one should be removed</errors>"
+
         logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
 
     logger.info("[Main] FSM interaction completed successfully")

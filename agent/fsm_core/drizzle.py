@@ -62,6 +62,34 @@ Return <reasoning> and fixed complete drizzle schema encompassed with <drizzle> 
 """.strip()
 
 
+FEEDBACK_PROMPT = """
+Based on TypeSpec models and interfaces, revise the Drizzle schema for the application.
+Ensure that the schema is compatible with PostgreSQL database.
+
+Application TypeSpec:
+{{typespec_definitions}}
+
+Here is your previous Drizzle schema:
+<previous-schema>
+{{previous_schema}}
+</previous-schema>
+
+Please revise the schema based on this feedback:
+<feedback>
+{{feedback}}
+</feedback>
+
+Return your revised schema with:
+<reasoning>
+Your reasoning for each change you made based on the feedback
+</reasoning>
+
+<drizzle>
+// Your revised Drizzle schema
+</drizzle>
+""".strip()
+
+
 class DrizzleContext(Protocol):
     compiler: Compiler
 
@@ -105,20 +133,32 @@ class DrizzleMachine(AgentMachine[DrizzleContext]):
 
 
 class Entry(DrizzleMachine):
-    def __init__(self, typespec_definitions: str, feedback: str = None):
+    """Initial state for creating a new Drizzle schema from TypeSpec definitions"""
+    def __init__(self, typespec_definitions: str):
         self.typespec_definitions = typespec_definitions
+    
+    @property
+    def next_message(self) -> MessageParam | None:
+        # Create initial schema based on TypeSpec definitions
+        content = jinja2.Template(PROMPT).render(typespec_definitions=self.typespec_definitions)
+        return MessageParam(role="user", content=content)
+
+
+class FeedbackEntry(DrizzleMachine):
+    """State for revising an existing Drizzle schema with feedback"""
+    def __init__(self, typespec_definitions: str, previous_schema: str, feedback: str):
+        self.typespec_definitions = typespec_definitions
+        self.previous_schema = previous_schema
         self.feedback = feedback
     
     @property
     def next_message(self) -> MessageParam | None:
-        if self.feedback:
-            # If we have feedback, use the fix prompt with the feedback
-            return MessageParam(role="user", content=jinja2.Template(FIX_PROMPT).render(
-                errors="",
-                additional_feedback=self.feedback
-            ))
-        # Otherwise use the standard prompt
-        content = jinja2.Template(PROMPT).render(typespec_definitions=self.typespec_definitions)
+        # Generate revision based on previous schema and feedback
+        content = jinja2.Template(FEEDBACK_PROMPT).render(
+            typespec_definitions=self.typespec_definitions,
+            previous_schema=self.previous_schema,
+            feedback=self.feedback
+        )
         return MessageParam(role="user", content=content)
 
 

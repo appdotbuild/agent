@@ -60,16 +60,26 @@ class TypespecActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
 
-    def execute(self, user_requests: list[str], feedback: str | None = None):
-        span_name = "typespec_revision" if feedback else "typespec"
+    def execute(self, user_requests: list[str], feedback: str | None = None, previous_schema: str | None = None):
+        """
+        Execute TypeSpec generation or revision
+        
+        Args:
+            user_requests: List of user prompts
+            feedback: Optional feedback for revision
+            previous_schema: Previous TypeSpec schema for context (required if feedback provided)
+        """
+        is_revision = feedback is not None
+        span_name = "typespec_revision" if is_revision else "typespec"
         span = self.langfuse_client.span(
             name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
         
-        # Create entry with feedback if available
-        start = typespec.Entry(user_requests, feedback)
+        # Create appropriate entry based on operation type
+        start = self._create_entry(user_requests, feedback, previous_schema)
+        
         result, _ = solve_agent(start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)
         if result is None:
             raise ValueError("Failed to solve typespec")
@@ -83,6 +93,25 @@ class TypespecActor:
         span.end(output=output_data)
         
         return result.data.inner
+        
+    def _create_entry(self, user_requests: list[str], feedback: str | None = None, previous_schema: str | None = None):
+        """
+        Create the appropriate entry for this actor based on operation type
+        
+        Args:
+            user_requests: List of user prompts
+            feedback: Optional feedback for revision
+            previous_schema: Previous TypeSpec schema (required if feedback provided)
+            
+        Returns:
+            Entry or FeedbackEntry instance
+        """
+        if feedback and previous_schema:
+            # Use dedicated FeedbackEntry for revision with context
+            return typespec.FeedbackEntry(user_requests, previous_schema, feedback)
+        else:
+            # Use regular Entry for initial creation or backward compatibility
+            return typespec.Entry(user_requests)
 
 
 class DrizzleActor:
@@ -93,16 +122,26 @@ class DrizzleActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
 
-    def execute(self, typespec_definitions: str, feedback: str = None):
-        span_name = "drizzle_revision" if feedback else "drizzle"
+    def execute(self, typespec_definitions: str, feedback: str = None, previous_schema: str = None):
+        """
+        Execute Drizzle schema generation or revision
+        
+        Args:
+            typespec_definitions: TypeSpec schema to generate Drizzle from
+            feedback: Optional feedback for revision
+            previous_schema: Previous Drizzle schema for context (required if feedback provided)
+        """
+        is_revision = feedback is not None
+        span_name = "drizzle_revision" if is_revision else "drizzle"
         span = self.langfuse_client.span(
             name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
         
-        # Create entry with feedback if available
-        start = drizzle.Entry(typespec_definitions, feedback)
+        # Create appropriate entry based on operation type
+        start = self._create_entry(typespec_definitions, feedback, previous_schema)
+        
         result, _ = solve_agent(start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)
         if result is None:
             raise ValueError("Failed to solve drizzle")
@@ -116,6 +155,25 @@ class DrizzleActor:
         span.end(output=output_data)
         
         return result.data.inner
+        
+    def _create_entry(self, typespec_definitions: str, feedback: str = None, previous_schema: str = None):
+        """
+        Create the appropriate entry for this actor based on operation type
+        
+        Args:
+            typespec_definitions: TypeSpec schema to generate Drizzle from
+            feedback: Optional feedback for revision
+            previous_schema: Previous Drizzle schema (required if feedback provided)
+            
+        Returns:
+            Entry or FeedbackEntry instance
+        """
+        if feedback and previous_schema:
+            # Use dedicated FeedbackEntry for revision with context
+            return drizzle.FeedbackEntry(typespec_definitions, previous_schema, feedback)
+        else:
+            # Use regular Entry for initial creation
+            return drizzle.Entry(typespec_definitions)
 
 
 class TypescriptActor:
@@ -485,7 +543,11 @@ class Application:
                 FsmState.TYPESPEC: {
                     "invoke": {
                         "src": typespec_actor,
-                        "input_fn": lambda ctx: (ctx["user_requests"], ctx.get("typespec_feedback")),
+                        "input_fn": lambda ctx: (
+                            ctx["user_requests"],
+                            ctx.get("typespec_feedback"),
+                            ctx.get("typespec_schema", {}).get("typespec") if ctx.get("typespec_schema") else None,
+                        ),
                         "on_done": {
                             "target": typespec_target,
                             "actions": [lambda ctx, event: ctx.update({"typespec_schema": event})],
@@ -499,7 +561,11 @@ class Application:
                 FsmState.DRIZZLE: {
                     "invoke": {
                         "src": drizzle_actor,
-                        "input_fn": lambda ctx: (ctx["typespec_schema"].typespec, ctx.get("drizzle_feedback")),
+                        "input_fn": lambda ctx: (
+                            ctx["typespec_schema"].typespec,
+                            ctx.get("drizzle_feedback"),
+                            ctx.get("drizzle_schema", {}).get("drizzle_schema") if ctx.get("drizzle_schema") else None,
+                        ),
                         "on_done": {
                             "target": drizzle_target,
                             "actions": [lambda ctx, event: ctx.update({"drizzle_schema": event})],
@@ -552,8 +618,13 @@ class Application:
                         },
                     }
                 },
-                FsmState.COMPLETE: {},
-                FsmState.FAILURE: {},
+                FsmState.COMPLETE: {
+                    # Terminal state with no transitions
+                },
+                FsmState.FAILURE: {
+                    # Terminal failure state with no transitions to other states
+                    # This ensures it doesn't automatically transition to COMPLETE
+                },
                 FsmState.WAIT: {},
             }
         }

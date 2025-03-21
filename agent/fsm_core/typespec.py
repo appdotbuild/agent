@@ -55,9 +55,9 @@ TypeSpec RESERVED keywords:
 NOTE: Avoid using these keywords as property names, type names, and function names.
 
 Example input:
-<description>
+<user_requests>
 Bot that records my diet and calculates calories.
-</description>
+</user_requests>
 
 Output:
 <reasoning>
@@ -120,32 +120,70 @@ With full meal breakdown
 }
 </typespec>
 
-<user-requests>
+<user_requests>
 {% for request in user_requests %}
 {{request}}
 {% endfor %}
-</user-requests>
+</user_requests>
 
 Return <reasoning> and TypeSpec definition encompassed with <typespec> tag.
 """.strip()
 
 
 FIX_PROMPT = """
-{{ if errors }}
 Make sure to address following TypeSpec compilation errors:
 <errors>
 {{errors}}
 </errors>
-{% endif %}
-
-{% if additional_feedback %}
-Additional feedback:
-<feedback>
-{{additional_feedback}}
-</feedback>
 
 Verify absence of reserved keywords in property names, type names, and function names.
 Return <reasoning> and fixed complete TypeSpec definition encompassed with <typespec> tag.
+""".strip()
+
+
+FEEDBACK_PROMPT = """
+Given a history of a chat with user, revise the TypeSpec models and interface for the application.
+
+<user_requests>
+{% for request in user_requests %}
+{{request}}
+{% endfor %}
+</user_requests>
+
+Here is your previous TypeSpec schema:
+<previous_schema>
+{{previous_schema}}
+</previous_schema>
+
+Please revise the schema based on this feedback:
+<feedback>
+{{feedback}}
+</feedback>
+
+TypeSpec is extended with an @llm_func decorator that defines a single sentence description for the function use case.
+extern dec llm_func(target: unknown, description: string);
+
+TypeSpec is extended with an @scenario decorator that defines gherkin scenario for the function use case.
+extern dec scenario(target: unknown, gherkin: string);
+
+Rules:
+- Output contains a single interface.
+- Functions in the interface should be decorated with @llm_func decorator.
+- Each function in the interface should be decorated with at least one @scenario decorator.
+- Each function must have a complete set of scenarios defined with @scenario decorator.
+- Each function should have a single argument "options".
+- The "options" parameter must always be an object model type, never a primitive type.
+- Data model for the function argument should be simple and easily inferable from chat messages.
+- Using reserved keywords for property names, type names, and function names is not allowed.
+
+Return your revised schema with:
+<reasoning>
+Your reasoning for each change you made based on the feedback
+</reasoning>
+
+<typespec>
+// Your revised TypeSpec schema
+</typespec>
 """.strip()
 
 
@@ -214,13 +252,30 @@ class TypespecMachine(AgentMachine[TypespecContext]):
 
 
 class Entry(TypespecMachine):
-    def __init__(self, user_requests: list[str], feedback: str | None = None):
+    """Initial state for creating a new TypeSpec schema without feedback"""
+    def __init__(self, user_requests: list[str]):
         self.user_requests = user_requests
+
+    @property
+    def next_message(self) -> MessageParam | None:
+        content = jinja2.Template(PROMPT).render(user_requests=self.user_requests)
+        return MessageParam(role="user", content=content)
+
+
+class FeedbackEntry(TypespecMachine):
+    """State for revising an existing TypeSpec schema with feedback"""
+    def __init__(self, user_requests: list[str], previous_schema: str, feedback: str):
+        self.user_requests = user_requests
+        self.previous_schema = previous_schema
         self.feedback = feedback
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = jinja2.Template(PROMPT).render(user_requests=self.user_requests, feedback=self.feedback)
+        content = jinja2.Template(FEEDBACK_PROMPT).render(
+            user_requests=self.user_requests,
+            previous_schema=self.previous_schema,
+            feedback=self.feedback
+        )
         return MessageParam(role="user", content=content)
 
 
@@ -230,7 +285,7 @@ class FormattingError(TypespecMachine):
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = FIX_PROMPT % {"errors": self.exception}
+        content = jinja2.Template(FIX_PROMPT).render(errors=self.exception)
         return MessageParam(role="user", content=content)
 
 
