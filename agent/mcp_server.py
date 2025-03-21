@@ -40,10 +40,12 @@ def create_debug_wrapper(fn, tool_name):
             return {"incorrect tool call": str(e)}
     return wrapper
 
+# register all tools
 for tool_name, tool_fn in tools_fns.items():
     tool, = [x for x in tools_description if x["name"] == tool_name ]
     desc = tool["description"]
     schema = tool["input_schema"]
+
     # simplified view of the schema for the main agent
     schema.pop("type", None)
     desc += f"\nInput schema: {schema}"
