@@ -2,14 +2,26 @@ from typing import Callable
 from functools import partial
 from anthropic import AnthropicBedrock
 from anthropic.types import MessageParam
-from ..compiler.core import Compiler
+
+# Import compiler using a more flexible approach
+import sys
+import os
+# Add parent directory to path if needed
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from compiler.core import Compiler
 
 from langfuse import Langfuse
 from langfuse.client import StatefulGenerationClient
 from langfuse.decorators import observe, langfuse_context
 
-from .common import AgentState, Node
-from . import common, typespec, drizzle, typescript, handler_tests, handlers
+# Convert relative imports to absolute imports
+from fsm_core.common import AgentState, Node
+import fsm_core.common as common
+import fsm_core.typespec as typespec
+import fsm_core.drizzle as drizzle
+import fsm_core.typescript as typescript
+import fsm_core.handler_tests as handler_tests
+import fsm_core.handlers as handlers
 
 
 class Context:
@@ -194,3 +206,8 @@ def run_sequence():
     handler_start = handlers.Entry(function.name, tsc_result.data.inner.typescript_schema, dz_result.data.inner.drizzle_schema, tests_result.data.inner.source)
     handler_result, _handler_root = solve_agent(handler_start, Context(compiler), "solve_handlers", m_claude, langfuse_client)
     assert handler_result and isinstance(handler_result.data.inner, handlers.Success), "solution failed"
+
+
+
+if __name__ == "__main__":
+    run_sequence()
