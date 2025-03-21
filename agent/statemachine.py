@@ -157,8 +157,12 @@ class StateMachine[T]:
             actor_name = invoke["src"].__class__.__name__ if hasattr(invoke["src"], "__class__") else "Unknown"
             logger.info(f"Executing actor: {actor_name}")
             try:
-                
-                args = invoke["input_fn"](self.context)
+                try:
+                    args = invoke["input_fn"](self.context)
+                except Exception:
+                    breakpoint()
+                    exit()
+
                 logger.info(f"Actor {actor_name} executing with args {args}")
                 event = invoke["src"].execute(*args)
                 logger.info(f"Actor {actor_name} execution completed successfully")

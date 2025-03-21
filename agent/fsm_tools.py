@@ -88,7 +88,7 @@ class FSMToolProcessor:
                             "description": "Optional component name for handler-specific feedback"
                         }
                     },
-                    "required": ["feedback"]
+                    "required": ["feedback", "component_name"]
                 }
             },
             {
