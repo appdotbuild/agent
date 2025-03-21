@@ -1,8 +1,8 @@
 from typing import Any, Awaitable, Callable, NotRequired, Protocol, TypedDict
 
 
-class Actor[T](Protocol):
-    async def execute(self, context: T) -> Any:
+class Actor(Protocol):
+    async def execute(self, *args, **kwargs) -> Any:
         ...
 
 
@@ -12,7 +12,7 @@ class InvokeCallback[T](TypedDict):
 
 
 class Invoke[T](TypedDict):
-    src: Actor[T]
+    src: Actor
     input_fn: Callable[[T], Any]
     on_done: NotRequired[InvokeCallback[T]]
     on_error: NotRequired[InvokeCallback[T]]
@@ -38,7 +38,7 @@ class StateMachine[T]:
     def __init__(self, root: State, context: T):
         self.root = root
         self.context = context
-        self.state_stack: list[State] = [root]
+        self.state_stack: list[State[T]] = [root]
         self._queued_transition: str | None = None
     
     async def send(self, event: str):
