@@ -199,6 +199,22 @@ class FSMManager:
         new_state = self.fsm_instance.stack_path[-1]
         logger.info(f"State after feedback: {new_state}")
 
+        # Check if we entered FAILURE state which requires special handling
+        if new_state == FsmState.FAILURE:
+            # Extract error information from context
+            error_context = self.fsm_instance.context.get("error", "Unknown error")
+            error_msg = str(error_context) if error_context else "FSM entered FAILURE state"
+            
+            # Log the detailed error
+            logger.error(f"FSM entered FAILURE state during feedback processing: {error_msg}")
+            
+            # Return error information with the state
+            return {
+                "current_state": new_state,
+                "error": error_msg,
+                "available_actions": self._get_available_actions()
+            }
+
         output = self._get_state_output()
         available_actions = self._get_available_actions()
         logger.debug(f"Available actions after feedback: {available_actions}")
@@ -564,7 +580,14 @@ class FSMManager:
                     if "error" in context:
                         error_msg = str(context["error"])
                         logger.error(f"FSM failed with error: {error_msg}")
-                        return {"error": error_msg}
+                        result = {"error": error_msg}
+                        
+                        # Include additional error context if available
+                        if "failed_actor" in context:
+                            result["failed_actor"] = context["failed_actor"]
+                            logger.error(f"Failed actor: {context['failed_actor']}")
+                            
+                        return result
                     else:
                         logger.error("FSM in FAILURE state but no error found in context")
                         return {"error": "Unknown error"}

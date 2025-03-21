@@ -212,8 +212,15 @@ class FSMToolProcessor:
             if "error" not in result:
                 self.current_state = result.get("current_state")
                 self.last_update = uuid.uuid4().hex
+            
+            # Check if we entered FAILURE state, which means FSM encountered an error
+            current_state = result.get("current_state")
+            if current_state == FsmState.FAILURE:
+                error_msg = result.get("error", "FSM entered FAILURE state without specific error message")
+                logger.error(f"[FSMTools] FSM entered FAILURE state during feedback processing: {error_msg}")
+                return ToolResult(success=False, error=error_msg, data=result)
 
-            logger.info(f"[FSMTools] FSM updated with feedback, now in state {result.get('current_state', 'error')}")
+            logger.info(f"[FSMTools] FSM updated with feedback, now in state {current_state}")
             return ToolResult(success="error" not in result, data=result,
                              error=result.get("error"))
 
@@ -341,6 +348,11 @@ def run_with_claude(processor: FSMToolProcessor, client: AnthropicBedrock,
                 if "error" in data or data.get("status") == "failed":
                     success = False
                     
+                # Check for FAILURE state which always indicates a failure even if not explicitly marked
+                current_state = data.get("current_state")
+                if current_state == FsmState.FAILURE:
+                    success = False
+                    
             status = "SUCCESS" if success else "FAILURE"
             
             result_str = f"Tool: {tool_name} - Status: {status}\n"
@@ -365,7 +377,7 @@ def run_with_claude(processor: FSMToolProcessor, client: AnthropicBedrock,
                 elif tool_name == "confirm_state":
                     result_str += "Guidance: The state transition failed. Please analyze the error and report it. The FSM encountered an error while processing.\n"
                 elif tool_name == "provide_feedback":
-                    result_str += "Guidance: The feedback could not be processed. Please analyze the error and report it.\n"
+                    result_str += "Guidance: The feedback could not be processed. Check if your feedback format matches what the current state expects (string vs structured input) and ensure all required parameters are provided properly.\n"
             else:
                 # Success cases
                 if "data" in tool_result and tool_result["data"]:

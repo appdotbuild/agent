@@ -2,6 +2,7 @@ import os
 import enum
 import uuid
 import socket
+import logging
 import concurrent.futures
 from anthropic import AnthropicBedrock
 from compiler.core import Compiler
@@ -13,6 +14,8 @@ import statemachine
 from core.datatypes import ApplicationPrepareOut, CapabilitiesOut, DrizzleOut, TypespecOut, ApplicationOut
 from core.datatypes import RefineOut, GherkinOut, TypescriptOut, HandlerTestsOut, HandlerOut
 from typing import TypedDict, NotRequired
+
+logger = logging.getLogger(__name__)
 
 
 def solve_agent[T](
@@ -314,18 +317,21 @@ class Application:
         self.interactive_mode = interactive_mode
 
     def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationPrepareOut:
+        logger.info(f"Preparing bot with prompts: {prompts}")
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
             name="create_bot",
             user_id=os.environ.get("USER_ID", socket.gethostname()),
             metadata={"bot_id": bot_id},
         )
+        logger.info(f"Created trace with ID: {trace.id}")
 
         fsm_context: FSMContext = {"description": "", "user_requests": prompts}
         fsm_states = self.make_fsm_states(trace.id, trace.id)
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
+        logger.info("Initialized state machine, sending PROMPT event")
         fsm.send(FsmEvent.PROMPT)
-        print(fsm.context)
+        logger.info(f"State machine finished at state: {fsm.stack_path[-1]}")
 
         result = {"capabilities": capabilities}
         error_output = None
@@ -355,19 +361,22 @@ class Application:
         )
 
     def update_bot(self, typespec_schema: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationOut:
+        logger.info(f"Updating bot with ID: {bot_id if bot_id else 'unknown'}")
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
             name="update_bot",
             user_id=os.environ.get("USER_ID", socket.gethostname()),
             metadata={"bot_id": bot_id},
         )
+        logger.info(f"Created trace with ID: {trace.id}")
 
         # hack typespec output
-        print(f"Typespec schema: {typespec_schema}")
+        logger.info("Processing typespec schema")
         # Check if typespec already has tags
         if not (("<reasoning>" in typespec_schema and "</reasoning>" in typespec_schema) and
                 ("<typespec>" in typespec_schema and "</typespec>" in typespec_schema)):
             # Wrap the schema in the expected format
+            logger.info("Adding default reasoning and typespec tags")
             typespec_schema = f"""
             <reasoning>
             Auto-generated reasoning.
@@ -379,11 +388,14 @@ class Application:
             """
         reasoning, typespec_parsed, llm_functions = typespec.TypespecMachine.parse_output(typespec_schema)
         typespec_input = typespec.Success(reasoning, typespec_parsed, llm_functions, {"exit_code": 0})
+        logger.info(f"Parsed typespec schema with {len(llm_functions) if llm_functions else 0} LLM functions")
 
         fsm_context: FSMContext = {"description": "", "typespec_schema": typespec_input}
         fsm_states = self.make_fsm_states(trace.id, trace.id)
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
+        logger.info("Initialized state machine, sending CONFIRM event")
         fsm.send(FsmEvent.CONFIRM)
+        logger.info(f"State machine finished at state: {fsm.stack_path[-1]}")
 
         result = {"capabilities": capabilities}
         error_output = None
