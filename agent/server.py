@@ -127,14 +127,14 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
             upload_result.raise_for_status()
 
 
-def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
+def generate_update_bot(write_url: str, read_url: str, typespec: str, user_requests: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     try:
         logger.info(f"Staring background job to update bot")
         application = Application(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Updating bot with typespec: {typespec}")
         
-        bot = application.update_bot(typespec, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
+        bot = application.update_bot(typespec, user_requests=user_requests, bot_id=bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Updated bot successfully")
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -203,7 +203,7 @@ Please let me know if these use cases match what you're looking for, and if you 
 @app.post("/recompile", response_model=BuildResponse)
 def compile(request: ReBuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
-    background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.typespecSchema, trace_id, request.botId, request.capabilities)
+    background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.typespecSchema, request.userRequests, trace_id, request.botId, request.capabilities)
     message = f"Your bot's implementation is being updated in the background"
     return BuildResponse(status="success", message=message, trace_id=trace_id)
 

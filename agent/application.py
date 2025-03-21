@@ -263,14 +263,13 @@ class Application:
             )
         )
     
-    def update_bot(self, typespec_schema: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationOut:
+    def update_bot(self, typespec_schema: str, user_requests: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationOut:
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
             name="update_bot",
             user_id=os.environ.get("USER_ID", socket.gethostname()),
             metadata={"bot_id": bot_id},
         )
-
         # hack typespec output
         print(f"Typespec schema: {typespec_schema}")
         # Check if typespec already has tags
@@ -289,10 +288,14 @@ class Application:
         reasoning, typespec_parsed, llm_functions = typespec.TypespecMachine.parse_output(typespec_schema)
         typespec_input = typespec.Success(reasoning, typespec_parsed, llm_functions, {"exit_code": 0})
 
-        fsm_context: FSMContext = {"description": "", "typespec_schema": typespec_input}
+        fsm_context: FSMContext = {"description": "", "typespec_schema": typespec_input, "user_requests": user_requests}
         fsm_states = self.make_fsm_states(trace.id, trace.id)
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
-        fsm.send(FsmEvent.CONFIRM)
+        fsm.send(FsmEvent.PROMPT)
+        
+        # TODO: make sure user confirms the typespec
+        if fsm.stack_path[-1] == FsmState.WAIT:
+            fsm.send(FsmEvent.CONFIRM)
 
         result = {"capabilities": capabilities}
         error_output = None
@@ -374,7 +377,7 @@ class Application:
                 FsmState.TYPESPEC: {
                     "invoke": {
                         "src": typespec_actor,
-                        "input_fn": lambda ctx: (ctx["user_requests"],),
+                        "input_fn": lambda ctx: (ctx["user_requests"]), # TODO: add typespec_schema for update
                         "on_done": {
                             "target": FsmState.WAIT,
                             "actions": [lambda ctx, event: ctx.update({"typespec_schema": event})],
