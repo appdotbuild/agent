@@ -434,6 +434,31 @@ Return fixed complete TypeScript definition encompassed with <handler> tag.
 """.strip()
 
 
+FEEDBACK_PROMPT = """
+Based on TypeScript application definition and drizzle schema, revise the handler for {{function_name}} function.
+
+<typescript>
+{{typescript_schema}}
+</typescript>
+
+<drizzle>
+{{drizzle_schema}}
+</drizzle>
+
+Here is your previous handler implementation:
+<previous_handler>
+{{previous_source}}
+</previous_handler>
+
+Please revise the handler based on this feedback:
+<feedback>
+{{feedback}}
+</feedback>
+
+Return your revised handler code encompassed with <handler> tag.
+""".strip()
+
+
 class HandlersContext(Protocol):
     compiler: Compiler
 
@@ -513,6 +538,28 @@ class Entry(HandlersMachine):
             function_name=self.function_name,
             typespec_schema=self.typescript_schema,
             drizzle_schema=self.drizzle_schema,
+        )
+        return MessageParam(role="user", content=content)
+
+
+class FeedbackEntry(HandlersMachine):
+    """State for revising an existing handler with feedback"""
+    def __init__(self, function_name: str, typescript_schema: str, drizzle_schema: str, previous_source: str, feedback: str, test_suite: str | None = None):
+        self.function_name = function_name
+        self.typescript_schema = typescript_schema
+        self.drizzle_schema = drizzle_schema
+        self.previous_source = previous_source
+        self.feedback = feedback
+        self.test_suite = test_suite
+    
+    @property
+    def next_message(self) -> MessageParam | None:
+        content = jinja2.Template(FEEDBACK_PROMPT).render(
+            function_name=self.function_name,
+            typescript_schema=self.typescript_schema,
+            drizzle_schema=self.drizzle_schema,
+            previous_source=self.previous_source,
+            feedback=self.feedback
         )
         return MessageParam(role="user", content=content)
 
