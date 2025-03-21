@@ -41,13 +41,43 @@ class StateMachine[T]:
         self.state_stack: list[State] = [root]
         self._queued_transition: str | None = None
     
-    def send(self, event: str):
+    def send(self, event):
+        # Handle both string events and FsmEvent objects
+        event_type = event.type if hasattr(event, "type") else event
+        
         for state in reversed(self.state_stack):
-            if "on" in state and event in state["on"]:
-                self._queued_transition = state["on"][event]
+            if "on" in state and event_type in state["on"]:
+                # Store feedback in context if available
+                if hasattr(event, "feedback") and event.feedback is not None:
+                    self._store_feedback(event)
+                
+                self._queued_transition = state["on"][event_type]
                 self._process_transitions()
                 return
-        raise RuntimeError(f"Invalid event: {event}, stack: {self.stack_path}")
+        raise RuntimeError(f"Invalid event: {event_type}, stack: {self.stack_path}")
+        
+    def _store_feedback(self, event):
+        """Store feedback from the event in the context."""
+        if not hasattr(event, "feedback") or event.feedback is None:
+            return
+            
+        # Map event types to context keys
+        if event.type == "REVISE_TYPESPEC":
+            self.context["typespec_feedback"] = event.feedback
+        elif event.type == "REVISE_DRIZZLE":
+            self.context["drizzle_feedback"] = event.feedback
+        elif event.type == "REVISE_TYPESCRIPT":
+            self.context["typescript_feedback"] = event.feedback
+        elif event.type == "REVISE_HANDLER_TESTS" and isinstance(event.feedback, dict):
+            # Create or update the handler_tests_feedback dictionary
+            handler_tests_feedback = self.context.get("handler_tests_feedback", {})
+            handler_tests_feedback.update(event.feedback)
+            self.context["handler_tests_feedback"] = handler_tests_feedback
+        elif event.type == "REVISE_HANDLERS" and isinstance(event.feedback, dict):
+            # Create or update the handlers_feedback dictionary
+            handlers_feedback = self.context.get("handlers_feedback", {})
+            handlers_feedback.update(event.feedback)
+            self.context["handlers_feedback"] = handlers_feedback
     
     def _process_transitions(self):
         while self._queued_transition:

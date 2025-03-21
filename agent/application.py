@@ -12,6 +12,7 @@ from fsm_core.common import Node, AgentState, AgentMachine
 import statemachine
 from core.datatypes import ApplicationPrepareOut, CapabilitiesOut, DrizzleOut, TypespecOut, ApplicationOut
 from core.datatypes import RefineOut, GherkinOut, TypescriptOut, HandlerTestsOut, HandlerOut
+from typing import TypedDict, NotRequired
 
 
 def solve_agent[T](
@@ -56,19 +57,28 @@ class TypespecActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
 
-    def execute(self, user_requests: list[str]):
+    def execute(self, user_requests: list[str], feedback: str | None = None):
+        span_name = "typespec_revision" if feedback else "typespec"
         span = self.langfuse_client.span(
-            name="typespec",
+            name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
-        start = typespec.Entry(user_requests)
+        
+        # Create entry with feedback if available
+        start = typespec.Entry(user_requests, feedback)
         result, _ = solve_agent(start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)
         if result is None:
             raise ValueError("Failed to solve typespec")
         if not isinstance(result.data.inner, typespec.Success):
             raise Exception("Bad state: " + str(result.data.inner))
-        span.end(output=result.data.inner.__dict__)
+        
+        # Include feedback in the span data if provided
+        output_data = result.data.inner.__dict__.copy()
+        if feedback:
+            output_data["feedback"] = feedback
+        span.end(output=output_data)
+        
         return result.data.inner
 
 
@@ -80,19 +90,28 @@ class DrizzleActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
 
-    def execute(self, typespec_definitions: str):
+    def execute(self, typespec_definitions: str, feedback: str = None):
+        span_name = "drizzle_revision" if feedback else "drizzle"
         span = self.langfuse_client.span(
-            name="drizzle",
+            name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
-        start = drizzle.Entry(typespec_definitions)
+        
+        # Create entry with feedback if available
+        start = drizzle.Entry(typespec_definitions, feedback)
         result, _ = solve_agent(start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)
         if result is None:
             raise ValueError("Failed to solve drizzle")
         if not isinstance(result.data.inner, drizzle.Success):
             raise Exception("Failed to solve drizzle: " + str(result.data.inner))
-        span.end(output=result.data.inner.__dict__)
+        
+        # Include feedback in the span data if provided
+        output_data = result.data.inner.__dict__.copy()
+        if feedback:
+            output_data["feedback"] = feedback
+        span.end(output=output_data)
+        
         return result.data.inner
 
 
@@ -104,19 +123,28 @@ class TypescriptActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
 
-    def execute(self, typespec_definitions: str):
+    def execute(self, typespec_definitions: str, feedback: str = None):
+        span_name = "typescript_revision" if feedback else "typescript"
         span = self.langfuse_client.span(
-            name="typescript",
+            name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
-        start = typescript.Entry(typespec_definitions)
+        
+        # Create entry with feedback if available
+        start = typescript.Entry(typespec_definitions, feedback)
         result, _ = solve_agent(start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)
         if result is None:
             raise ValueError("Failed to solve typescript")
         if not isinstance(result.data.inner, typescript.Success):
             raise Exception("Failed to solve typescript: " + str(result.data.inner))
-        span.end(output=result.data.inner.__dict__)
+        
+        # Include feedback in the span data if provided
+        output_data = result.data.inner.__dict__.copy()
+        if feedback:
+            output_data["feedback"] = feedback
+        span.end(output=output_data)
+        
         return result.data.inner
 
 
@@ -128,19 +156,28 @@ class HandlerTestsActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
         self.max_workers = max_workers
-    
-    def execute(self, functions: list[typescript.FunctionDeclaration], typescript_schema: str, drizzle_schema: str) -> dict[str, handler_tests.Success]:
+
+    def execute(self, functions: list[typescript.FunctionDeclaration], typescript_schema: str, drizzle_schema: str, feedback: dict[str, str] = None) -> dict[str, handler_tests.Success]:
+        has_feedback = feedback is not None and len(feedback) > 0
+        span_name = "handler_tests_revision" if has_feedback else "handler_tests"
         span = self.langfuse_client.span(
-            name="handler_tests",
+            name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
+        
         future_to_tests: dict[concurrent.futures.Future[tuple[Node[AgentState] | None, Node[AgentState]]], str] = {}
         result_dict = {}
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             for function in functions:
-                start = handler_tests.Entry(function.name, typescript_schema, drizzle_schema)
+                # Get function-specific feedback if available
+                function_feedback = feedback.get(function.name) if feedback else None
+                
+                # Create entry with feedback if available
+                start = handler_tests.Entry(function.name, typescript_schema, drizzle_schema, function_feedback)
                 future_to_tests[executor.submit(solve_agent, start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)] = function.name
+            
             for future in concurrent.futures.as_completed(future_to_tests):
                 function = future_to_tests[future]
                 result, _ = future.result()
@@ -150,7 +187,13 @@ class HandlerTestsActor:
                 if not isinstance(result.data.inner, handler_tests.Success):
                     raise Exception(f"Failed to solve handler tests for {function}: " + str(result.data.inner))
                 result_dict[function] = result.data.inner
-        span.end(output=result_dict)
+        
+        # Include feedback in the span data if provided
+        output_data = {k: v.__dict__ for k, v in result_dict.items()}
+        if feedback:
+            output_data["feedback"] = feedback
+        span.end(output=output_data)
+        
         return result_dict
 
 
@@ -162,18 +205,27 @@ class HandlersActor:
         self.trace_id = trace_id
         self.observation_id = observation_id
 
-    def execute(self, functions: list[typescript.FunctionDeclaration], typescript_schema: str, drizzle_schema: str, tests: dict[str, handler_tests.Success]) -> dict[str, handlers.Success | handlers.TestsError]:
+    def execute(self, functions: list[typescript.FunctionDeclaration], typescript_schema: str, drizzle_schema: str, tests: dict[str, handler_tests.Success], feedback: dict[str, str] = None) -> dict[str, handlers.Success | handlers.TestsError]:
+        has_feedback = feedback is not None and len(feedback) > 0
+        span_name = "handlers_revision" if has_feedback else "handlers"
         span = self.langfuse_client.span(
-            name="handlers",
+            name=span_name,
             trace_id=self.trace_id,
             parent_observation_id=self.observation_id,
         )
+        
         futures_to_handlers: dict[concurrent.futures.Future[tuple[Node[AgentState] | None, Node[AgentState]]], str] = {}
         result_dict = {}
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             for function in functions:
-                start = handlers.Entry(function.name, typescript_schema, drizzle_schema, tests[function.name].source)
+                # Get function-specific feedback if available
+                function_feedback = feedback.get(function.name) if feedback else None
+                
+                # Create entry with feedback if available
+                start = handlers.Entry(function.name, typescript_schema, drizzle_schema, tests[function.name].source, function_feedback)
                 futures_to_handlers[executor.submit(solve_agent, start, ActorContext(self.compiler), self.m_claude, self.langfuse_client, self.trace_id, span.id)] = function.name
+            
             for future in concurrent.futures.as_completed(futures_to_handlers):
                 function = futures_to_handlers[future]
                 result, _ = future.result()
@@ -182,27 +234,59 @@ class HandlersActor:
                 if isinstance(result.data.inner, handlers.TestsError) and result.data.inner.score == 0:
                     raise Exception(f"Failed to solve handlers for {function}: " + str(result.data.inner))
                 result_dict[function] = result.data.inner
-        span.end(output=result_dict)
+        
+        # Include feedback in the span data if provided
+        output_data = {k: v.__dict__ if hasattr(v, "__dict__") else str(v) for k, v in result_dict.items()}
+        if feedback:
+            output_data["feedback"] = feedback
+        span.end(output=output_data)
+        
         return result_dict
 
 
 class FsmState(str, enum.Enum):
     TYPESPEC = "typespec"
+    TYPESPEC_REVIEW = "typespec_review"
     DRIZZLE = "drizzle"
+    DRIZZLE_REVIEW = "drizzle_review"
     TYPESCRIPT = "typescript"
+    TYPESCRIPT_REVIEW = "typescript_review"
     HANDLER_TESTS = "handler_tests"
+    HANDLER_TESTS_REVIEW = "handler_tests_review"
     HANDLERS = "handlers"
+    HANDLERS_REVIEW = "handlers_review"
     COMPLETE = "complete"
     FAILURE = "failure"
     WAIT = "wait"
 
 
-class FsmEvent(str, enum.Enum):
+class FsmEvent:
+    # Event types
     PROMPT = "PROMPT"
     CONFIRM = "CONFIRM"
+    REVISE_TYPESPEC = "REVISE_TYPESPEC"
+    REVISE_DRIZZLE = "REVISE_DRIZZLE"
+    REVISE_TYPESCRIPT = "REVISE_TYPESCRIPT"
+    REVISE_HANDLER_TESTS = "REVISE_HANDLER_TESTS"
+    REVISE_HANDLERS = "REVISE_HANDLERS"
+    
+    def __init__(self, type_: str, feedback: str | None = None):
+        self.type = type_
+        self.feedback = feedback
+    
+    # For backward compatibility with string comparison
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.type == other
+        return self.type == other.type if hasattr(other, "type") else False
+    
+    def __hash__(self):
+        return hash(self.type)
+    
+    def __str__(self):
+        return self.type
 
 
-from typing import TypedDict, NotRequired
 
 
 class FSMContext(TypedDict):
@@ -213,15 +297,22 @@ class FSMContext(TypedDict):
     typescript_schema: NotRequired[typescript.Success]
     handler_tests: NotRequired[dict[str, handler_tests.Success]]
     handlers: NotRequired[dict[str, handlers.Success | handlers.TestsError]]
+    # Feedback fields for revision
+    typespec_feedback: NotRequired[str]
+    drizzle_feedback: NotRequired[str]
+    typescript_feedback: NotRequired[str]
+    handler_tests_feedback: NotRequired[dict[str, str]]
+    handlers_feedback: NotRequired[dict[str, str]]
 
 
 
 class Application:
-    def __init__(self, client: AnthropicBedrock, compiler: Compiler):
+    def __init__(self, client: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse | None = None, interactive_mode: bool = False):
         self.client = client
         self.compiler = compiler
-        self.langfuse_client = Langfuse()
-    
+        self.langfuse_client = langfuse_client or Langfuse()
+        self.interactive_mode = interactive_mode
+
     def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationPrepareOut:
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
@@ -238,7 +329,7 @@ class Application:
 
         result = {"capabilities": capabilities}
         error_output = None
-        
+
         match fsm.stack_path[-1]:
             case FsmState.COMPLETE:
                 typespec_schema = fsm.context["typespec_schema"]
@@ -248,9 +339,9 @@ class Application:
                 result.update({"error": error_output})
             case _:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
-        
+
         trace.update(output=result)
-        
+
         refined = RefineOut(refined_description="", error_output=error_output)
         return ApplicationPrepareOut(
             refined_description=refined,
@@ -262,7 +353,7 @@ class Application:
                 error_output=error_output
             )
         )
-    
+
     def update_bot(self, typespec_schema: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationOut:
         trace = self.langfuse_client.trace(
             id=kwargs.get("langfuse_observation_id", uuid.uuid4().hex),
@@ -274,14 +365,14 @@ class Application:
         # hack typespec output
         print(f"Typespec schema: {typespec_schema}")
         # Check if typespec already has tags
-        if not (("<reasoning>" in typespec_schema and "</reasoning>" in typespec_schema) and 
+        if not (("<reasoning>" in typespec_schema and "</reasoning>" in typespec_schema) and
                 ("<typespec>" in typespec_schema and "</typespec>" in typespec_schema)):
             # Wrap the schema in the expected format
             typespec_schema = f"""
             <reasoning>
             Auto-generated reasoning.
             </reasoning>
-            
+
             <typespec>
             {typespec_schema}
             </typespec>
@@ -296,7 +387,7 @@ class Application:
 
         result = {"capabilities": capabilities}
         error_output = None
-        
+
         match fsm.stack_path[-1]:
             case FsmState.COMPLETE:
                 result.update(fsm.context)
@@ -305,9 +396,9 @@ class Application:
                 result.update({"error": error_output})
             case _:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
-        
+
         trace.update(output=result)
-        
+
         # Create dictionary comprehensions for handlers and tests
         handler_tests_dict = {
             name: HandlerTestsOut(
@@ -316,7 +407,7 @@ class Application:
                 error_output=error_output
             ) for name, test in result.get("handler_tests", {}).items()
         }
-        
+
         handlers_dict = {
             name: HandlerOut(
                 name=name,
@@ -325,7 +416,7 @@ class Application:
                 error_output=error_output
             ) for name, handler in result.get("handlers", {}).items()
         }
-        
+
         # Create TypescriptOut conditionally
         typescript_result = result.get("typescript_schema")
         typescript_out = None
@@ -336,7 +427,7 @@ class Application:
                 functions=getattr(typescript_result, "functions", None),
                 error_output=error_output
             )
-        
+
         return ApplicationOut(
             refined_description=RefineOut(refined_description="", error_output=error_output),
             capabilities=CapabilitiesOut(capabilities if capabilities is not None else [], error_output),
@@ -365,6 +456,14 @@ class Application:
         handler_tests_actor = HandlerTestsActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
         handlers_actor = HandlersActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
 
+        # Define target states based on interactive mode
+        typespec_target = FsmState.TYPESPEC_REVIEW if self.interactive_mode else FsmState.WAIT
+        drizzle_target = FsmState.DRIZZLE_REVIEW if self.interactive_mode else FsmState.TYPESCRIPT
+        typescript_target = FsmState.TYPESCRIPT_REVIEW if self.interactive_mode else FsmState.HANDLER_TESTS
+        handler_tests_target = FsmState.HANDLER_TESTS_REVIEW if self.interactive_mode else FsmState.HANDLERS
+        handlers_target = FsmState.HANDLERS_REVIEW if self.interactive_mode else FsmState.COMPLETE
+
+        # Base state configuration
         states: statemachine.State = {
             "on": {
                 FsmEvent.PROMPT: FsmState.TYPESPEC,
@@ -374,9 +473,9 @@ class Application:
                 FsmState.TYPESPEC: {
                     "invoke": {
                         "src": typespec_actor,
-                        "input_fn": lambda ctx: (ctx["user_requests"],),
+                        "input_fn": lambda ctx: (ctx["user_requests"], ctx.get("typespec_feedback")),
                         "on_done": {
-                            "target": FsmState.WAIT,
+                            "target": typespec_target,
                             "actions": [lambda ctx, event: ctx.update({"typespec_schema": event})],
                         },
                         "on_error": {
@@ -388,9 +487,9 @@ class Application:
                 FsmState.DRIZZLE: {
                     "invoke": {
                         "src": drizzle_actor,
-                        "input_fn": lambda ctx: (ctx["typespec_schema"].typespec,),
+                        "input_fn": lambda ctx: (ctx["typespec_schema"].typespec, ctx.get("drizzle_feedback")),
                         "on_done": {
-                            "target": FsmState.TYPESCRIPT,
+                            "target": drizzle_target,
                             "actions": [lambda ctx, event: ctx.update({"drizzle_schema": event})],
                         },
                         "on_error": {
@@ -402,9 +501,9 @@ class Application:
                 FsmState.TYPESCRIPT: {
                     "invoke": {
                         "src": typescript_actor,
-                        "input_fn": lambda ctx: (ctx["typespec_schema"].typespec,),
+                        "input_fn": lambda ctx: (ctx["typespec_schema"].typespec, ctx.get("typescript_feedback")),
                         "on_done": {
-                            "target": FsmState.HANDLER_TESTS,
+                            "target": typescript_target,
                             "actions": [lambda ctx, event: ctx.update({"typescript_schema": event})],
                         },
                         "on_error": {
@@ -416,9 +515,9 @@ class Application:
                 FsmState.HANDLER_TESTS: {
                     "invoke": {
                         "src": handler_tests_actor,
-                        "input_fn": lambda ctx: (ctx["typescript_schema"].functions, ctx["typescript_schema"].typescript_schema, ctx["drizzle_schema"].drizzle_schema),
+                        "input_fn": lambda ctx: (ctx["typescript_schema"].functions, ctx["typescript_schema"].typescript_schema, ctx["drizzle_schema"].drizzle_schema, ctx.get("handler_tests_feedback")),
                         "on_done": {
-                            "target": FsmState.HANDLERS,
+                            "target": handler_tests_target,
                             "actions": [lambda ctx, event: ctx.update({"handler_tests": event})],
                         },
                         "on_error": {
@@ -430,9 +529,9 @@ class Application:
                 FsmState.HANDLERS: {
                     "invoke": {
                         "src": handlers_actor,
-                        "input_fn": lambda ctx: (ctx["typescript_schema"].functions, ctx["typescript_schema"].typescript_schema, ctx["drizzle_schema"].drizzle_schema, ctx["handler_tests"]),
+                        "input_fn": lambda ctx: (ctx["typescript_schema"].functions, ctx["typescript_schema"].typescript_schema, ctx["drizzle_schema"].drizzle_schema, ctx["handler_tests"], ctx.get("handlers_feedback")),
                         "on_done": {
-                            "target": FsmState.COMPLETE,
+                            "target": handlers_target,
                             "actions": [lambda ctx, event: ctx.update({"handlers": event})],
                         },
                         "on_error": {
@@ -446,5 +545,40 @@ class Application:
                 FsmState.WAIT: {},
             }
         }
-    
+        
+        # Add review states if in interactive mode
+        if self.interactive_mode:
+            states["states"].update({
+                FsmState.TYPESPEC_REVIEW: {
+                    "on": {
+                        FsmEvent.CONFIRM: FsmState.DRIZZLE,
+                        FsmEvent.REVISE_TYPESPEC: FsmState.TYPESPEC,
+                    },
+                },
+                FsmState.DRIZZLE_REVIEW: {
+                    "on": {
+                        FsmEvent.CONFIRM: FsmState.TYPESCRIPT,
+                        FsmEvent.REVISE_DRIZZLE: FsmState.DRIZZLE,
+                    },
+                },
+                FsmState.TYPESCRIPT_REVIEW: {
+                    "on": {
+                        FsmEvent.CONFIRM: FsmState.HANDLER_TESTS,
+                        FsmEvent.REVISE_TYPESCRIPT: FsmState.TYPESCRIPT,
+                    },
+                },
+                FsmState.HANDLER_TESTS_REVIEW: {
+                    "on": {
+                        FsmEvent.CONFIRM: FsmState.HANDLERS,
+                        FsmEvent.REVISE_HANDLER_TESTS: FsmState.HANDLER_TESTS,
+                    },
+                },
+                FsmState.HANDLERS_REVIEW: {
+                    "on": {
+                        FsmEvent.CONFIRM: FsmState.COMPLETE,
+                        FsmEvent.REVISE_HANDLERS: FsmState.HANDLERS,
+                    },
+                },
+            })
+
         return states

@@ -73,10 +73,19 @@ Return <reasoning> and TypeSpec definition encompassed with <typescript> tag.
 
 
 FIX_PROMPT = """
+{% if errors %}
 Make sure to address following typescript compilation errors:
 <errors>
 {{errors}}
 </errors>
+{% endif %}
+
+{% if additional_feedback %}
+Additional feedback:
+<feedback>
+{{additional_feedback}}
+</feedback>
+{% endif %}
 
 Return <reasoning> and fixed complete typescript definition encompassed with <typescript> tag.
 """.strip()
@@ -155,11 +164,19 @@ class TypescriptMachine(AgentMachine[TypescriptContext]):
 
 
 class Entry(TypescriptMachine):
-    def __init__(self, typespec_definitions: str):
+    def __init__(self, typespec_definitions: str, feedback: str = None):
         self.typespec_definitions = typespec_definitions
+        self.feedback = feedback
     
     @property
     def next_message(self) -> MessageParam | None:
+        if self.feedback:
+            # If we have feedback, use the fix prompt with the feedback
+            return MessageParam(role="user", content=jinja2.Template(FIX_PROMPT).render(
+                errors="",
+                additional_feedback=self.feedback
+            ))
+        # Otherwise use the standard prompt
         content = jinja2.Template(PROMPT).render(typespec_definitions=self.typespec_definitions)
         return MessageParam(role="user", content=content)
 

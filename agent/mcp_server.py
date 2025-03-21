@@ -5,7 +5,7 @@ from anthropic import AnthropicBedrock
 from policies.experimental import IntegratedProcessor
 from tracing_client import TracingClient
 from compiler.core import Compiler
-from application import langfuse_context
+from langfuse.decorators import langfuse_context
 import logging
 import coloredlogs
 import sys

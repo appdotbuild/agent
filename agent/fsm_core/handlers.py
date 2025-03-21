@@ -414,11 +414,20 @@ Return complete handler code encompassed with <handler> tag.
 
 
 FIX_PROMPT = """
+{% if errors %}
 Make sure to address following errors:
 
 <errors>
 {{errors}}
 </errors>
+{% endif %}
+
+{% if additional_feedback %}
+Additional feedback:
+<feedback>
+{{additional_feedback}}
+</feedback>
+{% endif %}
 
 Verify absence of reserved keywords in property names, type names, and function names.
 Return fixed complete TypeScript definition encompassed with <handler> tag.
@@ -484,14 +493,22 @@ class HandlersMachine(AgentMachine[HandlersContext]):
 
 
 class Entry(HandlersMachine):
-    def __init__(self, function_name: str, typescript_schema: str, drizzle_schema: str, test_suite: str | None = None):
+    def __init__(self, function_name: str, typescript_schema: str, drizzle_schema: str, test_suite: str | None = None, feedback: str = None):
         self.function_name = function_name
         self.typescript_schema = typescript_schema
         self.drizzle_schema = drizzle_schema
         self.test_suite = test_suite
+        self.feedback = feedback
     
     @property
     def next_message(self) -> MessageParam | None:
+        if self.feedback:
+            # If we have feedback, use the fix prompt with the feedback
+            return MessageParam(role="user", content=jinja2.Template(FIX_PROMPT).render(
+                errors="",
+                additional_feedback=self.feedback
+            ))
+        # Otherwise use the standard prompt
         content = jinja2.Template(PROMPT).render(
             function_name=self.function_name,
             typespec_schema=self.typescript_schema,

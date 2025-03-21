@@ -214,12 +214,13 @@ class TypespecMachine(AgentMachine[TypespecContext]):
 
 
 class Entry(TypespecMachine):
-    def __init__(self, user_requests: list[str]):
+    def __init__(self, user_requests: list[str], feedback: str | None = None):
         self.user_requests = user_requests
+        self.feedback = feedback
 
     @property
     def next_message(self) -> MessageParam | None:
-        content = jinja2.Template(PROMPT).render(user_requests=self.user_requests)
+        content = jinja2.Template(PROMPT).render(user_requests=self.user_requests, feedback=self.feedback)
         return MessageParam(role="user", content=content)
 
 
