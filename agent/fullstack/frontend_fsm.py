@@ -1,12 +1,11 @@
 from typing import TypedDict, NotRequired
 import enum
 from dagger import dag
-from anthropic import AsyncAnthropic
-from anthropic.types import TextBlock, ToolParam, ToolUseBlock, ToolResultBlockParam, MessageParam, ContentBlockParam
 import logic
 import playbooks
 import statemachine
 from workspace import Workspace
+from models.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
 from shared_fsm import BFSExpandActor, ModelParams, NodeData, FileXML, grab_file_ctx, set_error, print_error
 
 
@@ -37,56 +36,42 @@ async def eval_frontend(ctx: AgentContext) -> bool:
     solution: logic.Node[NodeData] | None = None
     children = [n for n in ctx["bfs_frontend"].get_all_children() if n.is_leaf]
     for n in children:
-        assert len(n.data["messages"]) == 1, "node must have single completion message"
-        content: list[ContentBlockParam] = []
-        workspace = n.data["workspace"]
-        for block in n.data["messages"][0]["content"]:
-            if isinstance(block, TextBlock):
+        content: list[ContentBlock] = []
+        workspace = n.data.workspace
+        for block in n.data.head().content:
+            if isinstance(block, TextRaw):
                 for file in FileXML.from_string(block.text):
                     try:
                         workspace.write_file(file.path, file.content)
-                        n.data["files"].update({file.path: file.content})
+                        n.data.files.update({file.path: file.content})
                     except PermissionError as e:
-                        content.append(TextBlock(type="text", text=str(e)))
-            if isinstance(block, ToolUseBlock):
+                        content.append(TextRaw(str(e)))
+            if isinstance(block, ToolUse):
                 match block.name:
                     case "read_file":
                         try:
-                            content.append(ToolResultBlockParam(
-                                type="tool_result",
-                                tool_use_id=block.id,
-                                content=await workspace.read_file(block.input["path"])
-                            ))
+                            tool_content = await workspace.read_file(block.input["path"]) # pyright: ignore[reportIndexIssue]
+                            content.append(ToolUseResult.from_tool_use(block, tool_content))
                         except FileNotFoundError as e:
-                            content.append(ToolResultBlockParam(
-                                type="tool_result",
-                                tool_use_id=block.id,
-                                content=str(e),
-                                is_error=True,
-                            ))
+                            content.append(ToolUseResult.from_tool_use(block, str(e), is_error=True))
                     case unknown:
-                        content.append(ToolResultBlockParam(
-                            type="tool_result",
-                            tool_use_id=block.id,
-                            content=f"Unknown tool: {unknown}",
-                            is_error=True,
-                        ))
+                        content.append(ToolUseResult.from_tool_use(block, f"Unknown tool: {unknown}", is_error=True))
         feedback = workspace.exec(["bun", "tsc", "-p", "tsconfig.app.json", "--noEmit"])
         if await feedback.exit_code() != 0:
             error = await feedback.stdout()
-            content.append(TextBlock(type="text", text=f"Error running tsc: {error}"))
+            content.append(TextRaw(f"Error running tsc: {error}"))
         if content:
-            n.data["messages"].append(MessageParam(role="user", content=content))
+            n.data.messages.append(Message(role="user", content=content))
             continue
         solution = n
     if solution is None:
         return False
-    ctx["frontend_files"].update(solution.data["files"])
+    ctx["frontend_files"].update(solution.data.files)
     ctx["checkpoint"] = solution
     return True
 
 
-WS_TOOLS: list[ToolParam] = [
+WS_TOOLS: list[Tool] = [
     {
         "name": "read_file",
         "description": "Read a file",
@@ -119,7 +104,7 @@ Task:
 """.strip()
 
 
-async def make_fsm_states(m_client: AsyncAnthropic, model_params: ModelParams, beam_width: int = 3):
+async def make_fsm_states(m_client: AsyncLLM, model_params: ModelParams, beam_width: int = 3):
     workspace = await Workspace.create(
         base_image="oven/bun:1.2.5-alpine",
         context=dag.host().directory("./prefabs/trpc_fullstack"),
@@ -150,24 +135,16 @@ async def make_fsm_states(m_client: AsyncAnthropic, model_params: ModelParams, b
             f"Allowed paths and directories: {frontend_workspace.allowed}",
             f"Protected paths and directories: {frontend_workspace.protected}",
         ])
-        message = MessageParam(
+        message = Message(
             role="user",
-            content=[TextBlock(
-                type="text",
-                text=FRONTEND_PROMPT % {
+            content=[TextRaw(
+                FRONTEND_PROMPT % {
                     "project_context": project_context,
                     "user_prompt": ctx["user_prompt"],
                 }
             )]
         )
-        root = logic.Node[NodeData](
-            data={
-                "workspace": frontend_workspace,
-                "files": {},
-                "messages": [message],
-            },
-        )
-        ctx["bfs_frontend"] = root
+        ctx["bfs_frontend"] = logic.Node(NodeData(frontend_workspace, [message]))
 
     m_states: statemachine.State[AgentContext] = {
         "on": {
@@ -178,7 +155,7 @@ async def make_fsm_states(m_client: AsyncAnthropic, model_params: ModelParams, b
                 "entry": [root_entry_fn],
                 "invoke": {
                     "src": actor_bfs_with_tools,
-                    "input_fn": lambda ctx: (ctx["bfs_frontend"],),
+                    "input_fn": lambda ctx: (ctx["bfs_frontend"],), # pyright: ignore[reportTypedDictNotRequiredAccess]
                     "on_done": {"target": FSMState.EVALUATING},
                     "on_error": {
                         "target": FSMState.FAILED,

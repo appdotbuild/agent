@@ -2,12 +2,11 @@ from typing import TypedDict, NotRequired
 import os
 import enum
 from dagger import dag
-from anthropic import AsyncAnthropicBedrock
-from anthropic.types import TextBlock, MessageParam, ContentBlockParam
 import logic
 import playbooks
 import statemachine
 from workspace import Workspace
+from models.common import AsyncLLM, Message, TextRaw, ContentBlock
 from shared_fsm import BFSExpandActor, NodeData, FileXML, ModelParams, grab_file_ctx, set_error, print_error
 
 
@@ -28,111 +27,113 @@ async def eval_backend(ctx: AgentContext) -> bool:
     solution: logic.Node[NodeData] | None = None
     children = [n for n in ctx["bfs_definitions"].get_all_children() if n.is_leaf]
     for n in children:
-        assert len(n.data["messages"]) == 1, "node must have single completion message"
-        content: list[ContentBlockParam] = []
-        workspace = n.data["workspace"]
-        for block in n.data["messages"][0]["content"]:
-            if isinstance(block, TextBlock):
+        content: list[ContentBlock] = []
+        workspace = n.data.workspace
+        for block in n.data.head().content:
+            if isinstance(block, TextRaw):
                 for file in FileXML.from_string(block.text):
                     try:
                         workspace.write_file(file.path, file.content)
-                        n.data["files"].update({file.path: file.content})
+                        n.data.files.update({file.path: file.content})
                     except PermissionError as e:
-                        content.append({"type": "text", "text": str(e)})
+                        content.append(TextRaw(str(e)))
         feedback = workspace.exec(["bun", "run", "tsc", "--noEmit"])
         if await feedback.exit_code() != 0:
             error = await feedback.stdout()
-            content.append({"type": "text", "text": f"Error running tsc: {error}"})
+            content.append(TextRaw(f"Error running tsc: {error}"))
         feedback = workspace.exec_with_pg(["bun", "run", "drizzle-kit", "push", "--force"])
         error = await feedback.stderr()
         if error or await feedback.exit_code() != 0:
-            content.append({"type": "text", "text": f"Error running drizzle-kit push: {error}"})
+            content.append(TextRaw(f"Error running drizzle-kit push: {error}"))
         if content:
-            n.data["messages"].append(MessageParam(role="user", content=content))
+            n.data.messages.append(Message(role="user", content=content))
             continue
         solution = n
     if solution is None:
         return False
-    ctx["backend_files"] = solution.data["files"]
+    ctx["backend_files"] = solution.data.files
     ctx["checkpoint"] = solution
     return True
 
 
 async def eval_backend_handlers(ctx: AgentContext) -> bool:
     assert "bfs_handlers" in ctx, "bfs_handlers must be provided"
+    assert "backend_files" in ctx, "backend_files must be provided"
 
     expect_files = []
     for n in filter(lambda path: path.startswith("src/handlers"), ctx["backend_files"].keys()):
-        name, ext = os.path.splitext(os.path.basename(n))
+        name, _ = os.path.splitext(os.path.basename(n))
         expect_files.append(f"src/tests/{name}.test.ts")
 
     solution: logic.Node[NodeData] | None = None
     children = [n for n in ctx["bfs_handlers"].get_all_children() if n.is_leaf]
     for n in children:
-        assert len(n.data["messages"]) == 1, "node must have single completion message"
-        content: list[ContentBlockParam] = []
-        workspace = n.data["workspace"]
-        for block in n.data["messages"][0]["content"]:
-            if isinstance(block, TextBlock):
+        content: list[ContentBlock] = []
+        workspace = n.data.workspace
+        for block in n.data.head().content:
+            if isinstance(block, TextRaw):
                 for file in FileXML.from_string(block.text):
                     try:
                         workspace.write_file(file.path, file.content)
-                        n.data["files"].update({file.path: file.content})
+                        n.data.files.update({file.path: file.content})
                     except PermissionError as e:
-                        content.append({"type": "text", "text": str(e)})
+                        content.append(TextRaw(str(e)))
         feedback = workspace.exec(["bun", "run", "tsc", "--noEmit"])
         if await feedback.exit_code() != 0:
             error = await feedback.stdout()
-            content.append({"type": "text", "text": f"Error running tsc: {error}"})
-        missing_tests = [path for path in expect_files if path not in n.data["files"]]
+            content.append(TextRaw(f"Error running tsc: {error}"))
+        missing_tests = [path for path in expect_files if path not in n.data.files]
         if missing_tests:
-            content.append({"type": "text", "text": f"Missing test files: {missing_tests}"})
+            content.append(TextRaw(f"Missing test files: {missing_tests}"))
         feedback = workspace.exec_with_pg(["bun", "test"])
         if await feedback.exit_code() != 0:
             error = await feedback.stderr()
-            content.append({"type": "text", "text": f"Error running tests: {error}"})
+            content.append(TextRaw(f"Error running tests: {error}"))
         if content:
-            n.data["messages"].append(MessageParam(role="user", content=content))
+            n.data.messages.append(Message(role="user", content=content))
             continue
         solution = n
     if solution is None:
         return False
-    ctx["backend_files"].update(solution.data["files"])
+    ctx["backend_files"].update(solution.data.files)
     ctx["checkpoint"] = solution
     return True
 
 
 async def eval_backend_index(ctx: AgentContext) -> bool:
     assert "bfs_backend_index" in ctx, "bfs_backend_index must be provided"
+    assert "backend_files" in ctx, "backend_files must be provided"
+
     solution: logic.Node[NodeData] | None = None
     children = [n for n in ctx["bfs_backend_index"].get_all_children() if n.is_leaf]
     for n in children:
-        assert len(n.data["messages"]) == 1, "node must have single completion message"
-        content: list[ContentBlockParam] = []
-        workspace = n.data["workspace"]
-        for block in n.data["messages"][0]["content"]:
-            if isinstance(block, TextBlock):
+        content: list[ContentBlock] = []
+        workspace = n.data.workspace
+        for block in n.data.head().content:
+            if isinstance(block, TextRaw):
                 for file in FileXML.from_string(block.text):
                     try:
                         workspace.write_file(file.path, file.content)
-                        n.data["files"].update({file.path: file.content})
+                        n.data.files.update({file.path: file.content})
                     except PermissionError as e:
-                        content.append({"type": "text", "text": str(e)})
+                        content.append(TextRaw(str(e)))
         feedback = workspace.exec(["bun", "run", "tsc", "--noEmit"])
         if await feedback.exit_code() != 0:
             error = await feedback.stdout()
-            content.append({"type": "text", "text": f"Error running tsc: {error}"})
+            content.append(TextRaw(f"Error running tsc: {error}"))
         if content:
-            n.data["messages"].append(MessageParam(role="user", content=content))
+            n.data.messages.append(Message(role="user", content=content))
             continue
         solution = n
     if solution is None:
         return False
-    ctx["backend_files"].update(solution.data["files"])
+    ctx["backend_files"].update(solution.data.files)
     ctx["checkpoint"] = solution
     return True
 
+
 # FSM logic and prompts
+
 
 BACKEND_START_PROMPT = f"""
 - Define all types using zod in a single file src/schema.ts
@@ -228,7 +229,7 @@ class FSMState(str, enum.Enum):
     FAILED = "failed"
 
 
-async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelParams, beam_width: int = 3) -> statemachine.State[AgentContext]:
+async def make_fsm_states(m_client: AsyncLLM, model_params: ModelParams, beam_width: int = 3) -> statemachine.State[AgentContext]:
     workspace = await Workspace.create(
         base_image="oven/bun:1.2.5-alpine",
         context=dag.host().directory("./prefabs/trpc_fullstack/server", exclude=["node_modules"]),
@@ -250,22 +251,19 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
             "DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres",
             f"Allowed paths and directories: {workspace.allowed}",
         ])
-        message = MessageParam(
+        message = Message(
             role="user",
-            content=[TextBlock(
-                type="text",
-                text=BACKEND_START_PROMPT % {
+            content=[TextRaw(
+                BACKEND_START_PROMPT % {
                     "project_context": project_context,
                     "user_prompt": ctx["user_prompt"],
                 }
             )]
         )
-        root = logic.Node[NodeData](
-            data={"workspace": draft_workspace, "files": {}, "messages": [message]},
-        )
-        ctx["bfs_definitions"] = root
+        ctx["bfs_definitions"] = logic.Node(NodeData(draft_workspace, [message]))
     
     async def root_entry_handlers_fn(ctx: AgentContext):
+        assert "backend_files" in ctx, "backend_files must be provided"
         if "bfs_handlers" in ctx:
             return
         handlers_workspace = workspace.clone().permissions([], [])
@@ -281,21 +279,18 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
             project_context,
             f"Allowed paths and directories: {handlers_workspace.allowed}",
         ])
-        message = MessageParam(
+        message = Message(
             role="user",
-            content=[TextBlock(
-                type="text",
-                text=BACKEND_HANDLERS_PROMPT % {
+            content=[TextRaw(
+                BACKEND_HANDLERS_PROMPT % {
                     "project_context": project_context,
                 }
             )]
         )
-        root = logic.Node[NodeData](
-            data={"workspace": handlers_workspace, "files": {}, "messages": [message]},
-        )
-        ctx["bfs_handlers"] = root
+        ctx["bfs_handlers"] = logic.Node(NodeData(handlers_workspace, [message]))
     
     async def root_entry_backend_index(ctx: AgentContext):
+        assert "backend_files" in ctx, "backend_files must be provided"
         if "bfs_backend_index" in ctx:
             return
         index_workspace = workspace.clone().permissions([], [])
@@ -312,23 +307,15 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
             project_context,
             f"Allowed paths and directories: {index_workspace.allowed}",
         ])
-        message = MessageParam(
+        message = Message(
             role="user",
-            content=[TextBlock(
-                type="text",
-                text=BACKEND_INDEX_PROMPT % {
+            content=[TextRaw(
+                BACKEND_INDEX_PROMPT % {
                     "project_context": project_context,
                 }
             )]
         )
-        root = logic.Node[NodeData](
-            data={
-                "workspace": index_workspace,
-                "files": {},
-                "messages": [message],
-            },
-        )
-        ctx["bfs_backend_index"] = root
+        ctx["bfs_backend_index"] = logic.Node(NodeData(index_workspace, [message]))
 
     m_states: statemachine.State[AgentContext] = {
         "on": {
@@ -341,7 +328,7 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
                 "entry": [root_entry_draft_fn],
                 "invoke": {
                     "src": actor_bfs_no_tools,
-                    "input_fn": lambda ctx: (ctx["bfs_definitions"],),
+                    "input_fn": lambda ctx: (ctx["bfs_definitions"],), # pyright: ignore[reportTypedDictNotRequiredAccess]
                     "on_done": {"target": FSMState.BACKEND_DRAFT_EVAL},
                     "on_error": {
                         "target": FSMState.FAILED,
@@ -364,7 +351,7 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
                 "entry": [root_entry_handlers_fn],
                 "invoke": {
                     "src": actor_bfs_no_tools,
-                    "input_fn": lambda ctx: (ctx["bfs_handlers"],),
+                    "input_fn": lambda ctx: (ctx["bfs_handlers"],), # pyright: ignore[reportTypedDictNotRequiredAccess]
                     "on_done": {"target": FSMState.BACKEND_HANDLERS_EVAL},
                     "on_error": {
                         "target": FSMState.FAILED,
@@ -387,7 +374,7 @@ async def make_fsm_states(m_client: AsyncAnthropicBedrock, model_params: ModelPa
                 "entry": [root_entry_backend_index],
                 "invoke": {
                     "src": actor_bfs_no_tools,
-                    "input_fn": lambda ctx: (ctx["bfs_backend_index"],),
+                    "input_fn": lambda ctx: (ctx["bfs_backend_index"],), # pyright: ignore[reportTypedDictNotRequiredAccess]
                     "on_done": {"target": FSMState.BACKEND_INDEX_EVAL},
                     "on_error": {
                         "target": FSMState.FAILED,

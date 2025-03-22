@@ -1,12 +1,11 @@
-from typing import Awaitable, Callable, TypedDict, NotRequired
+from typing import TypedDict, NotRequired
 import dataclasses
 import re
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
-from anthropic import AsyncAnthropic
-from anthropic.types import ToolParam, ToolUseBlock, ToolResultBlockParam, MessageParam, ContentBlockParam
 import logic
 from workspace import Workspace
+from models.common import AsyncLLM, Message, Tool, TextRaw, ToolUse, ThinkingBlock
 
 
 @dataclasses.dataclass
@@ -26,38 +25,41 @@ class ModelParams(TypedDict):
     max_tokens: int
     temperature: NotRequired[float]
     stop_sequences: NotRequired[list[str]]
-    tools: NotRequired[list[ToolParam]]
+    tools: NotRequired[list[Tool]]
 
 
-class NodeData(TypedDict):
+@dataclasses.dataclass
+class NodeData:
     workspace: Workspace
-    files: dict[str, str]
-    messages: list[MessageParam]
+    messages: list[Message]
+    files: dict[str, str] = dataclasses.field(default_factory=dict)
 
-
-class WorkspaceTool(TypedDict):
-    definition: ToolParam
-    handler: Callable[[NodeData, ToolUseBlock], Awaitable[ToolResultBlockParam]]
+    def head(self) -> Message:
+        if (num_messages := len(self.messages)) != 1:
+            raise ValueError(f"Expected 1 got {num_messages} messages: {self.messages}")
+        if self.messages[0].role != "assistant":
+            raise ValueError(f"Expected assistant role in message: {self.messages}")
+        return self.messages[0]
 
 
 class BFSExpandActor:
-    m_client: AsyncAnthropic
+    m_client: AsyncLLM
     model_params: ModelParams
 
-    def __init__(self, m_client: AsyncAnthropic, model_params: ModelParams, beam_width: int = 5):
+    def __init__(self, m_client: AsyncLLM, model_params: ModelParams, beam_width: int = 5):
         self.m_client = m_client
         self.model_params = model_params
         self.beam_width = beam_width
     
     async def execute(self, root: logic.Node[NodeData]) -> logic.Node[NodeData]:
         async def task_fn(node: logic.Node[NodeData], tx: MemoryObjectSendStream[logic.Node[NodeData]]):
-            history = [m for n in node.get_trajectory() for m in n.data["messages"]]
+            history = [m for n in node.get_trajectory() for m in n.data.messages]
             new_node = logic.Node[NodeData](
-                data={
-                    "workspace": node.data["workspace"].clone(),
-                    "messages": [await self.completion(history)],
-                    "files": node.data["files"].copy()
-                },
+                data=NodeData(
+                    workspace=node.data.workspace.clone(),
+                    messages=[await self.completion(history)],
+                    files=node.data.files.copy(),
+                ),
                 parent=node
             )
             async with tx:
@@ -71,26 +73,20 @@ class BFSExpandActor:
             tx.close()
             async with rx:
                 async for new_node in rx:
-                    new_node.parent.children.append(new_node)
+                    new_node.parent.children.append(new_node) # pyright: ignore[reportOptionalMemberAccess]
         return root
 
-    async def completion(self, messages: list[MessageParam], tools: list[WorkspaceTool] | None = None) -> MessageParam:
+    async def completion(self, messages: list[Message]) -> Message:
         assert len(messages) > 0, "messages must not be empty"
-        assert messages[-1]["role"] == "user", "last message must be from user"
-        model_params = self.model_params.copy()
-        if tools:
-            model_params.update({"tools": [tool["definition"] for tool in tools]})
-        content: list[ContentBlockParam] = []
+        assert messages[-1].role == "user", "last message must be from user"
+        content: list[TextRaw | ToolUse | ThinkingBlock] = []
         while True:
-            payload = messages + [MessageParam(role="assistant", content=content)] if content else messages
-            completion = await self.m_client.messages.create(messages=payload, **model_params)
+            payload = messages + [Message(role="assistant", content=content)] if content else messages
+            completion = await self.m_client.completion(messages=payload, **self.model_params)
             content.extend(completion.content)
-            if (
-                ("stop_sequences" in self.model_params and completion.stop_reason == "stop_sequence")
-                or completion.stop_reason != "max_tokens"
-            ):
+            if completion.stop_reason != "max_tokens":
                 break
-        return MessageParam(role="assistant", content=content)
+        return Message(role="assistant", content=content)
 
 
 # minor helpers
@@ -103,9 +99,13 @@ async def grab_file_ctx(workspace: Workspace, files: list[str]) -> str:
     return "\n\n".join(context)
 
 
-async def set_error(ctx: dict, error: Exception):
+class CtxWithError(TypedDict, total=False):
+    error: Exception
+
+
+async def set_error[T: CtxWithError](ctx: T, error: Exception):
     ctx["error"] = error
 
 
-async def print_error(ctx: dict):
+async def print_error[T: CtxWithError](ctx: T):
     print(ctx["error"])

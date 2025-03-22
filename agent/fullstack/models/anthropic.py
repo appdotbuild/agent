@@ -26,8 +26,8 @@ class AnthropicParams(TypedDict):
 
 
 class AnthropicLLM(common.AsyncLLM):
-    def __init__(self, api_key: str | None = None):
-        self.client = AsyncAnthropic(api_key=api_key)
+    def __init__(self, client: AsyncAnthropic):
+        self.client = client
     
     async def completion(
         self,

@@ -1,17 +1,18 @@
 from typing import Literal
 import os
+import pickle
 import dagger
 from dagger import dag
-from anthropic import AsyncAnthropic
+import logic
 import statemachine
 import backend_fsm
 import frontend_fsm
 from shared_fsm import ModelParams
-import logic
-import pickle
+from anthropic import AsyncAnthropic
+from models.anthropic import AnthropicLLM
 
 
-async def checkpoint_context(context: dict, export_dir: str, stage: Literal["backend", "frontend"]):
+async def checkpoint_context(context: backend_fsm.AgentContext | frontend_fsm.AgentContext, export_dir: str, stage: Literal["backend", "frontend"]):
     match stage:
         case "backend":
             ckpt_path = os.path.join(export_dir, "checkpoint_backend.pkl")
@@ -23,7 +24,7 @@ async def checkpoint_context(context: dict, export_dir: str, stage: Literal["bac
         serializable = {k: v for k, v in context.items() if not isinstance(v, logic.Node)}
         pickle.dump(serializable, f, pickle.HIGHEST_PROTOCOL)
     if "checkpoint" in context:
-        await context["checkpoint"].data["workspace"].container().directory("src").export(files_path)
+        await context["checkpoint"].data.workspace.container().directory("src").export(files_path)
     else:
         if "error" in context:
             raise context["error"]
@@ -31,7 +32,7 @@ async def checkpoint_context(context: dict, export_dir: str, stage: Literal["bac
 
 
 async def run_agent(export_dir: str, num_beams: int = 3):
-    m_client = AsyncAnthropic()
+    m_client = AnthropicLLM(AsyncAnthropic())
     backend_m_params: ModelParams = {
         "model": "claude-3-7-sonnet-20250219",
         "max_tokens": 8192,
@@ -63,6 +64,7 @@ async def run_agent(export_dir: str, num_beams: int = 3):
         await b_fsm.send(backend_fsm.FSMEvent.CONFIRM)
         await checkpoint_context(b_fsm.context, export_dir, "backend")
 
+        assert "backend_files" in b_fsm.context, "Backend files not generated"
         f_context: frontend_fsm.AgentContext = {
             "user_prompt": b_context["user_prompt"],
             "backend_files": b_fsm.context["backend_files"],

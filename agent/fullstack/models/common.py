@@ -1,6 +1,6 @@
-from typing import Literal, Protocol, Iterable, TypedDict, Required, NotRequired
+from typing import Literal, Protocol, Iterable, TypedDict, TypeAlias, Union, Required
 from dataclasses import dataclass
-from typing import Dict
+
 
 @dataclass
 class TextRaw:
@@ -32,11 +32,18 @@ class ToolUseResult:
     tool_use: ToolUse
     tool_result: ToolResult
 
+    @classmethod
+    def from_tool_use(cls, tool_use: ToolUse, content: str, is_error: bool | None = None) -> "ToolUseResult":
+        return cls(tool_use, ToolResult(content, tool_use.id, tool_use.name, is_error))
+
+
+ContentBlock: TypeAlias = Union[TextRaw, ToolUse, ToolUseResult, ThinkingBlock]
+
 
 @dataclass
 class Message:
     role: Literal["user", "assistant"]
-    content: Iterable[TextRaw | ToolUse | ToolUseResult | ThinkingBlock]
+    content: Iterable[ContentBlock]
 
 
 @dataclass
@@ -49,15 +56,10 @@ class Completion:
     thinking_tokens: int | None = None
 
 
-class ToolSchema(TypedDict):
-    type: Literal["object"]
-    properties: NotRequired[object | None]#NotRequired[object]
-
-
 class Tool(TypedDict, total=False):
     name: Required[str]
     description: str
-    input_schema: Required[Dict[str, object]]#Required[ToolSchema]
+    input_schema: Required[dict[str, object]]
 
 
 class AsyncLLM(Protocol):
