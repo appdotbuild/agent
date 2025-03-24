@@ -5,35 +5,35 @@ logger = logging.getLogger(__name__)
 
 
 class Actor(Protocol):
-    def execute(self, context: Any) -> Any:
+    def execute(self, *args, **kwargs) -> Any:
         ...
 
 
-class InvokeCallback(TypedDict):
+class InvokeCallback[T](TypedDict):
     target: str
-    actions: NotRequired[list[Callable[[Any, Any], Any]]] # = []
+    actions: NotRequired[list[Callable[[T, Any], Any]]] # = []
 
 
-class Invoke(TypedDict):
+class Invoke[T](TypedDict):
     src: Actor
-    input_fn: Callable[[Any], Any]
+    input_fn: Callable[[T], Any]
     on_done: NotRequired[InvokeCallback]
     on_error: NotRequired[InvokeCallback]
 
 
-class AlwaysRun(TypedDict):
+class AlwaysRun[T](TypedDict):
     target: str
-    guard: NotRequired[Callable[[Any], bool]]
-    actions: NotRequired[list[Callable[[Any], Any]]]
+    guard: NotRequired[Callable[[T], bool]]
+    actions: NotRequired[list[Callable[[T], Any]]]
 
 
-class State(TypedDict):
-    entry: NotRequired[list[Callable[[Any], Any]]]
-    invoke: NotRequired[Invoke]
+class State[T](TypedDict):
+    entry: NotRequired[list[Callable[[T], Any]]]
+    invoke: NotRequired[Invoke[T]]
     on: NotRequired[dict[str, str]]
-    exit: NotRequired[list[Callable[[Any], Any]]]
-    always: NotRequired[AlwaysRun | list[AlwaysRun]]
-    states: NotRequired[dict[str, "State"]]
+    exit: NotRequired[list[Callable[[T], Any]]]
+    always: NotRequired[AlwaysRun[T] | list[AlwaysRun[T]]]
+    states: NotRequired[dict[str, "State[T]"]]
     initial: NotRequired[str]
 
 
@@ -41,7 +41,7 @@ class StateMachine[T]:
     def __init__(self, root: State, context: T):
         self.root = root
         self.context = context
-        self.state_stack: list[State] = [root]
+        self.state_stack: list[State[T]] = [root]
         self._queued_transition: str | None = None
 
     def send(self, event):
@@ -134,24 +134,21 @@ class StateMachine[T]:
                     break
 
         return path
-
-    def _run_entry(self, state: State):
+    def _run_entry(self, state: State[T]):
         if "entry" in state:
             logger.info(f"Running entry actions")
             for action in state["entry"]:
                 action_name = action.__name__ if hasattr(action, "__name__") else "unknown"
                 logger.info(f"Running entry action: {action_name}")
                 action(self.context)
-
-    def _run_exit(self, state: State):
+    def _run_exit(self, state: State[T]):
         if "exit" in state:
             logger.info(f"Running exit actions")
             for action in state["exit"]:
                 action_name = action.__name__ if hasattr(action, "__name__") else "unknown"
                 logger.info(f"Running exit action: {action_name}")
                 action(self.context)
-
-    def _run_invoke(self, state: State):
+    def _run_invoke(self, state: State[T]):
         if "invoke" in state:
             invoke = state["invoke"]
             actor_name = invoke["src"].__class__.__name__ if hasattr(invoke["src"], "__class__") else "Unknown"
@@ -190,8 +187,7 @@ class StateMachine[T]:
                         action(self.context, e)
                 else:
                     raise e
-
-    def _run_always(self, state: State):
+    def _run_always(self, state: State[T]):
         if "always" in state:
             logger.info("Checking always transitions")
             branches = state["always"] if isinstance(state["always"], list) else [state["always"]]

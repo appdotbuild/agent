@@ -123,7 +123,7 @@ const multi = await db.insert(users).values([
   { name: 'Bob' }
 ]);
 
-// Update 
+// Update
 await db.update(users)
   .set({ name: 'John' })
   .where(eq(users.id, 1));
@@ -205,15 +205,15 @@ interface QueryOptions {
 // Type-safe query building
 function buildQuery(options: QueryOptions) {
   let query = db.select().from(table);
-  
+
   if (options.exercise) {
     query = query.where(eq(table.exercise, options.exercise));
   }
-  
+
   if (options.muscleGroup) {
     query = query.where(eq(table.muscleGroup, options.muscleGroup));
   }
-  
+
   return query;
 }
 
@@ -251,7 +251,7 @@ query = query.limit(10); // Error: Property 'limit' is missing
 
 // ✅ Correct - Preserve type inference
 const baseQuery = db.select().from(table);
-const whereQuery = condition 
+const whereQuery = condition
   ? baseQuery.where(eq(table.column, value))
   : baseQuery;
 const finalQuery = whereQuery.limit(10);
@@ -276,19 +276,19 @@ function buildWorkoutQuery(
   options: QueryOptions
 ): PgSelect {
   const baseQuery = db.select().from(table);
-  
+
   let query = baseQuery;
-  
+
   if (options.exerciseName) {
     query = query.where(
       eq(table.exercise_name, options.exerciseName)
     );
   }
-  
+
   if (options.limit) {
     query = query.limit(options.limit);
   }
-  
+
   return query;
 }
 
@@ -309,17 +309,17 @@ export async function getProgress(
   const baseQuery = db
     .select()
     .from(progressTable);
-  
+
   const withExercise = options.exerciseName
     ? baseQuery.where(
         eq(progressTable.exercise_name, options.exerciseName)
       )
     : baseQuery;
-    
+
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-    
+
   return await withLimit;
 }
 
@@ -341,17 +341,17 @@ export async function listWorkoutHistory(
     .select()
     .from(exerciseRecordsTable)
     .$dynamic();  // Enable dynamic queries
-    
+
   const withExercise = options.exerciseId
     ? query.where(
         eq(exerciseRecordsTable.exercise_id, options.exerciseId)
       )
     : query;
-    
+
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-    
+
   return await withLimit;
 }
 
@@ -403,7 +403,7 @@ Application Definitions:
 {{drizzle_schema}}
 </drizzle>
 
-Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas. 
+Generate unit tests for {{function_name}} function based on the provided TypeScript and Drizzle schemas.
 Assume that DB is already initialized, all tables are successfully created and wiped out after each test.
 Assume those imports are already provided:
 
@@ -511,7 +511,7 @@ class HandlerTestsMachine(AgentMachine[HandlerTestsContext]):
         pattern = re.compile(r"<test>(.*?)</test>", re.DOTALL)
         tests = pattern.findall(output)
         return imports, tests
-    
+
     def on_message(self: Self, context: HandlerTestsContext, message: MessageParam) -> "HandlerTestsMachine":
         content = llm_common.pop_first_text(message)
         if content is None:
@@ -546,10 +546,10 @@ class HandlerTestsMachine(AgentMachine[HandlerTestsContext]):
     @property
     def is_done(self) -> bool:
         return False
-    
+
     @property
     def score(self) -> float:
-        return 0.0   
+        return 0.0
 
 
 class Entry(HandlerTestsMachine):
@@ -558,7 +558,6 @@ class Entry(HandlerTestsMachine):
         self.typescript_schema = typescript_schema
         self.drizzle_schema = drizzle_schema
         self.feedback = feedback
-    
     @property
     def next_message(self) -> MessageParam | None:
         if self.feedback:
@@ -633,7 +632,7 @@ class HandlerTestsCompile:
 class CompileError(HandlerTestsMachine, HandlerTestsCompile):
     @property
     def next_message(self) -> MessageParam | None:
-        content = jinja2.Template(FIX_PROMPT).render(errors=self.feedback["stdout"])
+        content = jinja2.Template(FIX_PROMPT).render(errors=(self.feedback["stdout"] or "") + (self.feedback["stderr"] or ""))
         return MessageParam(role="user", content=content)
 
 
@@ -663,11 +662,11 @@ class Success(HandlerTestsMachine, HandlerTestsCompile):
     @property
     def next_message(self) -> MessageParam | None:
         return None
-    
+
     @property
     def is_done(self) -> bool:
         return True
-    
+
     @property
     def score(self) -> float:
         return 1.0

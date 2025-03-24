@@ -61,7 +61,7 @@ class Prompt(BaseModel):
     prompt: str
     createdAt: datetime
     kind: str
-    
+
     def __iter__(self):
         yield "prompt", self.prompt
         yield "createdAt", self.createdAt.isoformat()
@@ -74,8 +74,8 @@ class BuildRequest(BaseModel):
     prompts: Optional[list[Prompt]] = None
     botId: Optional[str] = None
     capabilities: Optional[list[str]] = None
-    
-    
+
+
 class PrepareRequest(BaseModel):
     prompts: list[Prompt]
     botId: Optional[str] = None
@@ -102,8 +102,8 @@ class CapabilitiesResponse(BaseModel):
     message: str
     trace_id: str | None
     capabilities: list[str]
-    
-    
+
+
 def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     with tempfile.TemporaryDirectory() as tmpdir:
         application = Application(client, compiler)
@@ -133,10 +133,10 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
         application = Application(client, compiler)
         interpolator = Interpolator(".")
         logger.info(f"Updating bot with typespec: {typespec}")
-        
+
         bot = application.update_bot(typespec, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
         logger.info(f"Updated bot successfully")
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # download the bot from read_url
             if read_url:
@@ -161,7 +161,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
             else:
                 interpolator.bake(bot, tmpdir)
                 logger.info(f"Baked bot successfully to {tmpdir}")
-                
+
             # zip the bot
             zip_path = shutil.make_archive(
                 base_name=tmpdir,
@@ -175,7 +175,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
                 upload_result.raise_for_status()
                 logger.info(f"Uploaded bot successfully to {write_url}")
     except Exception as e:
-        logger.error(f"Failed to update bot: {str(e)}")
+        logger.exception(f"Failed to update bot (trace_id: {trace_id}, bot_id: {bot_id}, read_url {read_url}, write_url {write_url})")
         raise e
 
 
@@ -194,7 +194,9 @@ def prepare(request: PrepareRequest):
     bot = prepare_bot(request.prompts, trace_id, request.botId, request.capabilities)
     typespec_dict = get_typespec_metadata(bot)
     scenarios = get_scenarios_message(bot)
-    message = f"Your bot's type specification has been prepared. Use cases implemented: {scenarios}"
+    message = f"""Your bot's type specification has been prepared.
+Use cases implemented: {scenarios}.
+Please let me know if these use cases match what you're looking for, and if you would like me to start implementing the application."""
     return BuildResponse(status="success", message=message, trace_id=trace_id, metadata=typespec_dict)
 
 
