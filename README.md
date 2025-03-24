@@ -134,6 +134,53 @@ DockerSandboxTest python notebook contains sample usage.
 
 ## Basic Usage
 
+### LLM-Guided Generation with MCP
+
+The framework exposes four high-level tools for LLM-guided application generation through MCP (Model Control Plane):
+
+1. **start_fsm**: Initialize the state machine with your application description
+   ```
+   Input: { "app_description": "Description of your application" }
+   ```
+
+2. **confirm_state**: Accept the current output and move to the next state
+   ```
+   Input: {}
+   ```
+
+3. **provide_feedback**: Submit feedback to revise the current component
+   ```
+   Input: { 
+     "feedback": "Your detailed feedback", 
+     "component_name": "Optional specific component name" 
+   }
+   ```
+
+4. **complete_fsm**: Finalize and return all generated artifacts
+   ```
+   Input: {}
+   ```
+
+#### Setup for Cursor
+
+For Cursor users, register the MCP server:
+
+```bash
+python mcp_tools/setup_global_mcp.py
+```
+
+This registers an MCP server called "app-build" that Cursor can connect to for guided generation. Other clients may require different setup.
+
+#### Testing with fsm_tools
+
+You can test the FSM tools directly from the command line:
+
+```bash
+PYTHONPATH=$PYTHONPATH:./agent/ uv run python agent/fsm_tools.py "your app description"
+```
+
+This runs a guided generation session with the specified application description, allowing you to test the FSM tools without setting up MCP.
+
 ### Jupyter version
 
 The Scratchpad notebook in `agent/` demonstrates the framework's capabilities:

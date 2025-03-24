@@ -321,6 +321,52 @@ class FsmState(str, enum.Enum):
     WAIT = "wait"
 
 
+class InteractionMode(enum.Enum):
+    INTERACTIVE = "interactive"  # All stages require confirmation
+    NON_INTERACTIVE = "non_interactive"  # No stages require confirmation
+    TYPESPEC_ONLY = "typespec_only"  # Only typespec stage requires confirmation
+
+
+# Define state transitions for FSM
+FSM_TRANSITIONS = {
+    FsmState.TYPESPEC: {
+        'processing': FsmState.TYPESPEC,
+        'review': FsmState.TYPESPEC_REVIEW,
+        'next': FsmState.DRIZZLE
+    },
+    FsmState.DRIZZLE: {
+        'processing': FsmState.DRIZZLE,
+        'review': FsmState.DRIZZLE_REVIEW,
+        'next': FsmState.TYPESCRIPT
+    },
+    FsmState.TYPESCRIPT: {
+        'processing': FsmState.TYPESCRIPT,
+        'review': FsmState.TYPESCRIPT_REVIEW,
+        'next': FsmState.HANDLER_TESTS
+    },
+    FsmState.HANDLER_TESTS: {
+        'processing': FsmState.HANDLER_TESTS,
+        'review': FsmState.HANDLER_TESTS_REVIEW,
+        'next': FsmState.HANDLERS
+    },
+    FsmState.HANDLERS: {
+        'processing': FsmState.HANDLERS,
+        'review': FsmState.HANDLERS_REVIEW,
+        'next': FsmState.COMPLETE
+    }
+}
+
+# Define which stages require confirmation in each mode
+MODE_CONFIG = {
+    InteractionMode.INTERACTIVE: [
+        FsmState.TYPESPEC, FsmState.DRIZZLE, FsmState.TYPESCRIPT,
+        FsmState.HANDLER_TESTS, FsmState.HANDLERS
+    ],
+    InteractionMode.NON_INTERACTIVE: [],  # No states require interaction
+    InteractionMode.TYPESPEC_ONLY: [FsmState.TYPESPEC]  # Only typespec requires confirmation
+}
+
+
 class FsmEvent:
     # Event types
     PROMPT = "PROMPT"
@@ -368,11 +414,17 @@ class FSMContext(TypedDict):
 
 
 class Application:
-    def __init__(self, client: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse | None = None, interactive_mode: bool = False):
+    def __init__(
+        self,
+        client: AnthropicBedrock,
+        compiler: Compiler,
+        langfuse_client: Langfuse | None = None,
+        interaction_mode: InteractionMode = InteractionMode.NON_INTERACTIVE
+    ):
         self.client = client
         self.compiler = compiler
         self.langfuse_client = langfuse_client or Langfuse()
-        self.interactive_mode = interactive_mode
+        self.interaction_mode = interaction_mode
 
     def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationPrepareOut:
         logger.info(f"Preparing bot with prompts: {prompts}")
@@ -519,6 +571,28 @@ class Application:
             trace_id=trace.id
         )
 
+    def get_next_state(self, current_state: FsmState) -> FsmState:
+        """
+        Determine the next state based on the current state and interaction mode.
+
+        Raises:
+            ValueError: If no transitions are defined for the state
+        """
+        # Special handling for terminal states
+        if current_state in [FsmState.COMPLETE, FsmState.FAILURE]:
+            return current_state
+
+        # Get transition info for this state
+        transitions = FSM_TRANSITIONS.get(current_state)
+        if not transitions:
+            raise ValueError(f"No transitions defined for state {current_state}")
+
+        # Check if this state requires review in the current interaction mode
+        if current_state in MODE_CONFIG.get(self.interaction_mode, []):
+            return transitions['review']
+        else:
+            return transitions['next']
+
     def make_fsm_states(self, trace_id: str, observation_id: str) -> statemachine.State:
         typespec_actor = TypespecActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
         drizzle_actor = DrizzleActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
@@ -526,12 +600,12 @@ class Application:
         handler_tests_actor = HandlerTestsActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
         handlers_actor = HandlersActor(self.client, self.compiler, self.langfuse_client, trace_id, observation_id)
 
-        # Define target states based on interactive mode
-        typespec_target = FsmState.TYPESPEC_REVIEW if self.interactive_mode else FsmState.WAIT
-        drizzle_target = FsmState.DRIZZLE_REVIEW if self.interactive_mode else FsmState.TYPESCRIPT
-        typescript_target = FsmState.TYPESCRIPT_REVIEW if self.interactive_mode else FsmState.HANDLER_TESTS
-        handler_tests_target = FsmState.HANDLER_TESTS_REVIEW if self.interactive_mode else FsmState.HANDLERS
-        handlers_target = FsmState.HANDLERS_REVIEW if self.interactive_mode else FsmState.COMPLETE
+        # Define target states based on interaction mode
+        typespec_target = self.get_next_state(FsmState.TYPESPEC)
+        drizzle_target = self.get_next_state(FsmState.DRIZZLE)
+        typescript_target = self.get_next_state(FsmState.TYPESCRIPT)
+        handler_tests_target = self.get_next_state(FsmState.HANDLER_TESTS)
+        handlers_target = self.get_next_state(FsmState.HANDLERS)
 
         # Base state configuration
         states: statemachine.State = {
@@ -629,39 +703,38 @@ class Application:
             }
         }
 
-        # Add review states if in interactive mode
-        if self.interactive_mode:
-            states["states"].update({
-                FsmState.TYPESPEC_REVIEW: {
-                    "on": {
-                        FsmEvent.CONFIRM: FsmState.DRIZZLE,
-                        FsmEvent.REVISE_TYPESPEC: FsmState.TYPESPEC,
-                    },
+        # Always add all review states, but they'll only be used if the interaction mode requires them
+        states["states"].update({
+            FsmState.TYPESPEC_REVIEW: {
+                "on": {
+                    FsmEvent.CONFIRM: FsmState.DRIZZLE,
+                    FsmEvent.REVISE_TYPESPEC: FsmState.TYPESPEC,
                 },
-                FsmState.DRIZZLE_REVIEW: {
-                    "on": {
-                        FsmEvent.CONFIRM: FsmState.TYPESCRIPT,
-                        FsmEvent.REVISE_DRIZZLE: FsmState.DRIZZLE,
-                    },
+            },
+            FsmState.DRIZZLE_REVIEW: {
+                "on": {
+                    FsmEvent.CONFIRM: FsmState.TYPESCRIPT,
+                    FsmEvent.REVISE_DRIZZLE: FsmState.DRIZZLE,
                 },
-                FsmState.TYPESCRIPT_REVIEW: {
-                    "on": {
-                        FsmEvent.CONFIRM: FsmState.HANDLER_TESTS,
-                        FsmEvent.REVISE_TYPESCRIPT: FsmState.TYPESCRIPT,
-                    },
+            },
+            FsmState.TYPESCRIPT_REVIEW: {
+                "on": {
+                    FsmEvent.CONFIRM: FsmState.HANDLER_TESTS,
+                    FsmEvent.REVISE_TYPESCRIPT: FsmState.TYPESCRIPT,
                 },
-                FsmState.HANDLER_TESTS_REVIEW: {
-                    "on": {
-                        FsmEvent.CONFIRM: FsmState.HANDLERS,
-                        FsmEvent.REVISE_HANDLER_TESTS: FsmState.HANDLER_TESTS,
-                    },
+            },
+            FsmState.HANDLER_TESTS_REVIEW: {
+                "on": {
+                    FsmEvent.CONFIRM: FsmState.HANDLERS,
+                    FsmEvent.REVISE_HANDLER_TESTS: FsmState.HANDLER_TESTS,
                 },
-                FsmState.HANDLERS_REVIEW: {
-                    "on": {
-                        FsmEvent.CONFIRM: FsmState.COMPLETE,
-                        FsmEvent.REVISE_HANDLERS: FsmState.HANDLERS,
-                    },
+            },
+            FsmState.HANDLERS_REVIEW: {
+                "on": {
+                    FsmEvent.CONFIRM: FsmState.COMPLETE,
+                    FsmEvent.REVISE_HANDLERS: FsmState.HANDLERS,
                 },
-            })
+            },
+        })
 
         return states

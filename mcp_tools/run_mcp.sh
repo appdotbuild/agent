@@ -17,4 +17,4 @@ echo "=== $(date): Starting MCP server ===" >> "$LOG_FILE" 2>&1
 
 # Run the MCP server directly
 # Redirects stderr to log file while keeping stdout clean for MCP protocol messages
-PYTHONPATH=$PYTHONPATH:./agent/ uv run python agent/mcp_server.py 2>> "$LOG_FILE"
+PYTHONPATH=$PYTHONPATH:./agent/ uv run python ../agent/mcp_server.py 2>> "$LOG_FILE"

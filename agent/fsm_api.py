@@ -11,7 +11,7 @@ from compiler.core import Compiler
 logger = logging.getLogger(__name__)
 
 import application
-from application import FsmEvent, FsmState, Application
+from application import FsmEvent, FsmState, Application, InteractionMode
 from statemachine import StateMachine
 
 
@@ -56,9 +56,9 @@ class FSMManager:
             client=aws_client,
             compiler=compiler,
             langfuse_client=langfuse_client,
-            interactive_mode=True
+            interaction_mode=InteractionMode.INTERACTIVE
         )
-        logger.debug("Created Application instance with interactive_mode=True")
+        logger.debug("Created Application instance with interaction_mode=INTERACTIVE")
 
         # Initialize FSM context with user input
         fsm_context: application.FSMContext = {
