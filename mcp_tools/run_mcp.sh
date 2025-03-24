@@ -4,10 +4,11 @@
 # For use with Claude Desktop or other MCP clients
 # Communicates via stdin (configured in mcp_server.py)
 
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 LOG_FILE="/tmp/mcp.log"
-
-cd /Users/arseny/dev/bot-new
-
 # Clear the log file
 > "$LOG_FILE"
 

@@ -155,7 +155,7 @@ class FSMToolProcessor:
             return ToolResult(success=True, data=result)
 
         except Exception as e:
-            logger.error(f"[FSMTools] Error starting FSM: {str(e)}")
+            logger.exception(f"[FSMTools] Error starting FSM: {str(e)}")
             return ToolResult(success=False, error=f"Failed to start FSM: {str(e)}")
 
     def tool_confirm_state(self) -> ToolResult:
