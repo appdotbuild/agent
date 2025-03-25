@@ -135,7 +135,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
         logger.info(f"Updating bot with typespec: {typespec}")
 
         bot = application.update_bot(typespec, bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
-        logger.info(f"Updated bot successfully")
+        logger.info(f"Completed bot update stage: {bot}")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # download the bot from read_url

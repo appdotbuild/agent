@@ -98,7 +98,8 @@ class Interpolator:
                     f.write(handler.handler)
                 else:
                     logger.error(f"Handler {name} does not have a handler function")
-
+                    f.write(f"/// handler code was not generated")
+        
         for name, handler_test in application.handler_tests.items():
             with open(os.path.join(output_dir, "app_schema", "src", "tests", "handlers", f"{name}.test.ts"), "w") as f:
                 f.write(handler_test.content)
