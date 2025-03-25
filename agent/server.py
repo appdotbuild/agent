@@ -17,33 +17,15 @@ from application import Application
 from compiler.core import Compiler
 import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
-import logging
+from common import get_logger, init_sentry
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
+init_sentry()
 
 client = AnthropicBedrock(aws_region="us-west-2")
 compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
 
-sentry_dns = os.getenv("SENTRY_DSN")
-
-if sentry_dns:
-    sentry_sdk.init(
-        dsn=sentry_dns,
-        # Add data like request headers and IP for users,
-        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
-        send_default_pii=True,
-        # Set traces_sample_rate to 1.0 to capture 100%
-        # of transactions for tracing.
-        traces_sample_rate=1.0,
-        # Set profiles_sample_rate to 1.0 to profile 100%
-        # of sampled transactions.
-        # We recommend adjusting this value in production.
-        profiles_sample_rate=1.0,
-    )
-
 app = FastAPI()
-
 
 @app.middleware("http")
 async def check_bearer(request: Request, call_next):
@@ -153,8 +135,8 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
                     # bake the bot overwriting parts of the existing bot
                     interpolator.bake(bot, tmpdir, overwrite=True)
                     logger.info(f"Baked bot successfully to {tmpdir}")
-                except Exception as e:
-                    logger.warning(f"Failed to read or process existing bot from {read_url}: {str(e)}")
+                except Exception:
+                    logger.exception(f"Failed to read or process existing bot from {read_url}")
                     logger.info(f"Falling back to fresh bot build")
                     interpolator.bake(bot, tmpdir)
                     logger.info(f"Baked fresh bot successfully to {tmpdir}")
@@ -174,16 +156,16 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
                 upload_result = requests.put(write_url, data=f.read())
                 upload_result.raise_for_status()
                 logger.info(f"Uploaded bot successfully to {write_url}")
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to update bot (trace_id: {trace_id}, bot_id: {bot_id}, read_url {read_url}, write_url {write_url})")
-        raise e
+        raise
 
 
 def prepare_bot(prompts: list[Prompt], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     application = Application(client, compiler)
     logger.info(f"Creating bot with prompts: {prompts}")
     if not prompts:
-        logger.error("No prompts provided")
+        logger.exception("No prompts provided")
         raise ValueError("No prompts provided")
     bot = application.prepare_bot([p.prompt for p in prompts], bot_id, langfuse_observation_id=trace_id, capabilities=capabilities)
     return bot
