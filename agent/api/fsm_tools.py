@@ -9,7 +9,7 @@ from anthropic.types import MessageParam
 from fire import Fire
 import jinja2
 
-from fsm_api import (
+from api.fsm_api import (
     start_fsm,
     confirm_state,
     provide_feedback,

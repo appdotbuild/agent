@@ -2,7 +2,7 @@ from mcp.server.fastmcp import FastMCP
 from jinja2 import Environment
 
 from anthropic import AnthropicBedrock
-from fsm_tools import FSMToolProcessor
+from api.fsm_tools import FSMToolProcessor
 from tracing_client import TracingClient
 from compiler.core import Compiler
 from langfuse.decorators import langfuse_context

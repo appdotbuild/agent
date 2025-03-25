@@ -17,13 +17,13 @@ from statemachine import StateMachine
 
 class FSMManager:
     """Manager for a single FSM instance with state handling"""
-    
+
     def __init__(self):
         """Initialize an empty FSM manager"""
         self.fsm_instance = None
         self.trace_id = None
         self.app_instance = None
-        
+
     def start_fsm(self, user_input: str) -> Dict[str, Any]:
         """
         Starts FSM in interactive mode and returns initial state output
@@ -80,7 +80,7 @@ class FSMManager:
         except Exception as e:
             logger.error(f"Error during FSM event processing: {str(e)}")
             return {"error": f"FSM initialization failed: {str(e)}"}
-        
+
         # Check if FSM entered FAILURE state immediately
         current_state = self.fsm_instance.stack_path[-1]
         if current_state == FsmState.FAILURE:
@@ -97,7 +97,7 @@ class FSMManager:
 
         # Add the current state to the output
         return {
-            "current_state": current_state, 
+            "current_state": current_state,
             "output": output,
             "available_actions": available_actions
         }
@@ -128,7 +128,7 @@ class FSMManager:
         # Prepare response
         current_state = self.fsm_instance.stack_path[-1]
         logger.info(f"State after confirmation: {current_state}")
-        
+
         # Check if FSM entered FAILURE state
         if current_state == FsmState.FAILURE:
             error_msg = self.fsm_instance.context.get("error", "Unknown error")
@@ -204,10 +204,10 @@ class FSMManager:
             # Extract error information from context
             error_context = self.fsm_instance.context.get("error", "Unknown error")
             error_msg = str(error_context) if error_context else "FSM entered FAILURE state"
-            
+
             # Log the detailed error
             logger.error(f"FSM entered FAILURE state during feedback processing: {error_msg}")
-            
+
             # Return error information with the state
             return {
                 "current_state": new_state,
@@ -243,11 +243,11 @@ class FSMManager:
         if current_state not in [FsmState.COMPLETE, FsmState.FAILURE]:
             logger.error(f"FSM is not in a completion state. Current state: {current_state}")
             return {"error": f"FSM is not complete. Current state: {current_state}"}
-            
+
         # Check if FSM completed but with empty outputs (likely a silent failure)
         context = self.fsm_instance.context
-        if current_state == FsmState.COMPLETE and not any(key in context for key in 
-                                                     ["typespec_schema", "drizzle_schema", "typescript_schema", 
+        if current_state == FsmState.COMPLETE and not any(key in context for key in
+                                                     ["typespec_schema", "drizzle_schema", "typescript_schema",
                                                       "handler_tests", "handlers"]):
             error_msg = "FSM completed but didn't generate any artifacts. This indicates a failure in the generation process."
             logger.error(error_msg)
@@ -343,7 +343,7 @@ class FSMManager:
                     if "handlers" in context:
                         logger.debug("Adding handlers to results")
                         result["handlers"] = {
-                            name: {"source": handler.source if hasattr(handler, "source") else str(handler)}
+                            name: {"source": handler.source}
                             for name, handler in context["handlers"].items()
                         }
                         logger.debug(f"Added {len(context['handlers'])} handlers")
@@ -380,7 +380,7 @@ class FSMManager:
         return self.fsm_instance is not None
 
     # Helper methods
-    
+
     def _get_revision_event_type(self, state: str) -> Optional[str]:
         """Map review state to corresponding revision event type"""
         logger.debug(f"Getting revision event type for state: {state}")
@@ -581,12 +581,12 @@ class FSMManager:
                         error_msg = str(context["error"])
                         logger.error(f"FSM failed with error: {error_msg}")
                         result = {"error": error_msg}
-                        
+
                         # Include additional error context if available
                         if "failed_actor" in context:
                             result["failed_actor"] = context["failed_actor"]
                             logger.error(f"Failed actor: {context['failed_actor']}")
-                            
+
                         return result
                     else:
                         logger.error("FSM in FAILURE state but no error found in context")
