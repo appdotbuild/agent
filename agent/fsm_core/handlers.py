@@ -469,15 +469,16 @@ class HandlersMachine(AgentMachine[HandlersContext]):
     drizzle_schema: str
     test_suite: str | None
 
-    @staticmethod
-    def parse_output(output: str) -> str:
-        pattern = re.compile(r"<handler>(.*?)</handler>", re.DOTALL)
-        match = pattern.search(output)
-        if match is None:
+    _HANDLER_PATTERN = re.compile(r"<handler>(.*?)</handler>", re.DOTALL)
+
+    def parse_output(self, output: str) -> str:
+        matches = self._HANDLER_PATTERN.findall(output)
+        if not matches:
             raise ValueError("Failed to parse output, expected <handler> tags.")
-        handler = match.group(1).strip()
+        # Get the last match
+        handler = matches[-1].strip()
         return handler
-    
+
     def on_message(self: Self, context: HandlersContext, message: MessageParam) -> "HandlersMachine":
         content = llm_common.pop_first_text(message)
         if content is None:
