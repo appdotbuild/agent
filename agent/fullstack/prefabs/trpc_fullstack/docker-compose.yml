@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: server/server.Dockerfile
+    ports:
+      - '2022:2022'
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    container_name: app-backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: client/client.Dockerfile
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://app-backend:2022 # Reference the backend by container name

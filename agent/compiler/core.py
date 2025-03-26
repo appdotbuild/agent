@@ -38,6 +38,8 @@ class Compiler:
             f"echo {schema} > {schema_path} && tsp compile {schema_path} --no-emit"
         ]
         result = self.exec_demux(container, command)
+        if result["exit_code"]:
+            logger.info(f"Typespec compilation failed with code {result['exit_code']}: stderr {result['stderr']}\nstdout {result['stdout']}")
         container.remove(force=True)
         return result
 
@@ -58,6 +60,7 @@ class Compiler:
             Compiler.copy_files(container, {"src/db/schema/application.ts": schema})
             result = self.exec_demux(container, ["npx", "tsc", "--noEmit"])
             if result["exit_code"] != 0:
+                logger.info(f"Drizzle compilation failed with code {result['exit_code']}: stderr {result['stderr']}\nstdout {result['stdout']}")
                 return result
             return self.exec_demux(container, ["npx", "drizzle-kit", "push", "--force"])
 
@@ -76,8 +79,7 @@ class Compiler:
             Compiler.copy_files(container, files)
             result = self.exec_demux(container, ["npx", "tsc", "--noEmit"])
             if result["exit_code"]:
-                error = result["stderr"] or result["stdout"]
-                logger.info(f"Typescript compilation failed: {error}")
+                logger.info(f"Typescript compilation failed with code {result['exit_code']}: stderr {result['stderr']}\nstdout {result['stdout']}")
             if cmds is None:
                 return result
             cmds = [self.exec_demux(container, cmd) for cmd in cmds]

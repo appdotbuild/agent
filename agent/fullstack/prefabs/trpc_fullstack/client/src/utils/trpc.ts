@@ -3,5 +3,5 @@ import type { AppRouter } from '../../../server/src';
 import superjson from 'superjson';
 
 export const trpc = createTRPCClient<AppRouter>({
-  links: [httpBatchLink({ url: 'http://localhost:2022', transformer: superjson })],
+  links: [httpBatchLink({ url: '/api', transformer: superjson })],
 });

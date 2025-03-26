@@ -443,16 +443,22 @@ class Application:
         fsm.send(FsmEvent.PROMPT)
         logger.info(f"State machine finished at state: {fsm.stack_path[-1]}")
 
-        result = {"capabilities": capabilities}
+        result = {"capabilities": capabilities, "status": "processing"}
         error_output = None
 
         match fsm.stack_path[-1]:
             case FsmState.COMPLETE:
                 typespec_schema = fsm.context["typespec_schema"]
                 result.update({"typespec": typespec_schema})
+                result.update({"status": "success"})
             case FsmState.FAILURE:
                 error_output = fsm.context["error"]
                 result.update({"error": error_output})
+                result.update({"status": "error"})
+            case FsmState.TYPESPEC_REVIEW:
+                typespec_schema = fsm.context["typespec_schema"]
+                result.update({"typespec": typespec_schema})
+                result.update({"status": "success"}) # until we have router we let user iterate in done state
             case _:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
 
@@ -467,7 +473,8 @@ class Application:
                 typespec_definitions=getattr(result.get("typespec"), "typespec", None),
                 llm_functions=getattr(result.get("typespec"), "llm_functions", None),
                 error_output=error_output
-            )
+            ),
+            status=result.get("status", "success")
         )
 
     def update_bot(self, typespec_schema: str, bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationOut:

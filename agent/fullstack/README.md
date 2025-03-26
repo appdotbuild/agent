@@ -1,6 +1,6 @@
 # Full-stack codegen
 
-Generates full stack apps using trpc + shadcn components.  
+Generates full stack apps using trpc + shadcn components.
 
 ## Installation:
 
@@ -33,3 +33,7 @@ Start the app:
 (Optional) resetting the database:
 
 `bun run server/src/helpers/reset.ts `
+
+### Running with docker - doesn't have hot reload
+
+`docker compose up --build`

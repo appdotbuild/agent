@@ -6,13 +6,12 @@ import shutil
 import tempfile
 import requests
 import zipfile
-import sentry_sdk
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.interpolator import Interpolator
-from application import Application
+from application import Application, InteractionMode
 from compiler.core import Compiler
 import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
@@ -112,7 +111,7 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
 def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     try:
         logger.info(f"Staring background job to update bot")
-        application = Application(client, compiler)
+        application = Application(client, compiler, interaction_mode=InteractionMode.NON_INTERACTIVE)
         interpolator = Interpolator(".")
         logger.info(f"Updating bot with typespec: {typespec}")
 
@@ -162,7 +161,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
 
 
 def prepare_bot(prompts: list[Prompt], trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
-    application = Application(client, compiler)
+    application = Application(client, compiler, interaction_mode=InteractionMode.INTERACTIVE)
     logger.info(f"Creating bot with prompts: {prompts}")
     if not prompts:
         logger.exception("No prompts provided")
@@ -179,7 +178,7 @@ def prepare(request: PrepareRequest):
     message = f"""Your bot's type specification has been prepared.
 Use cases implemented: {scenarios}.
 Please let me know if these use cases match what you're looking for, and if you would like me to start implementing the application."""
-    return BuildResponse(status="success", message=message, trace_id=trace_id, metadata=typespec_dict)
+    return BuildResponse(status=bot.status, message=message, trace_id=trace_id, metadata=typespec_dict)
 
 
 @app.post("/recompile", response_model=BuildResponse)

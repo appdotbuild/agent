@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import Literal, TypedDict
 from dataclasses import dataclass
 
 
@@ -89,6 +89,7 @@ class ApplicationPrepareOut:
     refined_description: RefineOut
     capabilities: CapabilitiesOut
     typespec: TypespecOut
+    status: Literal['success', 'error', 'review', 'processing']
 
 @dataclass
 class ApplicationOut:
