@@ -31,7 +31,7 @@ export async function launchHttpServer() {
   });
 
   const app = fastify({
-    logger: true,
+    logger: env.NODE_ENV !== 'test', // Disable logger in test environment
   });
 
   // Add schema validator and serializer
@@ -109,14 +109,13 @@ export async function launchHttpServer() {
     });
   }
 
-  app.listen({ port, host: '0.0.0.0' }, function (err) {
-    if (err) {
-      app.log.error(err);
-      process.exit(1);
-    } else {
-      console.log(`Server is running on port ${port}`);
-    }
-  });
+  // In test mode, just return the app without listening
+  if (env.NODE_ENV === 'test') {
+    return app;
+  }
+
+  await app.listen({ port, host: '0.0.0.0' });
+  console.log(`Server is running on port ${port}`);
 
   const gracefulShutdown = async () => {
     console.log('Shutting down server gracefully...');
@@ -133,4 +132,6 @@ export async function launchHttpServer() {
   // Listen for termination signals
   process.on('SIGTERM', gracefulShutdown);
   process.on('SIGINT', gracefulShutdown);
+  
+  return app;
 }
