@@ -1,6 +1,6 @@
 from typing import Callable
-from anthropic import AnthropicBedrock
 from anthropic.types import MessageParam
+from fsm_core.llm_common import AnthropicClient
 
 from langfuse import Langfuse
 from langfuse.client import StatefulGenerationClient
@@ -11,7 +11,7 @@ from .common import AgentState, Node
 
 
 def bedrock_claude(
-    client: AnthropicBedrock,
+    client: AnthropicClient,
     messages: list[MessageParam],
     model: str = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
     max_tokens: int = 8192,
@@ -37,7 +37,7 @@ def bedrock_claude(
 
 
 def span_claude_bedrock(
-    client: AnthropicBedrock,
+    client: AnthropicClient,
     messages: list[MessageParam],
     generation: StatefulGenerationClient,
     model: str = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
@@ -127,7 +127,7 @@ def solve_agent[T](
     init: common.AgentMachine[T],
     context: T,
     trace_name: str,
-    m_claude: AnthropicBedrock,
+    m_claude: AnthropicClient,
     langfuse: Langfuse,
     max_depth: int = 3,
     max_width: int = 2,

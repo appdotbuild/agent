@@ -1,11 +1,11 @@
 from mcp.server.fastmcp import FastMCP
 from jinja2 import Environment
 
-from anthropic import AnthropicBedrock
 from api.fsm_tools import FSMToolProcessor
 from tracing_client import TracingClient
 from compiler.core import Compiler
 from langfuse.decorators import langfuse_context
+from fsm_core.llm_common import get_sync_client
 import logging
 import coloredlogs
 import sys
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("AppBuild", port=7758)  # Use a specific port to avoid conflicts, but any port can be used because the transport is stdio
 langfuse_context.configure(enabled=False)
 
-client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+client = get_sync_client()
 processor = FSMToolProcessor()
 
 tools_description = processor.tool_definitions

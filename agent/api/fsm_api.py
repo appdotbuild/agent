@@ -3,9 +3,9 @@ import uuid
 import logging
 from typing import Dict, Any, Optional
 from dataclasses import asdict
-from anthropic import AnthropicBedrock
 from langfuse import Langfuse
 from compiler.core import Compiler
+from fsm_core.llm_common import get_sync_client
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class FSMManager:
         )
         logger.debug(f"Created Langfuse trace with ID: {self.trace_id}")
 
-        aws_client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+        aws_client = get_sync_client()
         compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
         logger.debug("Initialized AWS client and compiler")
 

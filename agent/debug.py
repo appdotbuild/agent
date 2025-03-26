@@ -1,4 +1,3 @@
-from anthropic import AnthropicBedrock
 from application import Application
 from compiler.core import Compiler
 import os
@@ -6,6 +5,7 @@ import coloredlogs
 import logging
 from fire import Fire
 from core.interpolator import Interpolator
+from fsm_core.llm_common import get_sync_client
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ coloredlogs.install(level='INFO')
 def prepare_only(initial_description: str):
     """Just test the prepare_bot functionality"""
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
-    client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+    client = get_sync_client()
     application = Application(client, compiler)
 
     my_bot = application.prepare_bot([initial_description])
@@ -28,7 +28,7 @@ def main(initial_description: str, final_directory: str | None = None, update: b
     """Full bot creation and update workflow"""
     # Use the correct Docker image names from prepare_containers.sh
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
-    client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+    client = get_sync_client()
     application = Application(client, compiler)
 
     my_bot = application.prepare_bot([initial_description])

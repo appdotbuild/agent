@@ -4,9 +4,9 @@ import uuid
 import socket
 import logging
 import concurrent.futures
-from anthropic import AnthropicBedrock
 from compiler.core import Compiler
 from langfuse import Langfuse
+from fsm_core.llm_common import AnthropicClient
 from fsm_core.helpers import agent_dfs, span_claude_bedrock
 from fsm_core import typespec, drizzle, typescript, handler_tests, handlers
 from fsm_core.common import Node, AgentState, AgentMachine
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def solve_agent[T](
     init: AgentMachine[T],
     context: T,
-    m_claude: AnthropicBedrock,
+    m_claude: AnthropicClient,
     langfuse: Langfuse,
     langfuse_parent_trace_id: str,
     langfuse_parent_observation_id: str,
@@ -53,7 +53,7 @@ class ActorContext:
 
 
 class TypespecActor:
-    def __init__(self, m_claude: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -115,7 +115,7 @@ class TypespecActor:
 
 
 class DrizzleActor:
-    def __init__(self, m_claude: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -177,7 +177,7 @@ class DrizzleActor:
 
 
 class TypescriptActor:
-    def __init__(self, m_claude: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -210,7 +210,7 @@ class TypescriptActor:
 
 
 class HandlerTestsActor:
-    def __init__(self, m_claude: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str, max_workers=5):
+    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str, max_workers=5):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -259,7 +259,7 @@ class HandlerTestsActor:
 
 
 class HandlersActor:
-    def __init__(self, m_claude: AnthropicBedrock, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -416,7 +416,7 @@ class FSMContext(TypedDict):
 class Application:
     def __init__(
         self,
-        client: AnthropicBedrock,
+        client: AnthropicClient,
         compiler: Compiler,
         langfuse_client: Langfuse | None = None,
         interaction_mode: InteractionMode = InteractionMode.NON_INTERACTIVE

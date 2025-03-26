@@ -4,10 +4,10 @@ import logging
 import coloredlogs
 import sys
 from dataclasses import dataclass
-from anthropic import AnthropicBedrock
 from anthropic.types import MessageParam
 from fire import Fire
 import jinja2
+from fsm_core.llm_common import AnthropicClient, get_sync_client
 
 from api.fsm_api import (
     start_fsm,
@@ -265,7 +265,7 @@ class FSMToolProcessor:
             logger.error(f"[FSMTools] Error completing FSM: {str(e)}")
             return ToolResult(success=False, error=f"Failed to complete FSM: {str(e)}")
 
-def run_with_claude(processor: FSMToolProcessor, client: AnthropicBedrock,
+def run_with_claude(processor: FSMToolProcessor, client: AnthropicClient,
                    messages: List[MessageParam]) -> Tuple[List[MessageParam], bool]:
     """
     Send messages to Claude with FSM tool definitions and process tool use responses.
@@ -369,7 +369,7 @@ def main(initial_prompt: str = "A simple greeting app that says hello in five la
     Initializes an FSM tool processor and interacts with Claude.
     """
     logger.info("[Main] Initializing FSM tools...")
-    client = AnthropicBedrock(aws_profile="dev", aws_region="us-west-2")
+    client = get_sync_client()
     processor = FSMToolProcessor()
     logger.info("[Main] FSM tools initialized successfully")
 

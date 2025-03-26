@@ -11,18 +11,18 @@ from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from anthropic import AnthropicBedrock
 from core.interpolator import Interpolator
 from application import Application
 from compiler.core import Compiler
 import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
 from common import get_logger, init_sentry
+from fsm_core.llm_common import get_sync_client
 
 logger = get_logger(__name__)
 init_sentry()
 
-client = AnthropicBedrock(aws_region="us-west-2")
+client = get_sync_client()
 compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
 
 app = FastAPI()
