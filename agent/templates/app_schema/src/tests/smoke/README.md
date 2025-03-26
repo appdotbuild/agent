@@ -6,23 +6,28 @@ This directory contains smoke tests that verify the basic functionality of the a
 
 The smoke tests verify:
 
-1. The server can start up correctly
-2. The health endpoint responds correctly
-3. The chat endpoint processes messages using mocked LLM responses
-4. The JSON chat endpoint returns the expected format
-5. The tool/handler endpoints process requests correctly
+1. Handler functionality - testing that our basic handlers work correctly
+2. Parameter validation - testing that Zod schemas correctly validate inputs
+3. Mock storage - testing that we can store and retrieve messages
+4. Mock LLM responses - testing that we can mock LLM responses
 
-## Mocks Used
+## Testing Approach
 
-These tests use mocked dependencies:
+We use a combination of techniques for our smoke tests:
 
-- **Database**: We mock the database operations to avoid requiring a real database connection
-- **LLM**: We mock the Anthropic LLM client to provide predetermined responses
-- **Environment**: We mock environment variables to ensure consistent test conditions
+1. **Basic Smoke Tests**: We test core functionality of our handlers and message storage in isolation
+   - These tests don't depend on the full application stack
+   - They use in-memory mocks for database and LLM clients
+   - They're fast and reliable for quick checks
+
+2. **Integration Tests (Future)**: For more comprehensive testing, we'll need:
+   - A SQLite or PostgreSQL database with a test schema
+   - Mocked LLM responses 
+   - Full HTTP server testing
 
 ## Running Tests
 
-Run the smoke tests with:
+Run the basic smoke tests with:
 
 ```bash
 npm run test:smoke
@@ -34,6 +39,6 @@ bun run test:smoke
 
 To add more tests:
 
-1. Add new test cases to `app.test.ts`
-2. If needed, enhance the mock implementations for new features
-3. Add tests for any new API endpoints or handlers
+1. Add new test cases to `basic-smoke.test.js` for core functionality tests
+2. When creating full integration tests, ensure you're properly mocking external dependencies
+3. For PostgreSQL dependency, consider using SQLite for testing since it's lightweight and doesn't require a server

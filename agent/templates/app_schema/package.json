@@ -8,7 +8,7 @@
     "@types/node-fetch": "^2.6.12",
     "ai": "^4.1.51",
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.38.3",
+    "drizzle-orm": "^0.28",
     "eslint-plugin-unused-imports": "^4.1.4",
     "fastify": "^5.2.1",
     "fastify-type-provider-zod": "4.0.2",
@@ -23,19 +23,20 @@
     "zod-to-json-schema": "^3.24.1"
   },
   "devDependencies": {
+    "@libsql/client": "^0.15.1",
     "@types/bun": "^1.2.1",
     "@types/json-schema": "^7.0.15",
     "@types/pg": "^8.11.10",
-    "bun": "1.2.2",
-    "drizzle-kit": "^0.30.1",
-    "gherkin-lint": "^4.2.4",
-    "prettier": "3.5.2",
-    "tsx": "^4.19.2",
-    "tsc-files": "^1.1.4",
-    "eslint": "^9.21.0",
     "@typescript-eslint/eslint-plugin": "^8.26.0",
     "@typescript-eslint/parser": "^8.26.0",
-    "remove-unused-vars": "0.0.4"
+    "bun": "1.2.2",
+    "drizzle-kit": "^0.30.1",
+    "eslint": "^9.21.0",
+    "gherkin-lint": "^4.2.4",
+    "prettier": "3.5.2",
+    "remove-unused-vars": "0.0.4",
+    "tsc-files": "^1.1.4",
+    "tsx": "^4.19.2"
   },
   "scripts": {
     "build": "tsc",
@@ -46,6 +47,8 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "lint:clean-unused-vars": "eslint --rule 'no-unused-vars: [\"error\", { \"args\": \"none\" }]' --quiet -f json | remove-unused-vars",
-    "lint:fix-all": "bun run lint:clean-unused-vars && bun run lint:fix"
+    "lint:fix-all": "bun run lint:clean-unused-vars && bun run lint:fix",
+    "test": "bun test",
+    "test:smoke": "NODE_ENV=test bun test src/tests/smoke/basic-smoke.test.js"
   }
 }
