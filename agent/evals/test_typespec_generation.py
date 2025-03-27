@@ -4,7 +4,7 @@ from typing import Dict, Tuple
 from anthropic import AnthropicBedrock
 from tracing_client import TracingClient
 from compiler.core import Compiler
-from policies import typespec
+from fsm_core import typespec
 from application import Application
 
 DATASET_DIR = "evals/dataset.min"
@@ -63,7 +63,7 @@ def evaluate_typespec_generation() -> float:
                     messages=[message],
                 )
 
-                reasoning, typespec_definitions, functions = typespec.TypespecTaskNode.parse_output(response.content[-1].text)
+                reasoning, typespec_definitions, functions = typespec.TypespecMachine.parse_output(response.content[-1].text)
                 
                 typespec_schema = "\n".join(['import "./helpers.js";', "", typespec_definitions])
                 feedback = application.compiler.compile_typespec(typespec_schema)
