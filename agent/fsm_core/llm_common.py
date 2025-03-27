@@ -116,7 +116,7 @@ class AnthropicClient:
                     cache_key = self._get_cache_key(*args, **kwargs)
                     if cache_key in self._cache:
                         logger.info(f"Cache hit: {cache_key}")
-                        cached_response = json.loads(self._cache[cache_key])
+                        cached_response = self._cache[cache_key]
 
                         # Check if we need to reconstruct an object
                         if isinstance(cached_response, dict) and "type" in cached_response:
@@ -138,7 +138,7 @@ class AnthropicClient:
                     response = original_create(*args, **kwargs)
                     cache_key = self._get_cache_key(**kwargs)
 
-                    serialized_response = json.dumps(response.to_dict())
+                    serialized_response = response.to_dict()
                     self._cache[cache_key] = serialized_response
                     self._save_cache()
                     return response
