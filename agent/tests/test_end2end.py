@@ -7,6 +7,7 @@ import string
 import subprocess
 import time
 import docker
+import shutil
 import httpx
 
 from fire import Fire
@@ -120,6 +121,7 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
                 logger.exception(f"Error downing docker compose: {e}")
                 raise e
             os.chdir(dir_to_return)
+            shutil.rmtree(temp_dir)
 
 
 def update_cache(

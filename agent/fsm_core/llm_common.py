@@ -52,7 +52,6 @@ class AnthropicClient:
                 if Path(self.cache_path).exists():
                     Path(self.cache_path).unlink()
 
-
     def _load_cache(self) -> Dict[str, Any]:
         """Load cache from file if it exists, otherwise return empty dict."""
         cache_file = Path(self.cache_path)
