@@ -196,6 +196,7 @@ class LLMFunction:
 
 class TypespecContext(Protocol):
     compiler: Compiler
+    typespec_schema: "Success"
 
 
 class TypespecMachine(AgentMachine[TypespecContext]):
@@ -240,7 +241,9 @@ class TypespecMachine(AgentMachine[TypespecContext]):
         feedback = context.compiler.compile_typespec(typespec_schema)
         if feedback["exit_code"] != 0:
             return CompileError(reasoning, typespec, llm_functions, feedback)
-        return Success(reasoning, typespec, llm_functions, feedback)
+        success = Success(reasoning, typespec, llm_functions, feedback)
+        context.typespec_schema = success
+        return success
 
     @property
     def is_done(self) -> bool:
