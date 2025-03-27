@@ -42,6 +42,17 @@ class AnthropicClient:
 
         self.model_name = self.models_map[self.short_model_name][self.backend]
 
+        match self.cache_mode:
+            case "replay":
+                # Check if we have a cache file
+                if not Path(self.cache_path).exists():
+                    raise ValueError("Cache file not found, cannot run in replay mode")
+            case "record":
+                # clean up the cache file
+                if Path(self.cache_path).exists():
+                    Path(self.cache_path).unlink()
+
+
     def _load_cache(self) -> Dict[str, Any]:
         """Load cache from file if it exists, otherwise return empty dict."""
         cache_file = Path(self.cache_path)
