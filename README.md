@@ -225,7 +225,7 @@ There is a test for main usage scenario in agent/tests/test_end2end.py. It relie
 Default usage (just to check things are fine):
 
 ```
-uv run pytest -vs agent/test_end2end.py
+uv run pytest -vs agent/tests/test_end2end.py
 ```
 
 If you want to record new responses, use:
