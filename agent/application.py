@@ -448,17 +448,35 @@ class Application:
 
         match fsm.stack_path[-1]:
             case FsmState.COMPLETE:
-                typespec_schema = fsm.context["typespec_schema"]
-                result.update({"typespec": typespec_schema})
-                result.update({"status": "success"})
+                if "typespec_schema" in fsm.context:
+                    typespec_schema = fsm.context["typespec_schema"]
+                    result.update({"typespec": typespec_schema})
+                    result.update({"status": "success"})
+                elif "typespec" in fsm.context:
+                    typespec_schema = fsm.context["typespec"]
+                    result.update({"typespec": typespec_schema})
+                    result.update({"status": "success"})
+                else:
+                    logger.warning("No typespec data found in context, keys: %s", fsm.context.keys())
+                    result.update({"status": "error"})
+                    error_output = ValueError("No typespec data found in context")
             case FsmState.FAILURE:
                 error_output = fsm.context["error"]
                 result.update({"error": error_output})
                 result.update({"status": "error"})
             case FsmState.TYPESPEC_REVIEW:
-                typespec_schema = fsm.context["typespec_schema"]
-                result.update({"typespec": typespec_schema})
-                result.update({"status": "success"}) # until we have router we let user iterate in done state
+                if "typespec_schema" in fsm.context:
+                    typespec_schema = fsm.context["typespec_schema"]
+                    result.update({"typespec": typespec_schema})
+                    result.update({"status": "success"}) # until we have router we let user iterate in done state
+                elif "typespec" in fsm.context:
+                    typespec_schema = fsm.context["typespec"]
+                    result.update({"typespec": typespec_schema})
+                    result.update({"status": "success"}) # until we have router we let user iterate in done state
+                else:
+                    logger.warning("No typespec data found in context, keys: %s", fsm.context.keys())
+                    result.update({"status": "error"})
+                    error_output = ValueError("No typespec data found in context")
             case _:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
 
