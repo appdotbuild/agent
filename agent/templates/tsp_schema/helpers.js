@@ -27,7 +27,7 @@ export function $llm_func(context, target, description) {
 
        <correct-example>
         @llm_func(1)
-        fnHandler(args: ArgumentsModel): string;
+        fnHandler(args: ArgumentsModel): boolean;
        </correct-example>
       `,
     });
