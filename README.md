@@ -267,6 +267,12 @@ No error handling yet.
 
 ## Testing
 
+> **Note:** Before running tests, make sure to build the required Docker images:
+> ```bash
+> ./agent/prepare_containers.sh
+> ```
+> Tests in `test_smoke.py` require Docker images `botbuild/tsp_compiler` and `botbuild/app_schema`.
+
 The framework includes comprehensive tests to ensure reliability:
 
 ```bash
