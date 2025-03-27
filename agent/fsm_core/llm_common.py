@@ -147,7 +147,7 @@ def get_sync_client(
     backend: str = "bedrock",
     model_name: str = "sonnet",
     cache_mode: CacheMode = "off",
-    cache_path: str = "anthropic_cache.json"
+    cache_path: str = os.path.join(os.path.dirname(__file__), "../../anthropic_cache.json")
 ) -> AnthropicClient:
     return AnthropicClient(
         backend=backend,

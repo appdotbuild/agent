@@ -150,9 +150,9 @@ The framework exposes four high-level tools for LLM-guided application generatio
 
 3. **provide_feedback**: Submit feedback to revise the current component
    ```
-   Input: { 
-     "feedback": "Your detailed feedback", 
-     "component_name": "Optional specific component name" 
+   Input: {
+     "feedback": "Your detailed feedback",
+     "component_name": "Optional specific component name"
    }
    ```
 
@@ -216,14 +216,24 @@ pre_processors = {...}
 handlers = {...}
 ```
 
-### Python script version
+### End-to-End VCR Testing
 
-Those who prefer using Python scripts directly to use the debugger and other fancy features can use the following script:
+There is a test for main usage scenario in agent/tests/test_end2end.py. It relies on LLM calls and has two modes:
+- **Record mode**: Makes real API calls, saves responses to cache
+- **Replay mode**: Uses cached responses (default, used in CI)
 
-```bash
-cd agent
-python debug.py "your app description" /optional/path/to/final_output
+Default usage (just to check things are fine):
+
 ```
+uv run pytest -vs agent/test_end2end.py
+```
+
+If you want to record new responses, use:
+
+```
+PYTHONPATH=$PYTHONPATH:./agent uv run python agent/tests/test_end2end.py
+```
+New responses should be recorded in case of prompt changes or other significant changes in the pipeline (e.g. template modification, adding new steps etc.). VCR cache is stored in ./anthropic_cache.json by default, and new version should be committed to the repository.
 
 ## Generated Application
 
@@ -243,7 +253,7 @@ src/
 └── main.ts
 ```
 
-One could run it with `docker compose up` in the generated app. 
+One could run it with `docker compose up` in the generated app.
 
 ## Environment Variables
 
