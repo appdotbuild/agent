@@ -11,6 +11,7 @@ import shutil
 import httpx
 
 from fire import Fire
+from langfuse.decorators import langfuse_context
 
 from application import Application
 from compiler.core import Compiler
@@ -19,6 +20,7 @@ from fsm_core.llm_common import get_sync_client, CacheMode
 from common import get_logger
 
 logger = get_logger(__name__)
+langfuse_context.configure(enabled=False)
 
 DEFAULT_PROMPT = "make me a very simple bot: it should take name from the input message and return greeting for this name, it must have only one handler"
 
