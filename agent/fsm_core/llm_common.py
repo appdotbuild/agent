@@ -10,10 +10,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Define cache modes
 CacheMode = Literal["off", "record", "replay"]
 
-# Define a generic type for Anthropic clients
 
 class AnthropicClient:
     def __init__(self,
@@ -60,13 +58,9 @@ class AnthropicClient:
     def _save_cache(self) -> None:
         """Save cache to file."""
         cache_file = Path(self.cache_path)
-
-        try:
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            with cache_file.open("w") as f:
-                json.dump(self._cache, f, indent=2)
-        except Exception:
-            logger.exception("failed to save cache file")
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        with cache_file.open("w") as f:
+            json.dump(self._cache, f, indent=2)
 
     def _get_cache_key(self, *args, **kwargs) -> str:
         """Generate a consistent cache key from request parameters."""
@@ -79,8 +73,6 @@ class AnthropicClient:
                     return {k: normalize(v) for k, v in sorted(obj.items())}
                 case _ if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
                     return normalize(obj.to_dict())
-                case _ if hasattr(obj, "model_dump") and callable(getattr(obj, "model_dump")):
-                    return normalize(obj.model_dump())
                 case _:
                     return obj
 
@@ -89,23 +81,8 @@ class AnthropicClient:
 
         # Extract only relevant parameters for the cache key
         normalized_kwargs = normalize(kwargs)
-        key_dict = {
-            "model": normalized_kwargs.get("model", ""),
-            "messages": normalized_kwargs.get("messages", []),
-            "system": normalized_kwargs.get("system", ""),
-            "max_tokens": normalized_kwargs.get("max_tokens", None),
-            "temperature": normalized_kwargs.get("temperature", None),
-            "tools": normalized_kwargs.get("tools", []),
-        }
-
-        # Use a stable string representation and hash it
-        try:
-            key_str = json.dumps(key_dict, sort_keys=True)
-            return hashlib.md5(key_str.encode()).hexdigest()
-        except (TypeError, ValueError) as e:
-            logger.exception("failed to create cache key")
-            # Fallback: use a unique timestamp if serialization fails
-            return f"fallback-{hash(str(key_dict))}"
+        key_str = json.dumps(normalized_kwargs, sort_keys=True)
+        return hashlib.md5(key_str.encode()).hexdigest()
 
     @property
     def messages(self):
@@ -129,19 +106,17 @@ class AnthropicClient:
                     cache_key = self._get_cache_key(*args, **kwargs)
                     if cache_key in self._cache:
                         logger.info(f"Cache hit: {cache_key}")
-                        cached_response = self._cache[cache_key]
+                        cached_response = json.loads(self._cache[cache_key])
 
                         # Check if we need to reconstruct an object
                         if isinstance(cached_response, dict) and "type" in cached_response:
                             # This is likely a serialized Anthropic response
                             try:
-                                from anthropic.types import Message
                                 # Try to reconstruct the Message object
                                 if cached_response.get("type") == "message":
                                     return Message.model_validate(cached_response)
                             except (ImportError, ValueError):
                                 logger.warning("failed to reconstruct response object, returning raw cache")
-
                         return cached_response
                     else:
                         raise ValueError(
@@ -153,22 +128,9 @@ class AnthropicClient:
                     response = original_create(*args, **kwargs)
                     cache_key = self._get_cache_key(**kwargs)
 
-                    # Try to serialize the response
-                    try:
-                        if hasattr(response, "to_dict") and callable(getattr(response, "to_dict")):
-                            serialized_response = response.to_dict()
-                        else:
-                            # Check if directly serializable
-                            json.dumps(response)
-                            serialized_response = response
-
-                        self._cache[cache_key] = serialized_response
-                        self._save_cache()
-                    except (TypeError, ValueError):
-                        logger.exception("response not serializable for cache")
-                        raise ValueError("Response cannot be serialized for caching. "
-                                         "Implement to_dict() method for custom objects.")
-
+                    serialized_response = json.dumps(response.to_dict())
+                    self._cache[cache_key] = serialized_response
+                    self._save_cache()
                     return response
 
                 case _:

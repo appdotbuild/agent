@@ -5,7 +5,7 @@ import coloredlogs
 import logging
 from fire import Fire
 from core.interpolator import Interpolator
-from fsm_core.llm_common import get_sync_client
+from fsm_core.llm_common import get_sync_client, CacheMode
 from common import get_logger
 import tempfile
 import uuid
@@ -14,12 +14,11 @@ logger = get_logger(__name__)
 
 
 
-def main(initial_description: str):
+def main(initial_description: str, mode: CacheMode = "replay"):
     """Full bot creation and update workflow"""
     # Use the correct Docker image names from prepare_containers.sh
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
-    client = get_sync_client(cache_mode='record')
-    # client = get_sync_client(cache_mode='replay')
+    client = get_sync_client(cache_mode=mode)
     application = Application(client, compiler)
 
     bot_id = str(uuid.uuid4().hex)
@@ -33,7 +32,7 @@ def main(initial_description: str):
         interpolator.bake(my_bot, temp_dir)
         # run docker compose up in the dir and later down
         os.chdir(temp_dir)
-        os.system('docker compose up --build -d')
+        os.system('docker compose -p smoke_test up --build -d ')
         os.system('docker compose down')
         os.chdir(current_dir)
 
