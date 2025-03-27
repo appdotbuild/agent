@@ -193,7 +193,15 @@ def compile(request: ReBuildRequest, background_tasks: BackgroundTasks):
 @app.post("/compile", response_model=BuildResponse)
 def compile_legacy(request: BuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
-    background_tasks.add_task(generate_bot, request.writeUrl, request.readUrl, request.prompts if request.prompts else [request.prompt], trace_id, request.botId, request.capabilities)
+    background_tasks.add_task(
+        generate_bot, 
+        request.writeUrl, 
+        request.readUrl, 
+        request.prompts if request.prompts else [request.prompt], 
+        trace_id, 
+        request.botId, 
+        request.capabilities
+    )
     return BuildResponse(status="success", message="done", trace_id=trace_id)
 
 
