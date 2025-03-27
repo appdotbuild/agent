@@ -10,6 +10,28 @@ export function $llm_func(context, target, description) {
   const keysIterator = modelsMap.keys();
   const keysArray = Array.from(keysIterator);
 
+  if (target.returnType && target.returnType.kind === "Intrinsic" && target.returnType.name === "void") {
+    context.program.reportDiagnostic({
+      code: 'llm-func-void-return',
+      target: target,
+      messageId: 'voidReturn',
+      severity: 'error',
+      message: `
+       Function '${target.name}' must return a non-void value.
+       
+       <wrong-example>
+        @llm_func(1)
+        fnHandler(args: ArgumentsModel): void;
+       </wrong-example>
+
+       <correct-example>
+        @llm_func(1)
+        fnHandler(args: ArgumentsModel): boolean;
+       </correct-example>
+      `,
+    });
+  }
+
   // check if the argument type is a complex model type
   // else, report an error
   // we can't JSONify primitive types

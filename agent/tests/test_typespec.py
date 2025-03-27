@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch, MagicMock
 from policies.typespec import TypespecTaskNode, LLMFunction, PolicyException
 
 class TestTypespecParser:
@@ -511,5 +512,45 @@ class TestTypespecParser:
         assert "BaseFilter" in definitions
         assert "& BaseFilter" in definitions  # Intersection type
         assert '"asc" | "desc"' in definitions  # Union type
+        
+    def test_void_return_type_validation(self):
+        """Test that functions with void return types are flagged as errors."""
+        
+        test_output = """
+        <reasoning>Testing void return validation</reasoning>
+        <typespec>
+        model TestModel {
+            name: string;
+        }
+        
+        interface VoidReturnAPI {
+            @llm_func("Function with void return")
+            @scenario(\"\"\"
+            Scenario: Void Return Test
+            When user calls a function
+            Then system should validate return type
+            \"\"\")
+            voidFunction(options: TestModel): void;
+            
+            @llm_func("Function with non-void return")
+            @scenario(\"\"\"
+            Scenario: Non-void Return Test
+            When user calls a function
+            Then system should accept the return type
+            \"\"\")
+            validFunction(options: TestModel): boolean;
+        }
+        </typespec>
+        """
+        
+        reasoning, definitions, functions = TypespecTaskNode.parse_output(test_output)
+        
+        assert reasoning == "Testing void return validation"
+        assert len(functions) == 2
+        assert functions[0].name == "voidFunction"
+        assert functions[1].name == "validFunction"
+        
+        assert "void" in definitions
+        assert "boolean" in definitions
         
     
