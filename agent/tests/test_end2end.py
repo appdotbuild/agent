@@ -86,7 +86,7 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
             base_url = "http://localhost:8989"
             time.sleep(5)  # to ensure migrations are done
             # retry a few times to handle potential timeouts on slower machines
-            max_retries = 5  # typically need 2 for a local machine, but CI might need more
+            max_retries = 3  # typically need 2 for a local machine, but CI might need more
             response = None
             for attempt in range(max_retries):
                 try:
@@ -96,11 +96,24 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
                         timeout=15,
                     )
                     break
-                except httpx.HTTPError:
+                except httpx.HTTPError as e:
                     if attempt < max_retries - 1:
                         logger.info(
-                            f"request timed out, retrying ({attempt+1}/{max_retries})"
+                            f"request timed out, retrying ({attempt+1}/{max_retries}). Error: {e}"
                         )
+
+                        # fetch fresh container status and logs
+                        app_status = app_container.status
+                        db_status = db_container.status
+
+                        app_logs = app_container.logs()
+                        db_logs = db_container.logs()
+
+                        logger.info(f"App container status: {app_status}")
+                        logger.info(f"App container logs: {app_logs}")
+                        logger.info(f"DB container status: {db_status}")
+                        logger.info(f"DB container logs: {db_logs}")
+
                         time.sleep(3 * (attempt + 1))
                     else:
                         raise
