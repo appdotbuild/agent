@@ -14,18 +14,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-${{ github.ref }}-${{ hashFiles('agent/Dockerfile.*') }}
+        uses: docker/setup-buildx-action@v3
 
       - name: Build TypeSpec Docker image
         uses: docker/build-push-action@v4
@@ -35,8 +27,9 @@ jobs:
           tags: botbuild/tsp_compiler
           push: false
           load: true
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          # Use gha cache backend
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build Application Docker image
         uses: docker/build-push-action@v4
@@ -46,16 +39,12 @@ jobs:
           tags: botbuild/app_schema
           push: false
           load: true
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          # Use gha cache backend
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Pull PostgreSQL image
         run: docker pull postgres:17.0-alpine
-
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
