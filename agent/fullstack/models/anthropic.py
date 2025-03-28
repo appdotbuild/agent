@@ -81,7 +81,7 @@ class AnthropicLLM(common.AsyncLLM):
             for block in message.content:
                 match block:
                     case common.TextRaw(text):
-                        theirs_content.append({"text": text, "type": "text"})
+                        theirs_content.append({"text": text.rstrip(), "type": "text"})
                     case common.ToolUse(name, input, id) if id is not None:
                         theirs_content.append({"id": id, "input": input, "name": name, "type": "tool_use"})
                     case common.ToolUseResult(tool_use, tool_result) if tool_use.id is not None:

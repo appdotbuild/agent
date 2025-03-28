@@ -86,7 +86,13 @@ class BFSExpandActor:
             content.extend(completion.content)
             if completion.stop_reason != "max_tokens":
                 break
-        return Message(role="assistant", content=content)
+        return Message(role="assistant", content=self._merge_text(content))
+    
+    @staticmethod
+    def _merge_text(content: list[TextRaw | ToolUse | ThinkingBlock]) -> list[TextRaw | ToolUse | ThinkingBlock]:
+        text_blocks: list[TextRaw] = [block for block in content if isinstance(block, TextRaw)]
+        other_blocks: list[ToolUse | ThinkingBlock] = [block for block in content if not isinstance(block, TextRaw)]
+        return [TextRaw(" ".join(block.text for block in text_blocks))] + other_blocks
 
 
 # minor helpers
