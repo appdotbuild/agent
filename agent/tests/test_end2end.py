@@ -86,7 +86,7 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
             base_url = "http://localhost:8989"
             time.sleep(5)  # to ensure migrations are done
             # retry a few times to handle potential timeouts on slower machines
-            max_retries = 3
+            max_retries = 5  # typically need 2 for a local machine, but CI might need more
             response = None
             for attempt in range(max_retries):
                 try:
