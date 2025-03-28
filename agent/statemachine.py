@@ -132,6 +132,11 @@ class StateMachine[T]:
                 if value == n:
                     path.append(key)
                     break
+        
+        # Special handling for error cases
+        # If we have an error in context, this takes precedence and we should report FAILURE
+        if "error" in self.context and (not path or path[-1] != "failure"):
+            return ["failure"]
 
         return path
     def _run_entry(self, state: State[T]):
@@ -157,7 +162,6 @@ class StateMachine[T]:
                 try:
                     args = invoke["input_fn"](self.context)
                 except Exception:
-                    breakpoint()
                     exit()
 
                 logger.info(f"Actor {actor_name} executing with args {args}")
@@ -187,6 +191,8 @@ class StateMachine[T]:
                         action(self.context, e)
                 else:
                     raise e
+
+
     def _run_always(self, state: State[T]):
         if "always" in state:
             logger.info("Checking always transitions")
