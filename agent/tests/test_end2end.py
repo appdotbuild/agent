@@ -20,7 +20,6 @@ from fsm_core.llm_common import get_sync_client, CacheMode
 from common import get_logger
 
 logger = get_logger(__name__)
-langfuse_context.configure(enabled=False)
 
 DEFAULT_PROMPT = "make me a very simple bot: it should take name from the input message and return greeting for this name, it must have only one handler"
 
@@ -37,6 +36,7 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = get_sync_client(cache_mode=mode)
     application = Application(client, compiler)
+    langfuse_context.configure(enabled=False)
 
     bot_id = str(uuid.uuid4().hex)
     prepared_bot = application.prepare_bot([initial_description], bot_id=bot_id)
