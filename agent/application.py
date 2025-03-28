@@ -527,6 +527,19 @@ class Application:
                 raise ValueError(F"Unexpected state: {fsm.stack_path}")
 
         trace.update(output=result)
+        # Create TypescriptOut conditionally
+        typescript_result = result.get("typescript_schema")
+        typescript_out = None
+        typescript_args = {}
+        if typescript_result:
+            typescript_out = TypescriptOut(
+                reasoning=getattr(typescript_result, "reasoning", None),
+                typescript_schema=getattr(typescript_result, "typescript_schema", None),
+                functions=getattr(typescript_result, "functions", None),
+                error_output=error_output
+            )
+            typescript_args = {f.name: f.argument_schema for f in typescript_result.functions}
+        # FixMe: should we fail otherwise?
 
         # Create dictionary comprehensions for handlers and tests
         handler_tests_dict = {
@@ -541,21 +554,10 @@ class Application:
             name: HandlerOut(
                 name=name,
                 handler=getattr(handler, "source", None),
-                argument_schema=None,
+                argument_schema=typescript_args.get(name),
                 error_output=error_output
             ) for name, handler in result.get("handlers", {}).items()
         }
-
-        # Create TypescriptOut conditionally
-        typescript_result = result.get("typescript_schema")
-        typescript_out = None
-        if typescript_result:
-            typescript_out = TypescriptOut(
-                reasoning=getattr(typescript_result, "reasoning", None),
-                typescript_schema=getattr(typescript_result, "typescript_schema", None),
-                functions=getattr(typescript_result, "functions", None),
-                error_output=error_output
-            )
 
         return ApplicationOut(
             refined_description=RefineOut(refined_description="", error_output=error_output),
