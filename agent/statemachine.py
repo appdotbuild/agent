@@ -118,7 +118,8 @@ class StateMachine[T]:
     def stack_path(self) -> list[str]:
         """
         Calculate the path of states in the stack.
-        For terminal states like FAILURE, ensure they appear correctly in the path.
+        Note: This method only returns the raw path - application-specific error handling
+        should be done at the application level.
         """
         if not self.state_stack:
             return []
@@ -132,11 +133,6 @@ class StateMachine[T]:
                 if value == n:
                     path.append(key)
                     break
-        
-        # Special handling for error cases
-        # If we have an error in context, this takes precedence and we should report FAILURE
-        if "error" in self.context and (not path or path[-1] != "failure"):
-            return ["failure"]
 
         return path
     def _run_entry(self, state: State[T]):

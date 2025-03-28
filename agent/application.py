@@ -426,6 +426,22 @@ class Application:
         self.langfuse_client = langfuse_client or Langfuse()
         self.interaction_mode = interaction_mode
 
+    def get_effective_state(self, fsm: statemachine.StateMachine[FSMContext]) -> FsmState:
+        """
+        Gets the effective state of the FSM, taking errors into account.
+        This method encapsulates the logic for determining the actual state
+        when errors are present in the context.
+        """
+        # Check if there's an error in the context
+        if "error" in fsm.context:
+            return FsmState.FAILURE
+            
+        # If no error, return the actual state path
+        if not fsm.stack_path:
+            return FsmState.FAILURE  # Default to failure if stack is empty
+            
+        return fsm.stack_path[-1]
+
     def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationPrepareOut:
         logger.info(f"Preparing bot with prompts: {prompts}")
         trace = self.langfuse_client.trace(
@@ -441,12 +457,15 @@ class Application:
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
         logger.info("Initialized state machine, sending PROMPT event")
         fsm.send(FsmEvent.PROMPT)
-        logger.info(f"State machine finished at state: {fsm.stack_path[-1]}")
+        
+        # Get effective state that takes errors into account
+        effective_state = self.get_effective_state(fsm)
+        logger.info(f"State machine finished at state: {effective_state}")
 
         result = {"capabilities": capabilities, "status": "processing"}
         error_output = None
 
-        match fsm.stack_path[-1]:
+        match effective_state:
             case FsmState.COMPLETE:
                 typespec_schema = fsm.context["typespec_schema"]
                 result.update({"typespec": typespec_schema})
@@ -460,7 +479,7 @@ class Application:
                 result.update({"typespec": typespec_schema})
                 result.update({"status": "success"}) # until we have router we let user iterate in done state
             case _:
-                raise ValueError(F"Unexpected state: {fsm.stack_path}")
+                raise ValueError(F"Unexpected state: {effective_state}")
 
         trace.update(output=result)
 
@@ -512,19 +531,22 @@ class Application:
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
         logger.info("Initialized state machine, sending CONFIRM event")
         fsm.send(FsmEvent.CONFIRM)
-        logger.info(f"State machine finished at state: {fsm.stack_path[-1]}")
+        
+        # Get effective state that takes errors into account
+        effective_state = self.get_effective_state(fsm)
+        logger.info(f"State machine finished at state: {effective_state}")
 
         result = {"capabilities": capabilities}
         error_output = None
 
-        match fsm.stack_path[-1]:
+        match effective_state:
             case FsmState.COMPLETE:
                 result.update(fsm.context)
             case FsmState.FAILURE:
                 error_output = fsm.context["error"]
                 result.update({"error": error_output})
             case _:
-                raise ValueError(F"Unexpected state: {fsm.stack_path}")
+                raise ValueError(F"Unexpected state: {effective_state}")
 
         trace.update(output=result)
         # Create TypescriptOut conditionally
