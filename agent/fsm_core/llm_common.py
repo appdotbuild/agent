@@ -111,7 +111,6 @@ class AnthropicClient:
             match self.cache_mode:
                 case "off":
                     return original_create(*args, **kwargs)
-
                 case "replay":
                     cache_key = self._get_cache_key(*args, **kwargs)
                     if cache_key in self._cache:
@@ -133,16 +132,14 @@ class AnthropicClient:
                             "No cached response found for this request in replay mode. "
                             "Run in record mode first to populate the cache."
                         )
-
                 case "record":
                     response = original_create(*args, **kwargs)
                     cache_key = self._get_cache_key(**kwargs)
-
+                    logger.info(f"Caching response with key: {cache_key}")
                     serialized_response = response.to_dict()
                     self._cache[cache_key] = serialized_response
                     self._save_cache()
                     return response
-
                 case _:
                     return original_create(*args, **kwargs)
 
