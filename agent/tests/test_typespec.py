@@ -1,57 +1,6 @@
 import pytest
 import re
-from fsm_core.typespec import LLMFunction
-
-# Create a test adapter for backward compatibility with the old parsing logic
-class TypespecMachine:
-    @staticmethod
-    def parse_output(output: str) -> tuple[str, str, list[LLMFunction]]:
-        pattern = re.compile(
-            r"<reasoning>(.*?)</reasoning>.*?<typespec>(.*?)</typespec>",
-            re.DOTALL,
-        )
-        match = pattern.search(output)
-        if match is None:
-            raise ValueError("Failed to parse output, expected <reasoning> and <typespec> tags")
-        reasoning = match.group(1).strip()
-        definitions = match.group(2).strip()
-        
-        # Find functions with their metadata
-        functions = []
-        
-        # Find all function declarations in the interface
-        func_pattern = re.compile(r'(\s*)(\w+)\s*\(\s*\w+\s*:', re.DOTALL)
-        func_matches = list(func_pattern.finditer(definitions))
-        
-        for i, func_match in enumerate(func_matches):
-            func_name = func_match.group(2)
-            
-            # Determine search scope - from previous function to current function
-            start_pos = 0 if i == 0 else func_matches[i-1].end()
-            end_pos = func_match.start()
-            search_text = definitions[start_pos:end_pos]
-            
-            # Find the preceding llm_func decorator
-            llm_func_pattern = re.compile(r'@llm_func\(\s*"(.+?)"\s*\)', re.DOTALL)
-            llm_func_match = llm_func_pattern.search(search_text)
-            if not llm_func_match:
-                continue
-                
-            description = llm_func_match.group(1)
-            
-            # Find the scenarios
-            scenario_pattern = re.compile(r'@scenario\(\s*"""(.*?)"""\s*\)', re.DOTALL)
-            scenario_matches = list(scenario_pattern.finditer(search_text))
-            
-            if not scenario_matches:
-                continue
-                
-            # Use the last scenario as the representative one
-            scenario = scenario_matches[-1].group(1).strip()
-            
-            functions.append(LLMFunction(name=func_name, description=description, scenario=scenario))
-            
-        return reasoning, definitions, functions
+from fsm_core.typespec import TypespecMachine
 
 class TestTypespecParser:
     def test_parse_complete_output(self):
@@ -563,6 +512,7 @@ class TestTypespecParser:
         assert "BaseFilter" in definitions
         assert "& BaseFilter" in definitions  # Intersection type
         assert '"asc" | "desc"' in definitions  # Union type
+        
     def test_void_return_type_validation(self):
         """Test that functions with void return types are flagged as errors."""
         
@@ -593,7 +543,7 @@ class TestTypespecParser:
         </typespec>
         """
         
-        reasoning, definitions, functions = TypespecTaskNode.parse_output(test_output)
+        reasoning, definitions, functions = TypespecMachine.parse_output(test_output)
         
         assert reasoning == "Testing void return validation"
         assert len(functions) == 2
