@@ -46,7 +46,7 @@ TypeSpec basic types:
 - bytes: Represents a sequence of bytes
 - null: Represents a null value
 - unknown: Represents a value of any type
-- void: Used to indicate no return value for functions/operations
+- void: Represents no value (avoid using this as a return type for functions/operations as handlers should return meaningful values)
 NOTE: Avoid using other types.
 
 TypeSpec RESERVED keywords:
@@ -70,7 +70,7 @@ LLM can extract and infer the arguments from plain text and pass them to the han
     {name: "tomato", calories: 20},
     {name: "cheese", calories: 50},
 ]})
-- recordDish(options: Dish): void;
+- recordDish(options: Dish): boolean; // Returns true if successfully recorded
 ...
 </reasoning>
 
@@ -106,7 +106,7 @@ Examples:
     | "Just drank a protein shake"           | ["protein shake"] |
 \"\"\")
     @llm_func("Extract food entries from natural language")
-    recordDish(options: Dish): void;
+    recordDish(options: Dish): boolean;
 
     @scenario(
 \"\"\"
