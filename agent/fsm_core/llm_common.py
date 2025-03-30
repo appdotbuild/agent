@@ -116,7 +116,11 @@ class AnthropicClient(LLMClient):
             "sonnet": {
                 "bedrock": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                 "anthropic": "claude-3-7-sonnet-20250219"
-            }
+            },
+            "haiku": {
+                "bedrock": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                "anthropic": "claude-3-5-haiku-20241022"
+            },
         }
 
         self.model_name = self.models_map[self.short_model_name][self.backend]
@@ -313,24 +317,25 @@ def get_sync_client(
     cache_mode: CacheMode = "off",
     cache_path: str = os.path.join(os.path.dirname(__file__), "../../anthropic_cache.json"),
     api_key: str | None = None
-) -> Union[AnthropicClient, GeminiClient]:
-    if backend in ["bedrock", "anthropic"]:
-        return AnthropicClient(
-            backend=backend,
-            model_name=model_name,
-            cache_mode=cache_mode,
-            cache_path=cache_path
-        )
-    elif backend == "gemini":
-        gemini_cache_path = os.path.join(os.path.dirname(cache_path), "gemini_cache.json")
-        return GeminiClient(
-            model_name=model_name,
-            cache_mode=cache_mode,
-            cache_path=gemini_cache_path,
-            api_key=api_key
-        )
-    else:
-        raise ValueError(f"Unknown backend: {backend}")
+) -> LLMClient:
+    match backend:
+        case "bedrock" | "anthropic":
+            return AnthropicClient(
+                backend=backend,
+                model_name=model_name,
+                cache_mode=cache_mode,
+                cache_path=cache_path
+            )
+        case "gemini":
+            gemini_cache_path = os.path.join(os.path.dirname(cache_path), "gemini_cache.json")
+            return GeminiClient(
+                model_name=model_name,
+                cache_mode=cache_mode,
+                cache_path=gemini_cache_path,
+                api_key=api_key
+            )
+        case _:
+            raise ValueError(f"Unknown backend: {backend}")
 
 
 def pop_first_text(message: MessageParam):

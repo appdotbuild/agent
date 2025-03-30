@@ -6,7 +6,7 @@ import logging
 import concurrent.futures
 from compiler.core import Compiler
 from langfuse import Langfuse
-from fsm_core.llm_common import AnthropicClient
+from fsm_core.llm_common import LLMClient
 from fsm_core.helpers import agent_dfs, span_claude_bedrock
 from fsm_core import typespec, drizzle, typescript, handler_tests, handlers
 from fsm_core.common import Node, AgentState, AgentMachine
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def solve_agent[T](
     init: AgentMachine[T],
     context: T,
-    m_claude: AnthropicClient,
+    m_claude: LLMClient,
     langfuse: Langfuse,
     langfuse_parent_trace_id: str,
     langfuse_parent_observation_id: str,
@@ -53,7 +53,7 @@ class ActorContext:
 
 
 class TypespecActor:
-    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: LLMClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -115,7 +115,7 @@ class TypespecActor:
 
 
 class DrizzleActor:
-    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: LLMClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -177,7 +177,7 @@ class DrizzleActor:
 
 
 class TypescriptActor:
-    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: LLMClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -210,7 +210,7 @@ class TypescriptActor:
 
 
 class HandlerTestsActor:
-    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str, max_workers=5):
+    def __init__(self, m_claude: LLMClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str, max_workers=5):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -259,7 +259,7 @@ class HandlerTestsActor:
 
 
 class HandlersActor:
-    def __init__(self, m_claude: AnthropicClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
+    def __init__(self, m_claude: LLMClient, compiler: Compiler, langfuse_client: Langfuse, trace_id: str, observation_id: str):
         self.m_claude = m_claude
         self.compiler = compiler
         self.langfuse_client = langfuse_client
@@ -416,7 +416,7 @@ class FSMContext(TypedDict):
 class Application:
     def __init__(
         self,
-        client: AnthropicClient,
+        client: LLMClient,
         compiler: Compiler,
         langfuse_client: Langfuse | None = None,
         interaction_mode: InteractionMode = InteractionMode.NON_INTERACTIVE
@@ -435,11 +435,11 @@ class Application:
         # Check if there's an error in the context
         if "error" in fsm.context:
             return FsmState.FAILURE
-            
+
         # If no error, return the actual state path
         if not fsm.stack_path:
             return FsmState.FAILURE  # Default to failure if stack is empty
-            
+
         return fsm.stack_path[-1]
 
     def prepare_bot(self, prompts: list[str], bot_id: str | None = None, capabilities: list[str] | None = None, *args, **kwargs) -> ApplicationPrepareOut:
@@ -457,7 +457,7 @@ class Application:
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
         logger.info("Initialized state machine, sending PROMPT event")
         fsm.send(FsmEvent.PROMPT)
-        
+
         # Get effective state that takes errors into account
         effective_state = self.get_effective_state(fsm)
         logger.info(f"State machine finished at state: {effective_state}")
@@ -531,7 +531,7 @@ class Application:
         fsm = statemachine.StateMachine[FSMContext](fsm_states, fsm_context)
         logger.info("Initialized state machine, sending CONFIRM event")
         fsm.send(FsmEvent.CONFIRM)
-        
+
         # Get effective state that takes errors into account
         effective_state = self.get_effective_state(fsm)
         logger.info(f"State machine finished at state: {effective_state}")
@@ -549,57 +549,13 @@ class Application:
                 raise ValueError(F"Unexpected state: {effective_state}")
 
         trace.update(output=result)
-        # Create TypescriptOut conditionally
-        typescript_result = result.get("typescript_schema")
-        typescript_out = None
-        typescript_args = {}
-        if typescript_result:
-            typescript_out = TypescriptOut(
-                reasoning=getattr(typescript_result, "reasoning", None),
-                typescript_schema=getattr(typescript_result, "typescript_schema", None),
-                functions=getattr(typescript_result, "functions", None),
-                error_output=error_output
-            )
-            typescript_args = {f.name: f.argument_schema for f in typescript_result.functions}
-        # FixMe: should we fail otherwise?
 
-        # Create dictionary comprehensions for handlers and tests
-        handler_tests_dict = {
-            name: HandlerTestsOut(
-                name=name,
-                content=getattr(test, "source", None),
-                error_output=error_output
-            ) for name, test in result.get("handler_tests", {}).items()
-        }
-
-        handlers_dict = {
-            name: HandlerOut(
-                name=name,
-                handler=getattr(handler, "source", None),
-                argument_schema=typescript_args.get(name),
-                error_output=error_output
-            ) for name, handler in result.get("handlers", {}).items()
-        }
-
-        return ApplicationOut(
-            refined_description=RefineOut(refined_description="", error_output=error_output),
-            capabilities=CapabilitiesOut(capabilities if capabilities is not None else [], error_output),
-            typespec=TypespecOut(
-                reasoning=getattr(result.get("typespec_schema"), "reasoning", None),
-                typespec_definitions=getattr(result.get("typespec_schema"), "typespec", None),
-                llm_functions=getattr(result.get("typespec_schema"), "llm_functions", None),
-                error_output=error_output
-            ),
-            drizzle=DrizzleOut(
-                reasoning=getattr(result.get("drizzle_schema"), "reasoning", None),
-                drizzle_schema=getattr(result.get("drizzle_schema"), "drizzle_schema", None),
-                error_output=error_output
-            ),
-            handlers=handlers_dict,
-            handler_tests=handler_tests_dict,
-            typescript_schema=typescript_out,
-            gherkin=GherkinOut(reasoning=None, gherkin=None, error_output=error_output),
-            trace_id=trace.id
+        # Use ApplicationOut.from_context to create the result
+        return ApplicationOut.from_context(
+            result=result,
+            capabilities=capabilities,
+            trace_id=trace.id,
+            error_output=error_output
         )
 
     def get_next_state(self, current_state: FsmState) -> FsmState:
