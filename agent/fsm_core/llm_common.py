@@ -275,7 +275,7 @@ class GeminiClient(LLMClient):
 
                 # Convert the response to a format similar to Anthropic's
                 anthropic_response = {
-                    "id": f"gemini-{hash(str(response))}",
+                    "id": f"gemini-{hashlib.md5(str(response).encode()).hexdigest()}",
                     "type": "message",
                     "role": "assistant",
                     "content": [{"type": "text", "text": response.text}],
