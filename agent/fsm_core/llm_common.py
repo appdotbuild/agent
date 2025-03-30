@@ -26,7 +26,7 @@ class ClientProtocol(Protocol):
 class LLMClient:
     """Base client class with caching and other common functionality."""
     def __init__(self,
-                 backend: str,
+                 backend: Literal["bedrock", "anthropic", "gemini"],
                  model_name: str,
                  cache_mode: CacheMode = "off",
                  cache_path: str = "llm_cache.json"):
@@ -98,8 +98,8 @@ class LLMClient:
 
 class AnthropicClient(LLMClient):
     def __init__(self,
-                 backend: str = "bedrock",
-                 model_name: str = "sonnet",
+                 backend: Literal["bedrock", "anthropic"] = "bedrock",
+                 model_name: Literal["sonnet", "haiku"] = "sonnet",
                  cache_mode: CacheMode = "off",
                  cache_path: str = "anthropic_cache.json"):
         super().__init__(backend, model_name, cache_mode, cache_path)
@@ -180,7 +180,7 @@ class AnthropicClient(LLMClient):
 
 class GeminiClient(LLMClient):
     def __init__(self,
-                 model_name: str = "gemini-pro",
+                 model_name: Literal["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking"] = "gemini-2.5-pro",
                  cache_mode: CacheMode = "off",
                  cache_path: str = "gemini_cache.json",
                  api_key: str | None = None):
@@ -312,8 +312,8 @@ class GeminiClient(LLMClient):
 
 
 def get_sync_client(
-    backend: str = "bedrock",
-    model_name: str = "sonnet",
+    backend: Literal["bedrock", "anthropic", "gemini"] = "bedrock",
+    model_name: Literal["sonnet", "haiku", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking"] = "sonnet",
     cache_mode: CacheMode = "off",
     cache_path: str = os.path.join(os.path.dirname(__file__), "../../anthropic_cache.json"),
     api_key: str | None = None

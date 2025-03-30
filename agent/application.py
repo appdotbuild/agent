@@ -6,7 +6,7 @@ import logging
 import concurrent.futures
 from compiler.core import Compiler
 from langfuse import Langfuse
-from fsm_core.llm_common import LLMClient
+from fsm_core.llm_common import LLMClient, get_sync_client
 from fsm_core.helpers import agent_dfs, span_claude_bedrock
 from fsm_core import typespec, drizzle, typescript, handler_tests, handlers
 from fsm_core.common import Node, AgentState, AgentMachine

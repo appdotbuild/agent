@@ -48,7 +48,10 @@ export const custom_handlers: CustomToolHandler[] = [{% for handler in handlers 
 """.strip()
 
 class Interpolator:
-    def __init__(self, root_dir: str):
+    def __init__(self, root_dir: str | None = None):
+        if root_dir is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            root_dir = os.path.join(current_dir, "../")
         self.root_dir = root_dir
         self.environment = jinja2.Environment()
 
@@ -99,7 +102,7 @@ class Interpolator:
                 else:
                     logger.error(f"Handler {name} does not have a handler function")
                     f.write(f"/// handler code was not generated")
-        
+
         for name, handler_test in application.handler_tests.items():
             with open(os.path.join(output_dir, "app_schema", "src", "tests", "handlers", f"{name}.test.ts"), "w") as f:
                 f.write(handler_test.content)

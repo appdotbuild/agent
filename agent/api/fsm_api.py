@@ -15,30 +15,6 @@ from application import FsmEvent, FsmState, Application, InteractionMode
 from statemachine import StateMachine
 
 
-class FSMApi(Protocol):
-    """Protocol defining FSM API interface"""
-
-    def start_fsm(self, user_input: str) -> Dict[str, Any]:
-        """Start a new FSM session"""
-        ...
-
-    def confirm_state(self) -> Dict[str, Any]:
-        """Confirm current state"""
-        ...
-
-    def provide_feedback(self, feedback: str, component_name: str | None = None) -> Dict[str, Any]:
-        """Provide feedback"""
-        ...
-
-    def complete_fsm(self) -> Dict[str, Any]:
-        """Complete FSM session"""
-        ...
-
-    def is_active(self) -> bool:
-        """Check if session is active"""
-        ...
-
-
 class FSMManager:
     """Manager for an FSM instance with complete state handling and lifecycle management"""
 
@@ -307,12 +283,6 @@ class FSMManager:
         except Exception as e:
             logger.exception(f"Error collecting outputs: {str(e)}")
             result["extraction_error"] = str(e)
-
-        # Reset state
-        logger.info("Resetting FSM session")
-        self.fsm_instance = None
-        self.trace_id = None
-        self.app_instance = None
 
         status = "complete" if current_state == FsmState.COMPLETE else "failed"
         logger.info(f"FSM completed with status: {status}")

@@ -8,13 +8,15 @@ from fire import Fire
 import jinja2
 from fsm_core.llm_common import LLMClient, get_sync_client
 
-from api.fsm_api import FSMManager, FSMApi
-from application import FsmState
+from api.fsm_api import FSMManager
+from application import FsmState, Application
 from core.datatypes import ApplicationOut
+from core.interpolator import Interpolator
+from common import get_logger
 
 # Configure logging to use stderr instead of stdout
 coloredlogs.install(level="INFO", stream=sys.stderr)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -41,7 +43,7 @@ class FSMToolProcessor:
     logic to convert between tool calls and FSM API calls.
     """
 
-    def __init__(self, fsm_api: FSMApi):
+    def __init__(self, fsm_api: FSMManager):
         """
         Initialize the FSM Tool Processor
 
@@ -210,16 +212,11 @@ class FSMToolProcessor:
                 return ToolResult(success=False, error=error_msg, data=result)
 
             # Convert the result to an ApplicationOut object for consistent output format
-            final_output = ApplicationOut.from_context(
-                result=result.get("final_outputs", {}),
-                capabilities=result.get("capabilities", []),
-                trace_id=result.get("trace_id"),
-                error_output=None
-            )
-            
+            final_output = ApplicationOut.from_context(self.fsm_api.fsm_instance.context)
+
             # Include both the raw result and the structured output
             result["application_out"] = final_output
-            
+
             logger.info(f"[FSMTools] FSM completed successfully")
             return ToolResult(success=True, data=result)
 
@@ -244,14 +241,13 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
     response = client.messages.create(
         messages=messages,
         max_tokens=1024 * 16,
-
-
         stream=False,
         tools=processor.tool_definitions,
     )
 
     # Record if any tool was used (requiring further processing)
-    is_complete = True
+    is_complete = False
+    final_tool_result = None
     tool_results = []
 
     # Process all content blocks in the response
@@ -263,25 +259,28 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
             case "tool_use":
                 is_complete = False  # Tool was used, so we need to continue
                 tool_use = message.to_dict()
-                logger.info(f"[Claude Response] Tool use: {tool_use['name']}")
 
                 tool_params = tool_use['input']
+                logger.info(f"[Claude Response] Tool use: {tool_use['name']}, params: {tool_params}")
                 tool_method = processor.tool_mapping.get(tool_use['name'])
 
                 if tool_method:
-                    logger.info(f"[Claude Response] Tool params: {tool_params}")
                     result: ToolResult = tool_method(**tool_params)
                     logger.info(f"[Claude Response] Tool result: {result.to_dict()}")
 
                     # Special cases for determining if the interaction is complete
                     if tool_use["name"] == "complete_fsm" and result.success:
+                        breakpoint()
                         is_complete = True
+                        final_tool_result = result
 
                     # Add result to the tool results list
                     tool_results.append({
                         "tool": tool_use['name'],
                         "result": result
                     })
+                else:
+                    raise ValueError(f"Unexpected tool name: {tool_use['name']}")
             case _:
                 raise ValueError(f"Unexpected message type: {message.type}")
 
@@ -291,19 +290,16 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
         <tool>
         {{ tool_name }}
         </tool>
-
         {% if data %}
         <result>
         {{ data | safe }}
         </result>
         {% endif %}
-
         {% if error %}
         <error>
         {{ error }}
         </error>
         {% endif %}
-
         """.rstrip()
         template = jinja2.Template(_template)
         # Format the tool results nicely
@@ -315,27 +311,21 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
             is_success = tool_result.success
             data = tool_result.data
             error = tool_result.error
-
+            if "handler" in tool_name:
+                breakpoint()
             formatted_results.append(template.render(tool_name=tool_name, data=data, error=error))
 
         new_message = {
             "role": "user",
             "content": f"Tool execution results:\n{'\n'.join(formatted_results)}\nPlease continue based on these results, addressing any failures or errors if they exist."
         }
-        return messages + [new_message], is_complete
+        return messages + [new_message], is_complete, final_tool_result
     else:
         # No tools were used
-        return messages, is_complete
+        return messages, is_complete, final_tool_result
+        
+        
 
-
-def create_fsm_processor(client: LLMClient | None = None) -> FSMToolProcessor:
-    client = client or get_sync_client()
-
-    # Create FSM manager with the provided dependencies
-    fsm_manager = FSMManager(client=client)
-
-    # Create and return processor
-    return FSMToolProcessor(fsm_api=fsm_manager)
 
 
 def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
@@ -345,7 +335,8 @@ def main(initial_prompt: str = "A simple greeting app that says hello in five la
     """
     logger.info("[Main] Initializing FSM tools...")
     client = get_sync_client()
-    processor = create_fsm_processor(client)
+    fsm_manager = FSMManager(client=get_sync_client(backend="gemini", model_name="gemini-2.0-flash"))
+    processor = FSMToolProcessor(fsm_api=fsm_manager)
     logger.info("[Main] FSM tools initialized successfully")
 
     # Create the initial prompt for the AI agent
@@ -366,7 +357,7 @@ To do this, you should:
 3. Either:
    - Confirm the output if it looks good (using confirm_state)
    - OR provide feedback to improve it (using provide_feedback)
-4. Once complete, use complete_fsm to get all artifacts
+4. Once complete, use complete_fsm to get all artifacts. Do not consider work complete until complete_fsm is called.
 
 The FSM generates these components in sequence:
 - TypeSpec schema (API specification)
@@ -387,10 +378,11 @@ When in doubt, you should ask for clarification or more information and later co
         """
     }]
     is_complete = False
+    final_tool_result = None
 
     # Main interaction loop
     while not is_complete:
-        current_messages, is_complete = run_with_claude(
+        current_messages, is_complete, final_tool_result = run_with_claude(
             processor,
             client,
             current_messages
@@ -402,6 +394,9 @@ When in doubt, you should ask for clarification or more information and later co
 
         logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
 
+    app_out = final_tool_result.data["application_out"]
+    interpolator = Interpolator()
+    interpolator.bake(app_out, "/tmp/output_dir")
     logger.info("[Main] FSM interaction completed successfully")
 
 if __name__ == "__main__":
