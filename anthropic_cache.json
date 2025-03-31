@@ -1,9 +1,17 @@
 {
+<<<<<<< HEAD
   "268691b223e987cca3722150318cb866": {
     "id": "msg_bdrk_01LoTqxXDf3qSkSXZFbPgGks",
     "content": [
       {
         "text": "<reasoning>\nFrom the user's request, I need to create a very simple bot with a single handler that:\n1. Takes a name from an input message\n2. Returns a greeting for that name\n\nThe bot should have only one function, which I'll call `greetUser`. \n\nFor the function parameter, I'll create a simple model called `GreetingRequest` that contains a single field:\n- `name`: string - The name extracted from the user's message\n\nFor the scenarios, I'll include:\n1. Basic greeting scenario where a name is provided directly\n2. Greeting scenario where the name needs to be extracted from a longer message\n3. Edge case for handling unusual or formal names\n\nThe function will be decorated with @llm_func to provide a description, and @scenario decorators to describe the expected behavior.\n</reasoning>\n\n<typespec>\nmodel GreetingRequest {\n  name: string;\n}\n\ninterface GreetingBot {\n  @scenario(\n  \"\"\"\n  Scenario: Simple name greeting\n  When user says \"John\"\n  Then system should extract name \"John\"\n  And respond with greeting for \"John\"\n  Examples:\n    | Input     | Extracted Name |\n    | \"Mary\"    | \"Mary\"         |\n    | \"Bob\"     | \"Bob\"          |\n    | \"Alice\"   | \"Alice\"        |\n  \"\"\")\n  @scenario(\n  \"\"\"\n  Scenario: Extract name from longer message\n  When user says \"My name is Sarah\"\n  Then system should extract name \"Sarah\"\n  And respond with greeting for \"Sarah\"\n  Examples:\n    | Input                           | Extracted Name |\n    | \"Hello, I am David\"             | \"David\"        |\n    | \"Please call me Emma\"           | \"Emma\"         |\n    | \"I'd like to be called Michael\" | \"Michael\"      |\n  \"\"\")\n  @scenario(\n  \"\"\"\n  Scenario: Handle formal or unusual names\n  When user provides \"Dr. Jane Smith\"\n  Then system should extract full name \"Dr. Jane Smith\"\n  And respond with greeting for \"Dr. Jane Smith\"\n  Examples:\n    | Input                   | Extracted Name      |\n    | \"Mrs. Johnson\"          | \"Mrs. Johnson\"      |\n    | \"Professor Robert Lee\"  | \"Professor Robert Lee\" |\n    | \"King Charles III\"      | \"King Charles III\"  |\n  \"\"\")\n  @llm_func(\"Extract name from user message and generate a personalized greeting\")\n  greetUser(options: GreetingRequest): string;\n}\n</typespec>",
+=======
+  "7fc8486b1d72ec85e345495a8200addc": {
+    "id": "msg_bdrk_01VbugUybGERRJymd2PFckiT",
+    "content": [
+      {
+        "text": "<reasoning>\nI need to create a simple bot that extracts a name from an input message and returns a greeting for that name. The bot should have only one handler function.\n\nFrom the request, I can infer that:\n1. There needs to be a model to capture the name from the input message\n2. The bot should have a single function to handle the greeting\n3. The function should take the name and return a greeting message\n\nFor scenarios, I'll include examples of:\n- Basic name extraction and greeting\n- Handling different name formats (first name only, full name)\n- Handling edge cases like no name provided\n\nThe function will be called \"greetPerson\" and take a model called \"GreetingRequest\" with a \"name\" property.\n</reasoning>\n\n<typespec>\nmodel GreetingRequest {\n  name: string;\n}\n\nmodel GreetingResponse {\n  message: string;\n}\n\ninterface GreetingBot {\n  @scenario(\"\"\"\n  Scenario: Greeting a person by name\n  When user says \"My name is John\"\n  Then system should extract name \"John\"\n  And respond with a greeting containing the name\n  \n  Examples:\n    | Input                | Expected Name |\n    | \"Hello I'm Sarah\"    | \"Sarah\"       |\n    | \"Call me Mike\"       | \"Mike\"        |\n    | \"I am Jane Doe\"      | \"Jane Doe\"    |\n  \"\"\")\n  \n  @scenario(\"\"\"\n  Scenario: Handling missing name\n  When user provides a message without a clear name\n  Then system should use a default or ask for clarification\n  \n  Examples:\n    | Input               | Handling                    |\n    | \"Hello there\"       | Request name clarification  |\n    | \"Hi\"                | Request name clarification  |\n  \"\"\")\n  \n  @llm_func(\"Extract name from user message and generate a personalized greeting\")\n  greetPerson(options: GreetingRequest): GreetingResponse;\n}\n</typespec>",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -15,6 +23,7 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 1132,
       "output_tokens": 605
     }
@@ -24,6 +33,17 @@
     "content": [
       {
         "text": "I'll analyze the TypeSpec models and interfaces and create a compatible Drizzle schema for PostgreSQL.\n\n<reasoning>\nLooking at the TypeSpec provided, I can see that:\n\n1. We have a `GreetingBot` interface that defines a single method `greetUser` that takes a `GreetingRequest` and returns a string.\n2. The `GreetingRequest` model has a single field `name` of type string.\n3. The interface documentation suggests this is used to extract names from user messages and generate personalized greetings.\n\nFor a database schema to support this application, we need to store:\n\n1. User information - to identify who is making requests\n2. Interactions/messages - to track conversation history\n3. Greeting requests - to log the specific greeting requests made\n\nI'll design a schema that stores these entities and their relationships.\n</reasoning>\n\n<drizzle>\nimport { pgTable, text, timestamp, uuid, serial, pgEnum } from \"drizzle-orm/pg-core\";\n\n// Users table to store user information\nexport const usersTable = pgTable(\"users\", {\n  id: uuid(\"id\").defaultRandom().primaryKey(),\n  name: text(\"name\"),\n  created_at: timestamp(\"created_at\").defaultNow(),\n  updated_at: timestamp(\"updated_at\").defaultNow()\n});\n\n// Message roles enum\nexport const messageRoleEnum = pgEnum(\"message_role\", [\"user\", \"system\", \"assistant\"]);\n\n// Messages table to store conversation history\nexport const messagesTable = pgTable(\"messages\", {\n  id: serial(\"id\").primaryKey(),\n  user_id: uuid(\"user_id\").references(() => usersTable.id),\n  content: text(\"content\").notNull(),\n  role: messageRoleEnum(\"role\").notNull(),\n  created_at: timestamp(\"created_at\").defaultNow()\n});\n\n// Greeting requests table to track specific greeting interactions\nexport const greetingRequestsTable = pgTable(\"greeting_requests\", {\n  id: serial(\"id\").primaryKey(),\n  user_id: uuid(\"user_id\").references(() => usersTable.id),\n  message_id: serial(\"message_id\").references(() => messagesTable.id),\n  input_text: text(\"input_text\").notNull(),\n  extracted_name: text(\"extracted_name\").notNull(),\n  response: text(\"response\").notNull(),\n  created_at: timestamp(\"created_at\").defaultNow()\n});\n\n// Sessions table to group related messages into conversations\nexport const sessionsTable = pgTable(\"sessions\", {\n  id: uuid(\"id\").defaultRandom().primaryKey(),\n  user_id: uuid(\"user_id\").references(() => usersTable.id),\n  created_at: timestamp(\"created_at\").defaultNow(),\n  last_active_at: timestamp(\"last_active_at\").defaultNow()\n});\n\n// Relate messages to sessions\nexport const sessionMessagesTable = pgTable(\"session_messages\", {\n  id: serial(\"id\").primaryKey(),\n  session_id: uuid(\"session_id\").references(() => sessionsTable.id),\n  message_id: serial(\"message_id\").references(() => messagesTable.id)\n});\n</drizzle>",
+=======
+      "input_tokens": 1170,
+      "output_tokens": 476
+    }
+  },
+  "41b7373171bf3f56c5be44a96247400c": {
+    "id": "msg_bdrk_01KaFBqhaDnmrnieHB5wkf8T",
+    "content": [
+      {
+        "text": "I'll generate a Drizzle schema that would support the GreetingBot application based on the TypeSpec models and interfaces.\n\n<reasoning>\nLooking at the TypeSpec, I see:\n1. A `GreetingBot` interface that processes greeting requests and generates responses\n2. A `GreetingRequest` model that contains a name field\n3. A `GreetingResponse` model that contains a message field\n\nFrom the scenarios, the application needs to:\n- Store user interactions\n- Track user names\n- Handle conversations where names might be initially unknown\n- Store the greeting responses\n\nFor a complete database schema, I'll create:\n- A users table to store user information\n- A conversations table to track individual conversation sessions\n- A messages table to store both user inputs and system responses\n- A greetings table to specifically store greeting interactions\n</reasoning>\n\n<drizzle>\nimport { pgTable, text, timestamp, integer, uuid, boolean, serial } from \"drizzle-orm/pg-core\";\n\n// Users table to store user information\nexport const usersTable = pgTable(\"users\", {\n  id: uuid(\"id\").primaryKey().defaultRandom(),\n  name: text(\"name\"),\n  created_at: timestamp(\"created_at\").defaultNow().notNull(),\n  updated_at: timestamp(\"updated_at\").defaultNow().notNull()\n});\n\n// Conversations table to track conversation sessions\nexport const conversationsTable = pgTable(\"conversations\", {\n  id: uuid(\"id\").primaryKey().defaultRandom(),\n  user_id: uuid(\"user_id\").references(() => usersTable.id),\n  started_at: timestamp(\"started_at\").defaultNow().notNull(),\n  ended_at: timestamp(\"ended_at\"),\n  is_active: boolean(\"is_active\").default(true)\n});\n\n// Messages table to store all messages in the conversation\nexport const messagesTable = pgTable(\"messages\", {\n  id: serial(\"id\").primaryKey(),\n  conversation_id: uuid(\"conversation_id\").references(() => conversationsTable.id),\n  user_id: uuid(\"user_id\").references(() => usersTable.id),\n  is_from_user: boolean(\"is_from_user\").notNull(),\n  content: text(\"content\").notNull(),\n  created_at: timestamp(\"created_at\").defaultNow().notNull()\n});\n\n// Greetings table to store specific greeting interactions\nexport const greetingsTable = pgTable(\"greetings\", {\n  id: serial(\"id\").primaryKey(),\n  message_id: integer(\"message_id\").references(() => messagesTable.id),\n  extracted_name: text(\"extracted_name\"),\n  greeting_response: text(\"greeting_response\").notNull(),\n  created_at: timestamp(\"created_at\").defaultNow().notNull()\n});\n</drizzle>",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -35,6 +55,7 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 662,
       "output_tokens": 760
     }
@@ -44,6 +65,17 @@
     "content": [
       {
         "text": "<reasoning>\nThe application is a greeting bot that extracts names from user messages and generates personalized greetings.\n\nFrom the TypeSpec definition, I can see:\n1. A `GreetingRequest` model with a single `name` string field\n2. A `GreetingBot` interface with a `greetUser` function that takes a `GreetingRequest` and returns a string\n\nThe function is decorated with scenarios that describe how it should behave in different situations:\n- Extract simple names\n- Extract names from longer messages\n- Handle formal or unusual names\n\nI need to create a Zod schema for the `GreetingRequest` model and declare the `greetUser` function.\n</reasoning>\n\n<typescript>\nimport { z } from 'zod';\n\nexport const greetingRequestSchema = z.object({\n  name: z.string(),\n});\n\nexport type GreetingRequest = z.infer<typeof greetingRequestSchema>;\n\nexport declare function greetUser(options: GreetingRequest): Promise<string>;\n</typescript>",
+=======
+      "input_tokens": 547,
+      "output_tokens": 662
+    }
+  },
+  "e09b9f803cda37c2805824498259e21e": {
+    "id": "msg_bdrk_01SkppT6PrNYLRS9uHcsVmQr",
+    "content": [
+      {
+        "text": "<reasoning>\nThe TypeSpec defines a simple greeting bot application with two models and one interface:\n\n1. `GreetingRequest` model with a `name` property of type string\n2. `GreetingResponse` model with a `message` property of type string\n3. `GreetingBot` interface that defines a function `greetPerson` which takes a `GreetingRequest` and returns a `GreetingResponse`\n\nThe function has two scenarios defined:\n- One for extracting a name from user input and responding with a greeting\n- Another for handling cases where there's no clear name provided\n\nI'll generate Zod schemas for both models and a function declaration for the interface method.\n</reasoning>\n\n<typescript>\nimport { z } from 'zod';\n\nexport const greetingRequestSchema = z.object({\n  name: z.string(),\n});\n\nexport type GreetingRequest = z.infer<typeof greetingRequestSchema>;\n\nexport const greetingResponseSchema = z.object({\n  message: z.string(),\n});\n\nexport type GreetingResponse = z.infer<typeof greetingResponseSchema>;\n\nexport declare function greetPerson(options: GreetingRequest): Promise<GreetingResponse>;\n</typescript>",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -55,6 +87,7 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 848,
       "output_tokens": 247
     }
@@ -64,6 +97,17 @@
     "content": [
       {
         "text": "I'll create unit tests for the `greetUser` function based on the provided TypeScript and Drizzle schemas. Since we want to test real database operations, I'll make sure to interact with the database tables appropriately.\n\n<imports>\nimport { expect, it } from \"bun:test\";\nimport { db } from \"../../db\";\nimport { type GreetingRequest } from \"../../common/schema\";\nimport { eq } from \"drizzle-orm\";\nimport { usersTable, interactionsTable, greetingsTable } from \"../../db/schema/application\";\n</imports>\n\n<test>\nit(\"should return a greeting with the provided name\", async () => {\n  const input: GreetingRequest = { name: \"Alice\" };\n  const greeting = await greetUser(input);\n  expect(greeting).toContain(\"Alice\");\n});\n</test>\n\n<test>\nit(\"should create a user record if the user doesn't exist\", async () => {\n  const input: GreetingRequest = { name: \"Bob\" };\n  await greetUser(input);\n  \n  const users = await db.select().from(usersTable).where(eq(usersTable.name, \"Bob\"));\n  expect(users).toHaveLength(1);\n  expect(users[0].name).toEqual(\"Bob\");\n});\n</test>\n\n<test>\nit(\"should create an interaction record\", async () => {\n  const input: GreetingRequest = { name: \"Charlie\" };\n  await greetUser(input);\n  \n  const interactions = await db.select().from(interactionsTable).where(eq(interactionsTable.extracted_name, \"Charlie\"));\n  expect(interactions).toHaveLength(1);\n  expect(interactions[0].extracted_name).toEqual(\"Charlie\");\n});\n</test>\n\n<test>\nit(\"should store the greeting response in the greetings table\", async () => {\n  const input: GreetingRequest = { name: \"Dave\" };\n  const greeting = await greetUser(input);\n  \n  const interactions = await db.select().from(interactionsTable).where(eq(interactionsTable.extracted_name, \"Dave\"));\n  expect(interactions).toHaveLength(1);\n  \n  const greetings = await db.select().from(greetingsTable).where(eq(greetingsTable.interaction_id, interactions[0].id));\n  expect(greetings).toHaveLength(1);\n  expect(greetings[0].greeting_message).toEqual(greeting);\n});\n</test>\n\n<test>\nit(\"should handle empty names gracefully\", async () => {\n  const input: GreetingRequest = { name: \"\" };\n  const greeting = await greetUser(input);\n  expect(greeting).toBeTruthy(); // Ensures we get some response even with empty name\n  \n  const interactions = await db.select().from(interactionsTable).where(eq(interactionsTable.extracted_name, \"\"));\n  expect(interactions).toHaveLength(1);\n});\n</test>\n\n<test>\nit(\"should reuse existing user record for repeat greetings\", async () => {\n  const input: GreetingRequest = { name: \"Repeat User\" };\n  \n  // First greeting\n  await greetUser(input);\n  \n  // Second greeting to the same user\n  await greetUser(input);\n  \n  // Should only have one user record\n  const users = await db.select().from(usersTable).where(eq(usersTable.name, \"Repeat User\"));\n  expect(users).toHaveLength(1);\n  \n  // But should have two interaction records\n  const interactions = await db.select().from(interactionsTable).where(eq(interactionsTable.extracted_name, \"Repeat User\"));\n  expect(interactions).toHaveLength(2);\n});\n</test>",
+=======
+      "input_tokens": 733,
+      "output_tokens": 297
+    }
+  },
+  "d25858b268b3c622969e4b7ad6556aba": {
+    "id": "msg_bdrk_012vjLCGWfuKvaemBuGPpjzA",
+    "content": [
+      {
+        "text": "Based on the provided TypeScript and Drizzle schemas, I'll generate a unit test suite for the `greetPerson` function.\n\n<imports>\nimport { expect, it, mock } from \"bun:test\";\nimport { db } from \"../../db\";\nimport { greetingsTable, messagesTable } from \"../../db/schema/application\";\nimport { type GreetingRequest, type GreetingResponse } from \"../../common/schema\";\nimport { eq } from \"drizzle-orm\";\n</imports>\n\n<test>\nit(\"should return a greeting response with proper message\", async () => {\n  const input: GreetingRequest = { name: \"Alice\" };\n  const response = await greetPerson(input);\n  \n  expect(response).toBeDefined();\n  expect(response.message).toContain(\"Alice\");\n});\n</test>\n\n<test>\nit(\"should store the greeting in the database\", async () => {\n  const input: GreetingRequest = { name: \"Bob\" };\n  const response = await greetPerson(input);\n  \n  const storedGreetings = await db.select().from(greetingsTable).execute();\n  \n  expect(storedGreetings).toHaveLength(1);\n  expect(storedGreetings[0].extracted_name).toEqual(\"Bob\");\n  expect(storedGreetings[0].response_message).toEqual(response.message);\n});\n</test>\n\n<test>\nit(\"should create a message record when greeting a person\", async () => {\n  const input: GreetingRequest = { name: \"Charlie\" };\n  await greetPerson(input);\n  \n  const messages = await db.select().from(messagesTable).execute();\n  expect(messages).toHaveLength(1);\n  \n  // Find the associated greeting\n  const greetings = await db.select()\n    .from(greetingsTable)\n    .where(eq(greetingsTable.message_id, messages[0].id))\n    .execute();\n  \n  expect(greetings).toHaveLength(1);\n});\n</test>\n\n<test>\nit(\"should handle empty names gracefully\", async () => {\n  const input: GreetingRequest = { name: \"\" };\n  const response = await greetPerson(input);\n  \n  expect(response).toBeDefined();\n  expect(response.message).toBeDefined();\n  \n  const greetings = await db.select().from(greetingsTable).execute();\n  expect(greetings).toHaveLength(1);\n});\n</test>\n\n<test>\nit(\"should handle special characters in names\", async () => {\n  const input: GreetingRequest = { name: \"O'Neil-Smith\" };\n  const response = await greetPerson(input);\n  \n  expect(response).toBeDefined();\n  expect(response.message).toContain(\"O'Neil-Smith\");\n  \n  const greetings = await db.select().from(greetingsTable).execute();\n  expect(greetings).toHaveLength(1);\n  expect(greetings[0].extracted_name).toEqual(\"O'Neil-Smith\");\n});\n</test>",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -75,6 +119,7 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 3995,
       "output_tokens": 938
     }
@@ -84,6 +129,17 @@
     "content": [
       {
         "text": "I'll create a handler that implements the `greetUser` function based on the provided schemas. The handler will process the greeting request, store information in the database using the drizzle schema, and return an appropriate greeting response.\n\n<handler>\nimport { db } from \"../db\";\nimport { greetUser, type GreetingRequest } from \"../common/schema\";\nimport { usersTable, interactionsTable, greetingsTable } from \"../db/schema/application\";\nimport { eq } from \"drizzle-orm\";\n\nexport const handle: typeof greetUser = async (options: GreetingRequest): Promise<string> => {\n  // Business logic for greeting user\n  const greeting = `Hello, ${options.name}! Welcome to our greeting service.`;\n  \n  try {\n    // Check if user already exists in the database\n    const existingUsers = await db\n      .select()\n      .from(usersTable)\n      .where(eq(usersTable.name, options.name));\n    \n    let userId: string;\n    \n    if (existingUsers.length > 0) {\n      // Use existing user\n      userId = existingUsers[0].id;\n      \n      // Update the user's last updated timestamp\n      await db\n        .update(usersTable)\n        .set({ updated_at: new Date() })\n        .where(eq(usersTable.id, userId));\n    } else {\n      // Create a new user\n      const insertedUsers = await db\n        .insert(usersTable)\n        .values({\n          name: options.name\n        })\n        .returning();\n      \n      userId = insertedUsers[0].id;\n    }\n    \n    // Log the interaction\n    const insertedInteractions = await db\n      .insert(interactionsTable)\n      .values({\n        user_id: userId,\n        raw_message: `Request to greet ${options.name}`,\n        extracted_name: options.name\n      })\n      .returning();\n    \n    const interactionId = insertedInteractions[0].id;\n    \n    // Store the greeting\n    await db\n      .insert(greetingsTable)\n      .values({\n        interaction_id: interactionId,\n        greeting_message: greeting\n      });\n    \n    return greeting;\n  } catch (error) {\n    console.error(\"Error processing greeting request:\", error);\n    return `Hello, ${options.name}! (Note: There was an issue recording this interaction)`;\n  }\n};\n</handler>",
+=======
+      "input_tokens": 4383,
+      "output_tokens": 780
+    }
+  },
+  "9990de11a111627bb3ea171808cc8cc0": {
+    "id": "msg_bdrk_016xRaxSKf82pNhaCnCaRh4V",
+    "content": [
+      {
+        "text": "I'll create a handler for the `greetPerson` function based on the provided schema definitions.\n\n<handler>\nimport { eq } from \"drizzle-orm\";\nimport { db } from \"../db\";\nimport { greetPerson, type GreetingRequest, type GreetingResponse } from \"../common/schema\";\nimport { messagesTable, greetingsTable } from \"../db/schema/application\";\n\nexport const handle: typeof greetPerson = async (options: GreetingRequest): Promise<GreetingResponse> => {\n    // Create greeting message based on the user's name\n    const responseMessage = `Hello, ${options.name}! Welcome to our greeting service.`;\n    \n    // First insert the message into messages table\n    const messageResult = await db.insert(messagesTable)\n        .values({\n            conversation_id: \"00000000-0000-0000-0000-000000000000\", // Using default conversation ID, would typically come from context\n            role: \"assistant\",\n            content: responseMessage\n        })\n        .returning({ id: messagesTable.id })\n        .execute();\n    \n    const messageId = messageResult[0].id;\n    \n    // Then store the greeting details in greetings table\n    await db.insert(greetingsTable)\n        .values({\n            message_id: messageId,\n            extracted_name: options.name,\n            response_message: responseMessage\n        })\n        .execute();\n    \n    // Return the greeting response\n    return {\n        message: responseMessage\n    };\n};\n</handler>\n\nNote: This handler creates a new message entry and associates it with a greeting record in the database. In a real application, you would use an actual conversation ID from the context rather than the placeholder UUID I've used here. The handler returns a properly structured response containing the greeting message as defined in the GreetingResponse type.",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -95,6 +151,7 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 3828,
       "output_tokens": 597
     }
@@ -104,6 +161,17 @@
     "content": [
       {
         "text": "Based on the TypeScript and Drizzle schemas provided, I'll generate appropriate unit tests for the `greetUser` function.\n\n<imports>\nimport { expect, it } from \"bun:test\";\nimport { db } from \"../../db\";\nimport { type GreetingRequest } from \"../../common/schema\";\nimport { greetingRequestsTable, messagesTable, usersTable } from \"../../db/schema/application\";\nimport { eq } from \"drizzle-orm\";\n</imports>\n\n<test>\nit(\"should return a personalized greeting message\", async () => {\n  const request: GreetingRequest = { name: \"Alice\" };\n  const greeting = await greetUser(request);\n  expect(greeting).toContain(\"Alice\");\n});\n</test>\n\n<test>\nit(\"should store the greeting request in the database\", async () => {\n  const request: GreetingRequest = { name: \"Bob\" };\n  await greetUser(request);\n  \n  const storedRequests = await db.select().from(greetingRequestsTable).execute();\n  expect(storedRequests).toHaveLength(1);\n  expect(storedRequests[0].extracted_name).toEqual(\"Bob\");\n});\n</test>\n\n<test>\nit(\"should create a message record when greeting a user\", async () => {\n  const request: GreetingRequest = { name: \"Charlie\" };\n  await greetUser(request);\n  \n  const messages = await db.select().from(messagesTable).execute();\n  expect(messages).toHaveLength(1);\n  expect(messages[0].content).toContain(\"Charlie\");\n});\n</test>\n\n<test>\nit(\"should associate greeting with existing user if user exists\", async () => {\n  // Create a user first\n  const [user] = await db.insert(usersTable)\n    .values({ name: \"David\" })\n    .returning();\n  \n  const request: GreetingRequest = { name: \"David\" };\n  await greetUser(request);\n  \n  const storedRequests = await db.select().from(greetingRequestsTable)\n    .where(eq(greetingRequestsTable.user_id, user.id))\n    .execute();\n  \n  expect(storedRequests).toHaveLength(1);\n  expect(storedRequests[0].extracted_name).toEqual(\"David\");\n});\n</test>\n\n<test>\nit(\"should handle empty name gracefully\", async () => {\n  const request: GreetingRequest = { name: \"\" };\n  const greeting = await greetUser(request);\n  \n  expect(greeting).toBeTruthy();\n  \n  const storedRequests = await db.select().from(greetingRequestsTable).execute();\n  expect(storedRequests).toHaveLength(1);\n});\n</test>\n\n<test>\nit(\"should store both input and response text in greeting requests\", async () => {\n  const request: GreetingRequest = { name: \"Eva\" };\n  const greeting = await greetUser(request);\n  \n  const storedRequests = await db.select().from(greetingRequestsTable).execute();\n  expect(storedRequests).toHaveLength(1);\n  expect(storedRequests[0].input_text).toBeTruthy();\n  expect(storedRequests[0].response).toEqual(greeting);\n});\n</test>",
+=======
+      "input_tokens": 4217,
+      "output_tokens": 443
+    }
+  },
+  "fca1c737524bff38b28700b13b80589e": {
+    "id": "msg_bdrk_01944diW1ZHZh2CCqb5FDbYw",
+    "content": [
+      {
+        "text": "I'll fix the errors in the handler code:\n\n<handler>\nimport { eq } from \"drizzle-orm\";\nimport { db } from \"../db\";\nimport { greetPerson, type GreetingRequest, type GreetingResponse } from \"../common/schema\";\nimport { greetingsTable, messagesTable, messageRoleEnum, nameExtractionIssuesTable } from \"../db/schema/application\";\n\nexport const handle: typeof greetPerson = async (options: GreetingRequest): Promise<GreetingResponse> => {\n    // Create a greeting message\n    const greeting = `Hello, ${options.name}! Welcome to our greeting service.`;\n    \n    // First store the message in the messages table\n    const messagesResult = await db.insert(messagesTable)\n        .values({\n            conversation_id: \"00000000-0000-0000-0000-000000000000\", // Using a default conversation ID\n            role: \"assistant\", // Directly using string literal instead of enum\n            content: greeting,\n        })\n        .returning({ id: messagesTable.id });\n    \n    const messageId = messagesResult[0].id;\n    \n    // Then store the greeting in the greetings table\n    await db.insert(greetingsTable)\n        .values({\n            message_id: messageId,\n            extracted_name: options.name,\n            response_message: greeting,\n        });\n    \n    // Check if the name is empty and track any issues\n    if (!options.name.trim()) {\n        await db.insert(nameExtractionIssuesTable)\n            .values({\n                message_id: messageId,\n                issue_type: \"missing_name\",\n                resolution: \"used_default\",\n            });\n    }\n    \n    return {\n        message: greeting\n    };\n};\n</handler>",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -115,6 +183,7 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 4214,
       "output_tokens": 834
     }
@@ -124,6 +193,17 @@
     "content": [
       {
         "text": "I'll create a handler for the `greetUser` function based on the provided schema definitions.\n\n<handler>\nimport { eq } from \"drizzle-orm\";\nimport { db } from \"../db\";\nimport { greetUser } from \"../common/schema\";\nimport type { GreetingRequest } from \"../common/schema\";\nimport { greetingRequestsTable, messagesTable, usersTable } from \"../db/schema/application\";\n\nexport const handle: typeof greetUser = async (options: GreetingRequest): Promise<string> => {\n  // Generate personalized greeting\n  const greeting = `Hello, ${options.name}! Welcome to our service.`;\n  \n  // Find or create user based on name\n  const existingUsers = await db\n    .select()\n    .from(usersTable)\n    .where(eq(usersTable.name, options.name));\n  \n  let userId;\n  if (existingUsers.length > 0) {\n    // Use existing user\n    userId = existingUsers[0].id;\n  } else {\n    // Create new user\n    const newUserResult = await db\n      .insert(usersTable)\n      .values({\n        name: options.name\n      })\n      .returning({ id: usersTable.id });\n    \n    userId = newUserResult[0]?.id;\n  }\n  \n  // Store the message\n  const messageResult = await db\n    .insert(messagesTable)\n    .values({\n      user_id: userId,\n      content: greeting,\n      role: \"assistant\"\n    })\n    .returning({ id: messagesTable.id });\n  \n  const messageId = messageResult[0]?.id;\n  \n  // Record the greeting request\n  await db\n    .insert(greetingRequestsTable)\n    .values({\n      user_id: userId,\n      message_id: messageId,\n      input_text: `Greeting request for ${options.name}`,\n      extracted_name: options.name,\n      response: greeting\n    });\n  \n  return greeting;\n};\n</handler>",
+=======
+      "input_tokens": 4813,
+      "output_tokens": 443
+    }
+  },
+  "75e69ce6efc14318f46097b6f4401074": {
+    "id": "msg_bdrk_01WU9UdPP5qekBih2VCmdZtv",
+    "content": [
+      {
+        "text": "I see the issue now. We need to create a conversation record first since the messages table has a foreign key constraint on conversation_id. Let me fix the handler:\n\n<handler>\nimport { db } from \"../db\";\nimport { greetPerson, type GreetingRequest, type GreetingResponse } from \"../common/schema\";\nimport { \n  greetingsTable, \n  messagesTable, \n  nameExtractionIssuesTable, \n  conversationsTable \n} from \"../db/schema/application\";\n\nexport const handle: typeof greetPerson = async (options: GreetingRequest): Promise<GreetingResponse> => {\n    // Create a greeting message\n    const greeting = `Hello, ${options.name}! Welcome to our greeting service.`;\n    \n    // First, create a conversation record (to satisfy the foreign key constraint)\n    const conversationResult = await db.insert(conversationsTable)\n        .values({\n            user_id: \"11111111-1111-1111-1111-111111111111\", // Default user ID\n            title: `Greeting for ${options.name}`\n        })\n        .returning({ id: conversationsTable.id });\n    \n    const conversationId = conversationResult[0].id;\n    \n    // Now store the message in the messages table with a valid conversation_id\n    const messagesResult = await db.insert(messagesTable)\n        .values({\n            conversation_id: conversationId,\n            role: \"assistant\",\n            content: greeting,\n        })\n        .returning({ id: messagesTable.id });\n    \n    const messageId = messagesResult[0].id;\n    \n    // Then store the greeting in the greetings table\n    await db.insert(greetingsTable)\n        .values({\n            message_id: messageId,\n            extracted_name: options.name,\n            response_message: greeting,\n        });\n    \n    // Check if the name is empty and track any issues\n    if (!options.name.trim()) {\n        await db.insert(nameExtractionIssuesTable)\n            .values({\n                message_id: messageId,\n                issue_type: \"missing_name\",\n                resolution: \"used_default\",\n            });\n    }\n    \n    return {\n        message: greeting\n    };\n};\n</handler>",
+>>>>>>> 327fd03 (Update test cache)
         "type": "text"
       }
     ],
@@ -135,8 +215,113 @@
     "usage": {
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
+<<<<<<< HEAD
       "input_tokens": 4047,
       "output_tokens": 501
+=======
+      "input_tokens": 6930,
+      "output_tokens": 558
+    }
+  },
+  "f0c27419e60aa5ce6f250db340055242": {
+    "id": "msg_bdrk_013978CVh7QZnbkfbteiZ9L8",
+    "content": [
+      {
+        "text": "I see the issue. The error is occurring because we're trying to insert a message with a conversation_id that doesn't exist in the conversations table. I'll fix the implementation by first creating a conversation record before inserting the message.\n\n<handler>\nimport { db } from \"../db\";\nimport { greetPerson, type GreetingRequest, type GreetingResponse } from \"../common/schema\";\nimport { conversationsTable, messagesTable, greetingsTable, usersTable } from \"../db/schema/application\";\n\nexport const handle: typeof greetPerson = async (options: GreetingRequest): Promise<GreetingResponse> {\n    // Create greeting message based on the user's name\n    const responseMessage = `Hello, ${options.name}! Welcome to our greeting service.`;\n    \n    // First, create or get a user\n    const userResult = await db.insert(usersTable)\n        .values({\n            username: options.name\n        })\n        .returning({ id: usersTable.id })\n        .execute();\n    \n    const userId = userResult[0].id;\n    \n    // Then create a conversation for this greeting\n    const conversationResult = await db.insert(conversationsTable)\n        .values({\n            user_id: userId,\n            title: `Greeting for ${options.name}`\n        })\n        .returning({ id: conversationsTable.id })\n        .execute();\n    \n    const conversationId = conversationResult[0].id;\n    \n    // Now we can insert the message with a valid conversation_id\n    const messageResult = await db.insert(messagesTable)\n        .values({\n            conversation_id: conversationId,\n            role: \"assistant\",\n            content: responseMessage\n        })\n        .returning({ id: messagesTable.id })\n        .execute();\n    \n    const messageId = messageResult[0].id;\n    \n    // Finally, store the greeting details\n    await db.insert(greetingsTable)\n        .values({\n            message_id: messageId,\n            extracted_name: options.name,\n            response_message: responseMessage\n        })\n        .execute();\n    \n    // Return the greeting response\n    return {\n        message: responseMessage\n    };\n};\n</handler>",
+        "type": "text"
+      }
+    ],
+    "model": "claude-3-7-sonnet-20250219",
+    "role": "assistant",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "input_tokens": 6334,
+      "output_tokens": 537
+    }
+  },
+  "27341d428349fbd32adf68a0a06e6b9d": {
+    "id": "msg_bdrk_01AnSvuHAty1JaFPAroeFkux",
+    "content": [
+      {
+        "text": "I see there's a syntax error in the handler function declaration. Let me fix that:\n\n<handler>\nimport { db } from \"../db\";\nimport { greetPerson, type GreetingRequest, type GreetingResponse } from \"../common/schema\";\nimport { conversationsTable, messagesTable, greetingsTable, usersTable } from \"../db/schema/application\";\n\nexport const handle: typeof greetPerson = async (options: GreetingRequest): Promise<GreetingResponse> => {\n    // Create greeting message based on the user's name\n    const responseMessage = `Hello, ${options.name}! Welcome to our greeting service.`;\n    \n    // First, create or get a user\n    const userResult = await db.insert(usersTable)\n        .values({\n            username: options.name\n        })\n        .returning({ id: usersTable.id })\n        .execute();\n    \n    const userId = userResult[0].id;\n    \n    // Then create a conversation for this greeting\n    const conversationResult = await db.insert(conversationsTable)\n        .values({\n            user_id: userId,\n            title: `Greeting for ${options.name}`\n        })\n        .returning({ id: conversationsTable.id })\n        .execute();\n    \n    const conversationId = conversationResult[0].id;\n    \n    // Now we can insert the message with a valid conversation_id\n    const messageResult = await db.insert(messagesTable)\n        .values({\n            conversation_id: conversationId,\n            role: \"assistant\",\n            content: responseMessage\n        })\n        .returning({ id: messagesTable.id })\n        .execute();\n    \n    const messageId = messageResult[0].id;\n    \n    // Finally, store the greeting details\n    await db.insert(greetingsTable)\n        .values({\n            message_id: messageId,\n            extracted_name: options.name,\n            response_message: responseMessage\n        })\n        .execute();\n    \n    // Return the greeting response\n    return {\n        message: responseMessage\n    };\n};\n</handler>",
+        "type": "text"
+      }
+    ],
+    "model": "claude-3-7-sonnet-20250219",
+    "role": "assistant",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "input_tokens": 6951,
+      "output_tokens": 508
+    }
+  },
+  "761832fffaae996fe86e5f14c3ae928a": {
+    "id": "msg_bdrk_01DJwECwydEYRzB6FQZbBN87",
+    "content": [
+      {
+        "text": "I'll generate unit tests for the `greetPerson` function based on the provided schemas.\n\n<imports>\nimport { expect, it } from \"bun:test\";\nimport { db } from \"../../db\";\nimport { type GreetingRequest, type GreetingResponse } from \"../../common/schema\";\nimport { usersTable, messagesTable, greetingsTable } from \"../../db/schema/application\";\nimport { eq } from \"drizzle-orm\";\n</imports>\n\n<test>\nit(\"should return a greeting response with a message\", async () => {\n  const input: GreetingRequest = { name: \"Alice\" };\n  const result = await greetPerson(input);\n  \n  expect(result).toBeDefined();\n  expect(result.message).toBeDefined();\n  expect(result.message).toBeTypeOf(\"string\");\n  expect(result.message).toContain(\"Alice\");\n});\n</test>\n\n<test>\nit(\"should handle empty name gracefully\", async () => {\n  const input: GreetingRequest = { name: \"\" };\n  const result = await greetPerson(input);\n  \n  expect(result).toBeDefined();\n  expect(result.message).toBeDefined();\n  expect(result.message).toBeTypeOf(\"string\");\n});\n</test>\n\n<test>\nit(\"should handle special characters in name\", async () => {\n  const input: GreetingRequest = { name: \"O'Connor-Smith\" };\n  const result = await greetPerson(input);\n  \n  expect(result).toBeDefined();\n  expect(result.message).toContain(\"O'Connor-Smith\");\n});\n</test>\n\n<test>\nit(\"should store greeting data in the database\", async () => {\n  const input: GreetingRequest = { name: \"Bob\" };\n  const result = await greetPerson(input);\n\n  // Check that greetings table has the entry\n  const greetings = await db.select().from(greetingsTable).execute();\n  \n  expect(greetings.length).toBeGreaterThan(0);\n  const latestGreeting = greetings[greetings.length - 1];\n  expect(latestGreeting.extracted_name).toEqual(\"Bob\");\n  expect(latestGreeting.greeting_response).toEqual(result.message);\n});\n</test>\n\n<test>\nit(\"should create related message record when greeting\", async () => {\n  const input: GreetingRequest = { name: \"Charlie\" };\n  await greetPerson(input);\n\n  // Get the latest greeting\n  const greetings = await db.select().from(greetingsTable).execute();\n  const latestGreeting = greetings[greetings.length - 1];\n  \n  // Check that the message exists and is properly linked\n  const messages = await db\n    .select()\n    .from(messagesTable)\n    .where(eq(messagesTable.id, latestGreeting.message_id))\n    .execute();\n    \n  expect(messages).toHaveLength(1);\n  expect(messages[0].content).toBeDefined();\n  expect(messages[0].is_from_user).toEqual(false);\n});\n</test>\n\n<test>\nit(\"should create or use existing user record\", async () => {\n  // First, check if users table is empty\n  const initialUsers = await db.select().from(usersTable).execute();\n  const initialCount = initialUsers.length;\n  \n  const input: GreetingRequest = { name: \"David\" };\n  await greetPerson(input);\n  \n  // Check that the users table has at least one more entry\n  const users = await db.select().from(usersTable).execute();\n  expect(users.length).toBeGreaterThanOrEqual(initialCount);\n  \n  // If a new user was created, check that their name is set\n  if (users.length > initialCount) {\n    const newUser = users[users.length - 1];\n    expect(newUser.name).toBeDefined();\n  }\n});\n</test>\n\n<test>\nit(\"should return the same response format for different name inputs\", async () => {\n  const input1: GreetingRequest = { name: \"Emma\" };\n  const input2: GreetingRequest = { name: \"Frank\" };\n  \n  const result1 = await greetPerson(input1);\n  const result2 = await greetPerson(input2);\n  \n  // Check that both results have the same structure\n  expect(Object.keys(result1)).toEqual(Object.keys(result2));\n  expect(result1.message).toContain(\"Emma\");\n  expect(result2.message).toContain(\"Frank\");\n});\n</test>",
+        "type": "text"
+      }
+    ],
+    "model": "claude-3-7-sonnet-20250219",
+    "role": "assistant",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "input_tokens": 4174,
+      "output_tokens": 1164
+    }
+  },
+  "0e0cd79b1a4074054eaceb0ade2b747c": {
+    "id": "msg_bdrk_017zwDmniG2KWZ7LAx19x3DJ",
+    "content": [
+      {
+        "text": "Let me fix the TypeScript compilation error and provide you with the corrected test suite.\n\n<imports>\nimport { expect, it } from \"bun:test\";\nimport { db } from \"../../db\";\nimport { type GreetingRequest, type GreetingResponse } from \"../../common/schema\";\nimport { usersTable, messagesTable, greetingsTable } from \"../../db/schema/application\";\nimport { eq } from \"drizzle-orm\";\n</imports>\n\n<test>\nit(\"should return a greeting response with a message\", async () => {\n  const input: GreetingRequest = { name: \"Alice\" };\n  const result = await greetPerson(input);\n  \n  expect(result).toBeDefined();\n  expect(result.message).toBeDefined();\n  expect(result.message).toBeTypeOf(\"string\");\n  expect(result.message).toContain(\"Alice\");\n});\n</test>\n\n<test>\nit(\"should handle empty name gracefully\", async () => {\n  const input: GreetingRequest = { name: \"\" };\n  const result = await greetPerson(input);\n  \n  expect(result).toBeDefined();\n  expect(result.message).toBeDefined();\n  expect(result.message).toBeTypeOf(\"string\");\n});\n</test>\n\n<test>\nit(\"should handle special characters in name\", async () => {\n  const input: GreetingRequest = { name: \"O'Connor-Smith\" };\n  const result = await greetPerson(input);\n  \n  expect(result).toBeDefined();\n  expect(result.message).toContain(\"O'Connor-Smith\");\n});\n</test>\n\n<test>\nit(\"should store greeting data in the database\", async () => {\n  const input: GreetingRequest = { name: \"Bob\" };\n  const result = await greetPerson(input);\n\n  // Check that greetings table has the entry\n  const greetings = await db.select().from(greetingsTable).execute();\n  \n  expect(greetings.length).toBeGreaterThan(0);\n  const latestGreeting = greetings[greetings.length - 1];\n  expect(latestGreeting.extracted_name).toEqual(\"Bob\");\n  expect(latestGreeting.greeting_response).toEqual(result.message);\n});\n</test>\n\n<test>\nit(\"should create related message record when greeting\", async () => {\n  const input: GreetingRequest = { name: \"Charlie\" };\n  await greetPerson(input);\n\n  // Get the latest greeting\n  const greetings = await db.select().from(greetingsTable).execute();\n  const latestGreeting = greetings[greetings.length - 1];\n  \n  // Fixed: Use non-nullable message_id in the where condition\n  if (latestGreeting.message_id !== null) {\n    const messages = await db\n      .select()\n      .from(messagesTable)\n      .where(eq(messagesTable.id, latestGreeting.message_id))\n      .execute();\n      \n    expect(messages).toHaveLength(1);\n    expect(messages[0].content).toBeDefined();\n    expect(messages[0].is_from_user).toEqual(false);\n  } else {\n    // If message_id is null, the test should fail\n    expect(latestGreeting.message_id).not.toBeNull();\n  }\n});\n</test>\n\n<test>\nit(\"should create or use existing user record\", async () => {\n  // First, check if users table is empty\n  const initialUsers = await db.select().from(usersTable).execute();\n  const initialCount = initialUsers.length;\n  \n  const input: GreetingRequest = { name: \"David\" };\n  await greetPerson(input);\n  \n  // Check that the users table has at least one more entry\n  const users = await db.select().from(usersTable).execute();\n  expect(users.length).toBeGreaterThanOrEqual(initialCount);\n  \n  // If a new user was created, check that their name is set\n  if (users.length > initialCount) {\n    const newUser = users[users.length - 1];\n    expect(newUser.name).toBeDefined();\n  }\n});\n</test>\n\n<test>\nit(\"should return the same response format for different name inputs\", async () => {\n  const input1: GreetingRequest = { name: \"Emma\" };\n  const input2: GreetingRequest = { name: \"Frank\" };\n  \n  const result1 = await greetPerson(input1);\n  const result2 = await greetPerson(input2);\n  \n  // Check that both results have the same structure\n  expect(Object.keys(result1)).toEqual(Object.keys(result2));\n  expect(result1.message).toContain(\"Emma\");\n  expect(result2.message).toContain(\"Frank\");\n});\n</test>",
+        "type": "text"
+      }
+    ],
+    "model": "claude-3-7-sonnet-20250219",
+    "role": "assistant",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "input_tokens": 6112,
+      "output_tokens": 1223
+    }
+  },
+  "c435f4d7897f6bec4fef3b6e2f1a6402": {
+    "id": "msg_bdrk_01McLZCasWQEXiuhwxpthZeV",
+    "content": [
+      {
+        "text": "Based on your requirements, I'll generate a handler for the `greetPerson` function that interacts with the provided Drizzle schema and follows the type definitions from the TypeSpec.\n\n<handler>\nimport { db } from \"../db\";\nimport { greetPerson, type GreetingRequest, type GreetingResponse } from \"../common/schema\";\nimport { greetingsTable, messagesTable } from \"../db/schema/application\";\n\nexport const handle: typeof greetPerson = async (options: GreetingRequest): Promise<GreetingResponse> => {\n    // Construct greeting message\n    const greetingMessage = `Hello, ${options.name}! Welcome to our service.`;\n    \n    // Store the message in the messages table first\n    const messageResult = await db.insert(messagesTable)\n        .values({\n            is_from_user: false,\n            content: greetingMessage,\n            // Note: conversation_id and user_id would typically be provided in a real implementation\n            // but are optional in the schema so we can omit them for this example\n        })\n        .returning({ id: messagesTable.id });\n    \n    // Get the message ID from the insert result\n    const messageId = messageResult[0].id;\n    \n    // Store the greeting data in the greetings table\n    await db.insert(greetingsTable)\n        .values({\n            message_id: messageId,\n            extracted_name: options.name,\n            greeting_response: greetingMessage,\n        });\n    \n    // Return the greeting response according to the type definition\n    return {\n        message: greetingMessage\n    };\n};\n</handler>\n\nThis handler implements the `greetPerson` function according to your requirements. It:\n\n1. Creates a greeting message using the provided name\n2. Stores the message in the `messagesTable`\n3. Records the greeting interaction in the `greetingsTable` with a reference to the message\n4. Returns a properly typed `GreetingResponse` object with the message\n\nThe implementation follows your code style requirements, using proper imports, explicit typing, and adhering to the database schema structure.",
+        "type": "text"
+      }
+    ],
+    "model": "claude-3-7-sonnet-20250219",
+    "role": "assistant",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "input_tokens": 4008,
+      "output_tokens": 505
+>>>>>>> 327fd03 (Update test cache)
     }
   }
 }
