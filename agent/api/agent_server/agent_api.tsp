@@ -13,7 +13,7 @@ namespace AgentServerApi;
 
 // --- Enums ---
 
-@doc("Defines the current status of the agent.")
+@doc("Defines the current status of the agent.") 
 enum AgentStatus {
   @doc("Agent is actively processing the request, it is free to reject new requests in this state.")
   running,
