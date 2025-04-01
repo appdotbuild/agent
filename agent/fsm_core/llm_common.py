@@ -14,14 +14,6 @@ logger = logging.getLogger(__name__)
 
 CacheMode = Literal["off", "record", "replay"]
 
-# Define a protocol for client implementation
-class ClientProtocol(Protocol):
-    def messages(self):
-        ...
-
-    def __getattr__(self, name: str) -> Any:
-        ...
-
 
 class LLMClient:
     """Base client class with caching and other common functionality."""
@@ -84,8 +76,6 @@ class LLMClient:
 
         kwargs = {k: v for k, v in kwargs.items()}  # Make a copy
         kwargs.update({f"arg_{i}": arg for i, arg in enumerate(args)})
-
-        # Extract only relevant parameters for the cache key
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
         return hashlib.md5(key_str.encode()).hexdigest()
@@ -180,7 +170,7 @@ class AnthropicClient(LLMClient):
 
 class GeminiClient(LLMClient):
     def __init__(self,
-                 model_name: Literal["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking"] = "gemini-2.5-pro",
+                 model_name: Literal["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it"] = "gemini-2.5-pro",
                  cache_mode: CacheMode = "off",
                  cache_path: str = "gemini_cache.json",
                  api_key: str | None = None):
@@ -313,7 +303,7 @@ class GeminiClient(LLMClient):
 
 def get_sync_client(
     backend: Literal["bedrock", "anthropic", "gemini"] = "bedrock",
-    model_name: Literal["sonnet", "haiku", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking"] = "sonnet",
+    model_name: Literal["sonnet", "haiku", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it"] = "sonnet",
     cache_mode: CacheMode = "off",
     cache_path: str = os.path.join(os.path.dirname(__file__), "../../anthropic_cache.json"),
     api_key: str | None = None

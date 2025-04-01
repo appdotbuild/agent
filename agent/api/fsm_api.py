@@ -7,6 +7,8 @@ from langfuse import Langfuse
 from compiler.core import Compiler
 from fsm_core.llm_common import LLMClient, get_sync_client
 
+import socket
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,9 @@ class FSMManager:
         self.trace_id = None
         self.app_instance = None
 
+    def _get_current_state(self) -> FsmState:
+        return self.app_instance.get_effective_state(self.fsm_instance)
+
 
     def start_fsm(self, user_input: str) -> Dict[str, Any]:
         """
@@ -52,7 +57,7 @@ class FSMManager:
         trace = self.langfuse_client.trace(
             id=self.trace_id,
             name="agent_controlled_fsm",
-            user_id=os.environ.get("USER_ID", "agent_user"),
+            user_id=os.environ.get("USER_ID", socket.gethostname()),
             metadata={"agent_controlled": True},
         )
         logger.debug(f"Created Langfuse trace with ID: {self.trace_id}")
@@ -88,7 +93,7 @@ class FSMManager:
             return {"error": f"FSM initialization failed: {str(e)}"}
 
         # Check if FSM entered FAILURE state immediately
-        current_state = self.fsm_instance.stack_path[-1]
+        current_state = self._get_current_state()
         if current_state == FsmState.FAILURE:
             error_msg = self.fsm_instance.context.get("error", "Unknown error")
             logger.error(f"FSM entered FAILURE state during initialization: {error_msg}")
@@ -120,7 +125,7 @@ class FSMManager:
             return {"error": "No active FSM session"}
 
         # Log the current state before confirmation
-        previous_state = self.fsm_instance.stack_path[-1]
+        previous_state = self._get_current_state()
         logger.info(f"Current state before confirmation: {previous_state}")
 
         # Confirm the current state
@@ -132,7 +137,7 @@ class FSMManager:
             return {"error": f"FSM confirmation failed: {str(e)}"}
 
         # Prepare response
-        current_state = self.fsm_instance.stack_path[-1]
+        current_state = self._get_current_state()
         logger.info(f"State after confirmation: {current_state}")
 
         # Check if FSM entered FAILURE state
@@ -170,7 +175,7 @@ class FSMManager:
             return {"error": "No active FSM session"}
 
         # Determine current state and event type
-        current_state = self.fsm_instance.stack_path[-1]
+        current_state = self._get_current_state()
         event_type = self._get_revision_event_type(current_state)
         logger.info(f"Current state: {current_state}, Revision event type: {event_type}")
 
@@ -202,7 +207,7 @@ class FSMManager:
             return {"error": f"Error while processing feedback: {str(e)}"}
 
         # Prepare response
-        new_state = self.fsm_instance.stack_path[-1]
+        new_state = self._get_current_state()
         logger.info(f"State after feedback: {new_state}")
 
         # Check if we entered FAILURE state which requires special handling
@@ -242,13 +247,11 @@ class FSMManager:
             logger.error("No active FSM session")
             return {"error": "No active FSM session"}
 
-        # Check if FSM is in COMPLETE or FAILURE state
-        current_state = self.fsm_instance.stack_path[-1]
-        logger.info(f"Current state for completion: {current_state}")
-
-        if current_state not in [FsmState.COMPLETE, FsmState.FAILURE]:
-            logger.error(f"FSM is not in a completion state. Current state: {current_state}")
-            return {"error": f"FSM is not complete. Current state: {current_state}"}
+        current_state = self._get_current_state()
+        if "review" in current_state:
+            # send a single confirm event to move to next state
+            self.fsm_instance.send(FsmEvent(type_="CONFIRM"))
+            current_state = self._get_current_state()
 
         # Check if FSM completed but with empty outputs (likely a silent failure)
         context = self.fsm_instance.context
@@ -406,7 +409,7 @@ class FSMManager:
 
     def _get_available_actions(self) -> Dict[str, str]:
         """Get available actions for current state"""
-        current_state = self.fsm_instance.stack_path[-1]
+        current_state = self._get_current_state()
         logger.debug(f"Getting available actions for state: {current_state}")
 
         actions = {}
@@ -531,7 +534,7 @@ class FSMManager:
                         logger.debug(f"Found {len(context['handlers'])} handlers in context")
                         return {
                             "handlers": {
-                                name: {"source": handler.source if hasattr(handler, "source") else str(handler)}
+                                name: {"source": handler.source}
                                 for name, handler in context["handlers"].items()
                             }
                         }

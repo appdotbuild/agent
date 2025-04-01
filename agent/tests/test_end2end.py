@@ -35,10 +35,10 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
     # Use the correct Docker image names from prepare_containers.sh
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = get_sync_client(
-        backend="gemini", model_name="gemini-2.0-flash"
+        cache_mode=mode
     )
     application = Application(client, compiler)
-    langfuse_context.configure(enabled=False)
+    langfuse_context.configure(enabled=bool(os.getenv("LANGFUSE_ENABLED", "")))
 
     bot_id = str(uuid.uuid4().hex)
     prepared_bot = application.prepare_bot([initial_description], bot_id=bot_id)

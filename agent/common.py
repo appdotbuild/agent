@@ -29,22 +29,23 @@ def _init_logging():
     handlers['console'] = console
 
     # CloudWatch handler
-    try:
-        session = boto3.Session()
-        # for local dev, it would require using boto3.Session(profile_name="dev")
-        cli = session.client("logs", region_name=os.getenv("AWS_REGION", "us-west-2"))
-        cloudwatch = watchtower.CloudWatchLogHandler(
-            log_group_name="codegen-logs",
-            boto3_client=cli,
-            log_stream_name="{machine_name}_{strftime:%m-%d-%y}",
-            use_queues=False,  # this is not performant, but otherwise race conditions occur on uvicorn level
-        )
-        cloudwatch.setFormatter(_FORMATTER)
-        handlers['cloudwatch'] = cloudwatch
-    except NoCredentialsError:
-        logging.warning("CloudWatch credentials not found")
-    except Exception as e:
-        logging.exception("CloudWatch logging disabled")
+    if os.getenv("LOG_TO_CLOUDWATCH", ""):
+        try:
+            session = boto3.Session()
+            # for local dev, it would require using boto3.Session(profile_name="dev")
+            cli = session.client("logs", region_name=os.getenv("AWS_REGION", "us-west-2"))
+            cloudwatch = watchtower.CloudWatchLogHandler(
+                log_group_name="codegen-logs",
+                boto3_client=cli,
+                log_stream_name="{machine_name}_{strftime:%m-%d-%y}",
+                use_queues=False,  # this is not performant, but otherwise race conditions occur on uvicorn level
+            )
+            cloudwatch.setFormatter(_FORMATTER)
+            handlers['cloudwatch'] = cloudwatch
+        except NoCredentialsError:
+            logging.warning("CloudWatch credentials not found")
+        except Exception as e:
+            logging.exception("CloudWatch logging disabled")
 
     # File handler
     if log_dir := os.getenv("LOG_DIR", ""):
