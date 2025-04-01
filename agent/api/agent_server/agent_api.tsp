@@ -5,26 +5,26 @@ using TypeSpec.Http;
 using TypeSpec.Rest;
 
 @service({
-  title: "Agent Server API",
+  title: "Neon Agent Server API",
   version: "1.0.0",
 })
-@doc("API for communication between the Platform (Backend) and the Agent Server.")
+
 namespace AgentServerApi;
 
 // --- Enums ---
 
-@doc("Defines the status of the Agent Server during processing.")
+@doc("Defines the current status of the agent.")
 enum AgentStatus {
-  @doc("Agent is actively processing the request.")
+  @doc("Agent is actively processing the request, it is free to reject new requests in this state.")
   running,
 
-  @doc("Agent has completed its current task or requires user feedback.")
+  @doc("Agent has completed its current task or requires user feedback, current state can be requested with no overhead.")
   idle,
 }
 
-@doc("Defines the type of message being sent from the Agent Server.")
+@doc("Defines the type of message being sent by the agent to the user.")
 enum MessageKind {
-  @doc("An intermediate result/update while the agent is still running. The platform should not typically send this state back unless restoring after a failure.")
+  @doc("An intermediate result/update while the agent is still running. The platform should not typically query API during this state unless restoring after a failure.")
   StageResult,
 
   @doc("The agent has paused and requires feedback or input from the user.")
@@ -35,8 +35,7 @@ enum MessageKind {
 }
 
 // --- Models ---
-
-@doc("The detailed message payload from the agent.")
+@doc("Represents a message from the agent to the user, including content, state, and any code changes.")
 model AgentMessage {
   @doc("The type of message being sent.")
   kind: MessageKind;
@@ -52,7 +51,7 @@ model AgentMessage {
 }
 
 @doc("Structure of the data payload within each Server-Sent Event (SSE).")
-model AgentSseEvent {
+model AgentEvent {
   @doc("Current status of the agent (running or idle).")
   status: AgentStatus;
 
