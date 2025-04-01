@@ -8,6 +8,7 @@ import requests
 import zipfile
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from core.interpolator import Interpolator
@@ -17,6 +18,7 @@ import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
 from common import get_logger, init_sentry
 from fsm_core.llm_common import get_sync_client
+from api.agent_server_api import get_app as get_agent_server_app
 
 logger = get_logger(__name__)
 init_sentry()
@@ -26,8 +28,25 @@ compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
 
 app = FastAPI()
 
+# Include the agent server API routes
+agent_server_app = get_agent_server_app()
+app.mount("/agent", agent_server_app, name="agent_server")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # This should be restricted in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.middleware("http")
 async def check_bearer(request: Request, call_next):
+    # Skip auth for agent server API
+    if request.url.path.startswith("/agent"):
+        return await call_next(request)
+        
     bearer = os.getenv("BUILDER_TOKEN")
     if request.headers.get("Authorization") != f"Bearer {bearer}":
         return JSONResponse(status_code=401, content={"message": "Unauthorized"})

@@ -1,0 +1,16 @@
+{
+  "name": "agent-server-api",
+  "version": "1.0.0",
+  "description": "TypeSpec definitions for Agent Server API",
+  "main": "index.js",
+  "scripts": {
+    "compile": "typespec compile .",
+    "format": "typespec format ."
+  },
+  "dependencies": {
+    "@typespec/compiler": "^0.53.0",
+    "@typespec/http": "^0.53.0",
+    "@typespec/rest": "^0.53.0",
+    "@typespec/openapi3": "^0.53.0"
+  }
+}

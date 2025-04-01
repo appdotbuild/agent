@@ -1,0 +1,9 @@
+emit:
+  - "@typespec/openapi3"
+options:
+  "@typespec/openapi3":
+    output-file: "agent-server-api.yaml"
+    title: "Agent Server API"
+    version: "1.0.0"
+parameters:
+  service-name: "Agent Server API"
