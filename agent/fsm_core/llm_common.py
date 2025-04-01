@@ -158,6 +158,7 @@ class AnthropicClient(LLMClient):
                                 logger.warning("failed to reconstruct response object, returning raw cache")
                         return cached_response
                     else:
+                        logger.warning(f"Cache miss: args={args}, kwargs={kwargs}")                        
                         raise ValueError(
                             "No cached response found for this request in replay mode. "
                             "Run in record mode first to populate the cache."
