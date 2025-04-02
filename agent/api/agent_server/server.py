@@ -77,7 +77,7 @@ class AgentSession:
         app_description = "\n".join(messages)
         self.messages = [{"role": "user", "content": app_description}]
         
-        # Start the FSM with the app description
+        # TODO: init agent state via tool call
         result = self.processor_instance.tool_start_fsm(app_description)
         return result
     
@@ -92,8 +92,25 @@ class AgentSession:
         if not self.processor_instance:
             return None
             
-        current_messages, is_complete = run_with_claude(self.processor_instance, self.llm_client, messages)
+        new_message, is_complete = run_with_claude(self.processor_instance, self.llm_client, self.messages)
+        self.is_complete = is_complete
           
+        if new_message:
+            self.messages = self.messages + [new_message]
+            status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
+            
+            return AgentSseEvent(
+                status=status,
+                trace_id=self.trace_id,
+                message=AgentMessage(
+                    kind=MessageKind.STAGE_RESULT,
+                    content=new_message["content"],
+                    agent_state=self.get_state(),
+                    unified_diff=None
+                )
+            )
+        
+        return None
        
     def cleanup(self):
         """Cleanup resources for this session"""
