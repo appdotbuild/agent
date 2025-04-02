@@ -73,7 +73,7 @@ Handler function code should make use of:
 must contain to handle user input:
 1. explicit business logic
 such as:
-1. database operations, 
+1. database operations,
 2. performing calculations etc.
 
 Code style:
@@ -91,7 +91,7 @@ Code style:
     - Generic type parameters should be PascalCase: `Array<UserData>`
     - Enum names should be PascalCase: `enum UserRole`
 
-  
+
 Note on imports:
 * Use only required imports, reread the code to make sure you are importing only required files,
 * STRICTLY FOLLOW EXACT NAMES OF TABLES TO DRIZZLE SCHEMA, TYPE NAMES FROM TYPESPEC SCHEMA,
@@ -123,7 +123,7 @@ const multi = await db.insert(users).values([
   { name: 'Bob' }
 ]);
 
-// Update 
+// Update
 await db.update(users)
   .set({ name: 'John' })
   .where(eq(users.id, 1));
@@ -205,15 +205,15 @@ interface QueryOptions {
 // Type-safe query building
 function buildQuery(options: QueryOptions) {
   let query = db.select().from(table);
-  
+
   if (options.exercise) {
     query = query.where(eq(table.exercise, options.exercise));
   }
-  
+
   if (options.muscleGroup) {
     query = query.where(eq(table.muscleGroup, options.muscleGroup));
   }
-  
+
   return query;
 }
 
@@ -251,7 +251,7 @@ query = query.limit(10); // Error: Property 'limit' is missing
 
 // ✅ Correct - Preserve type inference
 const baseQuery = db.select().from(table);
-const whereQuery = condition 
+const whereQuery = condition
   ? baseQuery.where(eq(table.column, value))
   : baseQuery;
 const finalQuery = whereQuery.limit(10);
@@ -276,19 +276,19 @@ function buildWorkoutQuery(
   options: QueryOptions
 ): PgSelect {
   const baseQuery = db.select().from(table);
-  
+
   let query = baseQuery;
-  
+
   if (options.exerciseName) {
     query = query.where(
       eq(table.exercise_name, options.exerciseName)
     );
   }
-  
+
   if (options.limit) {
     query = query.limit(options.limit);
   }
-  
+
   return query;
 }
 
@@ -309,17 +309,17 @@ export async function getProgress(
   const baseQuery = db
     .select()
     .from(progressTable);
-  
+
   const withExercise = options.exerciseName
     ? baseQuery.where(
         eq(progressTable.exercise_name, options.exerciseName)
       )
     : baseQuery;
-    
+
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-    
+
   return await withLimit;
 }
 
@@ -341,17 +341,17 @@ export async function listWorkoutHistory(
     .select()
     .from(exerciseRecordsTable)
     .$dynamic();  // Enable dynamic queries
-    
+
   const withExercise = options.exerciseId
     ? query.where(
         eq(exerciseRecordsTable.exercise_id, options.exerciseId)
       )
     : query;
-    
+
   const withLimit = options.limit
     ? withExercise.limit(options.limit)
     : withExercise;
-    
+
   return await withLimit;
 }
 
@@ -512,10 +512,10 @@ class HandlersMachine(AgentMachine[HandlersContext]):
     @property
     def is_done(self) -> bool:
         return False
-    
+
     @property
     def score(self) -> float:
-        return 0.0   
+        return 0.0
 
 
 class Entry(HandlersMachine):
@@ -525,7 +525,7 @@ class Entry(HandlersMachine):
         self.drizzle_schema = drizzle_schema
         self.test_suite = test_suite
         self.feedback = feedback
-    
+
     @property
     def next_message(self) -> MessageParam | None:
         if self.feedback:
@@ -552,7 +552,7 @@ class FeedbackEntry(HandlersMachine):
         self.previous_source = previous_source
         self.feedback = feedback
         self.test_suite = test_suite
-    
+
     @property
     def next_message(self) -> MessageParam | None:
         content = jinja2.Template(FEEDBACK_PROMPT).render(
@@ -629,11 +629,11 @@ class TestsError(HandlersMachine, HandlerTestsCompile):
     def next_message(self) -> MessageParam | None:
         content = jinja2.Template(FIX_PROMPT).render(errors=self.test_feedback["stderr"])
         return MessageParam(role="user", content=content)
-    
+
     @property
     def score(self) -> float:
         if not self.test_feedback["stderr"]:
-            return 0.0 
+            return 0.0
         pattern = re.compile(r"(\d+) pass\s+(\d+) fail", re.DOTALL)
         result = pattern.search(self.test_feedback["stderr"])
         if result is None:
@@ -646,11 +646,11 @@ class Success(HandlersMachine, HandlerTestsCompile):
     @property
     def next_message(self) -> MessageParam | None:
         return None
-    
+
     @property
     def is_done(self) -> bool:
         return True
-    
+
     @property
     def score(self) -> float:
         return 1.0
