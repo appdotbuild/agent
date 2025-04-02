@@ -35,7 +35,8 @@ def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMode = "r
     # Use the correct Docker image names from prepare_containers.sh
     compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
     client = get_sync_client(
-        cache_mode=mode
+        cache_mode=mode,
+        model_name="gemini-2.5-pro",
     )
     application = Application(client, compiler)
     langfuse_context.configure(enabled=bool(os.getenv("LANGFUSE_ENABLED", "")))

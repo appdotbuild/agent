@@ -1,6 +1,7 @@
 from typing import Union, TypeVar, Dict, Any, Optional, List, cast, Literal, Protocol
 from anthropic.types import MessageParam, TextBlock, Message
-from anthropic import AnthropicBedrock, Anthropic
+from anthropic import AnthropicBedrock, Anthropic, AsyncAnthropic, AsyncAnthropicBedrock
+from functools import partial
 import json
 import hashlib
 import os
@@ -13,11 +14,15 @@ logger = logging.getLogger(__name__)
 
 CacheMode = Literal["off", "record", "replay"]
 
+GeminiModelType = Literal["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it"]
+AnthropicModelType = Literal["sonnet", "haiku"]
+BackendType = Literal["bedrock", "anthropic", "gemini"]
+
 
 class LLMClient:
     """Base client class with caching and other common functionality."""
     def __init__(self,
-                 backend: Literal["bedrock", "anthropic", "gemini"],
+                 backend: BackendType,
                  model_name: str,
                  cache_mode: CacheMode = "off",
                  cache_path: str = "llm_cache.json",
@@ -99,8 +104,10 @@ class AnthropicClient(LLMClient):
         match backend:
             case "bedrock":
                 self._client = AnthropicBedrock(**(client_params or {}))
+                self._async_client = AsyncAnthropicBedrock(**(client_params or {}))
             case "anthropic":
                 self._client = Anthropic(**(client_params or {}))
+                self._async_client = AsyncAnthropic(**(client_params or {}))
             case _:
                 raise ValueError(f"Unknown backend: {backend}")
 
@@ -164,11 +171,62 @@ class AnthropicClient(LLMClient):
                     self._save_cache()
                     return response
                 case _:
-                    return original_create(*args, **kwargs)
+                    raise ValueError(f"Unknown cache mode: {self.cache_mode}")
 
         original_messages.create = create_with_model_and_cache
         return original_messages
 
+    @property
+    async def async_create(self):
+        """Access the async_messages property but with our customized async_create method."""
+
+        async def original_create(*args, **kwargs):
+            return await self._async_client.messages.create(*args, **kwargs)
+
+        # Replace the async_create method with one that automatically uses our model
+        # and adds caching support
+        async def create_with_model_and_cache(*args, **kwargs):
+            model_id = self.models_map[self.short_model_name][self.backend]
+            if 'model' not in kwargs:
+                kwargs['model'] = model_id
+
+            # Handle different cache modes
+            match self.cache_mode:
+                case "off":
+                    return await original_create(*args, **kwargs)
+                case "replay":
+                    cache_key = self._get_cache_key(*args, **kwargs)
+                    if cache_key in self._cache:
+                        logger.info(f"Cache hit: {cache_key}")
+                        cached_response = self._cache[cache_key]
+
+                        # Check if we need to reconstruct an object
+                        if isinstance(cached_response, dict) and "type" in cached_response:
+                            # This is likely a serialized Anthropic response
+                            try:
+                                # Try to reconstruct the Message object
+                                if cached_response.get("type") == "message":
+                                    return Message.model_validate(cached_response)
+                            except (ImportError, ValueError):
+                                logger.warning("failed to reconstruct response object, returning raw cache")
+                        return cached_response
+                    else:
+                        raise ValueError(
+                            "No cached response found for this request in replay mode. "
+                            "Run in record mode first to populate the cache."
+                        )
+                case "record":
+                    response = await original_create(*args, **kwargs)
+                    cache_key = self._get_cache_key(**kwargs)
+                    logger.info(f"Caching response with key: {cache_key}")
+                    serialized_response = response.to_dict()
+                    self._cache[cache_key] = serialized_response
+                    self._save_cache()
+                    return response
+                case _:
+                    raise ValueError(f"Unknown cache mode: {self.cache_mode}")
+
+        return create_with_model_and_cache
 
 class GeminiClient(LLMClient):
     def __init__(self,
@@ -186,6 +244,7 @@ class GeminiClient(LLMClient):
             raise ValueError("GEMINI_API_KEY environment variable or api_key parameter is required")
 
         self._client = genai.Client(api_key=self._api_key, **(client_params or {}))
+        self._async_client = self._client.aio
 
         # Map friendly model names to actual model identifiers
         self.models_map = {
@@ -201,108 +260,162 @@ class GeminiClient(LLMClient):
             # If not in mapping, assume it's a direct model identifier
             self.model_name = self.short_model_name
 
+
+
+    def _convert_message(self, message: dict) -> genai_types.Content:
+        match message.get("role", "user"):
+            case "assistant":
+                gemini_role = "model"
+            case _:
+                gemini_role = "user"
+        content = message.get("content", "")
+        match content:
+            case str():
+                parts = [genai_types.Part.from_text(text=content)]
+            case list():
+                text_parts = []
+                for block in content:
+                    match block:
+                        case dict() if block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                        case _ if hasattr(block, "text"):
+                            text_parts.append(block.text)
+                        case _:
+                            ...
+                parts = [genai_types.Part.from_text(text=" ".join(text_parts))]
+            case _:
+                parts = [genai_types.Part.from_text(text=str(content))]
+        return genai_types.Content(role=gemini_role, parts=parts)
+
+    def _convert_messages_to_gemini(self, messages: List[dict]) -> List[genai_types.Content]:
+        return [self._convert_message(message) for message in messages]
+
+    def _build_anthropic_response(self, response, model_id: str) -> dict:
+        response_id = f"gemini-{hashlib.md5(str(response).encode()).hexdigest()}"
+        return {
+            "id": response_id,
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": response.text}],
+            "model": model_id,
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 0, "output_tokens": 0}
+        }
+
     @property
     def messages(self):
-        """Provide a compatible messages API like Anthropic's client."""
-        # Create a mock messages object with a create method
-        class Messages:
-            def __init__(self, client, model_name, cache_mode, cache_path, cache, get_cache_key, save_cache):
-                self.client = client
-                self.model_name = model_name
-                self.cache_mode = cache_mode
-                self.cache_path = cache_path
-                self._cache = cache
-                self._get_cache_key = get_cache_key
-                self._save_cache = save_cache
-
-            def create(self, **kwargs):
-                # Extract parameters
-                messages = kwargs.get("messages", [])
-                model = kwargs.get("model", self.model_name)
-                max_tokens = kwargs.get("max_tokens", 1024)
-                temperature = kwargs.get("temperature", 1.0)
-
-                # Handle caching
-                if self.cache_mode == "replay":
+        def create_with_model_and_cache(**kwargs):
+            kwargs.setdefault("model", self.model_name)
+            match self.cache_mode:
+                case "replay":
                     cache_key = self._get_cache_key(**kwargs)
                     if cache_key in self._cache:
                         logger.info(f"Cache hit: {cache_key}")
-                        return self._cache[cache_key]
-                    else:
-                        raise ValueError(
-                            "No cached response found for this request in replay mode. "
-                            "Run in record mode first to populate the cache."
-                        )
-
-                # Convert messages to Gemini format
-                gemini_contents = []
-                for message in messages:
-                    role = message.get("role", "user")
-                    # Map Anthropic roles to Gemini roles
-                    gemini_role = "model" if role == "assistant" else "user"
-
-                    # Handle different content formats
-                    content = message.get("content", "")
-                    if isinstance(content, str):
-                        parts = [genai_types.Part.from_text(text=content)]
-                    else:
-                        # Extract text from the content blocks
-                        text_parts = []
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text_parts.append(block.get("text", ""))
-                            elif hasattr(block, "text"):
-                                text_parts.append(block.text)
-                        parts = [genai_types.Part.from_text(text=" ".join(text_parts))]
-
-                    gemini_contents.append(genai_types.Content(role=gemini_role, parts=parts))
-
-                # Create the generation config
-                config = genai_types.GenerateContentConfig(
-                    max_output_tokens=max_tokens,
-                    temperature=temperature,
-                    response_mime_type="text/plain",
-                )
-
-                # Call the Gemini API
-                response = self.client.models.generate_content(
-                    model=model,
-                    contents=gemini_contents,
-                    config=config,
-                )
-
-                # Convert the response to a format similar to Anthropic's
-                anthropic_response = {
-                    "id": f"gemini-{hashlib.md5(str(response).encode()).hexdigest()}",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": response.text}],
-                    "model": model,
-                    "stop_reason": "end_turn",
-                    "usage": {
-                        "input_tokens": 0,  # Gemini doesn't provide these counts directly
-                        "output_tokens": 0
-                    }
-                }
-
-                # Handle recording mode
-                if self.cache_mode == "record":
+                        cached_response = self._cache[cache_key]
+                        match cached_response:
+                            case dict() if cached_response.get("type") == "message":
+                                try:
+                                    return Message.model_validate(cached_response)
+                                except (ImportError, ValueError):
+                                    logger.warning("Reconstruction failed, returning raw cache")
+                            case _:
+                                return cached_response
+                    raise ValueError(
+                        "No cached response found in replay mode. Populate cache in record mode first."
+                    )
+                case "record":
+                    gemini_contents = self._convert_messages_to_gemini(kwargs.get("messages", []))
+                    config = genai_types.GenerateContentConfig(
+                        max_output_tokens=kwargs.get("max_tokens", 1024),
+                        temperature=kwargs.get("temperature", 1.0),
+                        response_mime_type="text/plain",
+                    )
+                    response = self._client.models.generate_content(
+                        model=kwargs["model"],
+                        contents=gemini_contents,
+                        config=config,
+                    )
+                    anthropic_response = self._build_anthropic_response(response, kwargs["model"])
                     cache_key = self._get_cache_key(**kwargs)
                     logger.info(f"Caching response with key: {cache_key}")
                     self._cache[cache_key] = anthropic_response
                     self._save_cache()
+                    return Message.model_validate(anthropic_response)
+                case _:
+                    gemini_contents = self._convert_messages_to_gemini(kwargs.get("messages", []))
+                    config = genai_types.GenerateContentConfig(
+                        max_output_tokens=kwargs.get("max_tokens", 1024),
+                        temperature=kwargs.get("temperature", 1.0),
+                        response_mime_type="text/plain",
+                    )
+                    response = self._client.models.generate_content(
+                        model=kwargs["model"],
+                        contents=gemini_contents,
+                        config=config,
+                    )
+                    anthropic_response = self._build_anthropic_response(response, kwargs["model"])
+                    return Message.model_validate(anthropic_response)
 
-                return Message.model_validate(anthropic_response)
+        class GeminiMessages:
+            def __init__(self, create_func):
+                self.create = create_func
 
-        return Messages(
-            self._client,
-            self.model_name,
-            self.cache_mode,
-            self.cache_path,
-            self._cache,
-            self._get_cache_key,
-            self._save_cache
-        )
+        return GeminiMessages(create_with_model_and_cache)
+
+    @property
+    async def async_create(self):
+        async def create_with_model_and_cache(**kwargs):
+            kwargs.setdefault("model", self.model_name)
+            match self.cache_mode:
+                case "replay":
+                    cache_key = self._get_cache_key(**kwargs)
+                    if cache_key in self._cache:
+                        logger.info(f"Cache hit: {cache_key}")
+                        cached_response = self._cache[cache_key]
+                        match cached_response:
+                            case dict() if cached_response.get("type") == "message":
+                                try:
+                                    return Message.model_validate(cached_response)
+                                except (ImportError, ValueError):
+                                    logger.warning("Reconstruction failed, returning raw cache")
+                            case _:
+                                return cached_response
+                    raise ValueError(
+                        "No cached response found in replay mode. Populate cache in record mode first."
+                    )
+                case "record":
+                    gemini_contents = self._convert_messages_to_gemini(kwargs.get("messages", []))
+                    config = genai_types.GenerateContentConfig(
+                        max_output_tokens=kwargs.get("max_tokens", 1024),
+                        temperature=kwargs.get("temperature", 1.0),
+                        response_mime_type="text/plain",
+                    )
+                    response = await self._async_client.models.generate_content(
+                        model=kwargs["model"],
+                        contents=gemini_contents,
+                        config=config,
+                    )
+                    anthropic_response = self._build_anthropic_response(response, kwargs["model"])
+                    cache_key = self._get_cache_key(**kwargs)
+                    logger.info(f"Caching response with key: {cache_key}")
+                    self._cache[cache_key] = anthropic_response
+                    self._save_cache()
+                    return Message.model_validate(anthropic_response)
+                case _:
+                    gemini_contents = self._convert_messages_to_gemini(kwargs.get("messages", []))
+                    config = genai_types.GenerateContentConfig(
+                        max_output_tokens=kwargs.get("max_tokens", 1024),
+                        temperature=kwargs.get("temperature", 1.0),
+                        response_mime_type="text/plain",
+                    )
+                    response = await self._async_client.models.generate_content(
+                        model=kwargs["model"],
+                        contents=gemini_contents,
+                        config=config,
+                    )
+                    anthropic_response = self._build_anthropic_response(response, kwargs["model"])
+                    return Message.model_validate(anthropic_response)
+        return create_with_model_and_cache
 
 
 def get_sync_client(
