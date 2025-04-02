@@ -69,12 +69,17 @@ class AgentSession:
     def _initialize_app(self):
         """Initialize the application instance"""
         self.processor_instance = FSMToolProcessor()
-  
+        self.messages = []
+    
     
     def initialize_fsm(self, messages: List[str], agent_state: Optional[Dict[str, Any]] = None):
         """Initialize the FSM with messages and optional state"""
+        app_description = "\n".join(messages)
+        self.messages = [{"role": "user", "content": app_description}]
         
-        return self.processor_instance.tool_start_fsm(messages.join("\n"), agent_state)
+        # Start the FSM with the app description
+        result = self.processor_instance.tool_start_fsm(app_description)
+        return result
     
     
     def get_state(self) -> Dict[str, Any]:
