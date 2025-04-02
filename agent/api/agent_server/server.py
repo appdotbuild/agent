@@ -192,6 +192,14 @@ async def get_agent_session(
     
     return active_agents[session_key]
 
+def _get_agent_state_by_messages(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Get the agent state from the messages"""
+    result = {}
+    if isinstance(message.get("message", {}).get("agent_state"), dict):
+            for key, value in message["message"]["agent_state"].items():
+                if hasattr(value, "to_dict"):
+                    result["message"]["agent_state"][key] = value.to_dict()
+    return result
 
 async def sse_event_generator(session: AgentSession, messages: List[str], agent_state: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
     """Generate SSE events for the agent session"""
@@ -203,7 +211,8 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
         initial_event = await run_in_threadpool(session.process_step)
         if initial_event:
             logger.info(f"Sending initial event for trace {session.trace_id}")
-            yield f"data: {json.dumps(initial_event.dict(by_alias=True))}\n\n"
+            event_dict = _get_agent_state_by_messages(initial_event.dict(by_alias=True))            
+            yield f"data: {json.dumps(event_dict)}\n\n"
         
         while True:
             logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
@@ -213,14 +222,16 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
                 final_event = await run_in_threadpool(session.process_step)
                 if final_event:
                     logger.info(f"Sending final event for trace {session.trace_id}")
-                    yield f"data: {json.dumps(final_event.dict(by_alias=True))}\n\n"
+                    event_dict = _get_agent_state_by_messages(final_event.dict(by_alias=True))                    
+                    yield f"data: {json.dumps(event_dict)}\n\n"
                 break
             
             logger.info(f"Processing next step for trace {session.trace_id}")
             event = await run_in_threadpool(session.process_step)
             if event:
                 logger.info(f"Sending event with status {event.status} for trace {session.trace_id}")
-                yield f"data: {json.dumps(event.dict(by_alias=True))}\n\n"
+                event_dict = _get_agent_state_by_messages(event.dict(by_alias=True))
+                yield f"data: {json.dumps(event_dict)}\n\n"
             
             if event and event.status == AgentStatus.IDLE:
                 logger.info(f"Agent is idle, stopping event stream for trace {session.trace_id}")
@@ -241,7 +252,8 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
             )
         )
         logger.error(f"Sending error event for trace {session.trace_id}")
-        yield f"data: {json.dumps(error_event.dict(by_alias=True))}\n\n"
+        error_dict = error_event.dict(by_alias=True)
+        yield f"data: {json.dumps(error_dict)}\n\n"
     finally:
         logger.info(f"Cleaning up session for trace {session.trace_id}")
         await run_in_threadpool(session.cleanup)
