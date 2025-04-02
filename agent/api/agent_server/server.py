@@ -1,7 +1,6 @@
+import asyncio
 import json
 import logging
-import asyncio
-import uuid
 from typing import Dict, List, Any, AsyncGenerator, Optional
 from contextlib import asynccontextmanager
 
@@ -10,9 +9,8 @@ from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from langfuse import Langfuse
 
-from application import Application, InteractionMode
+from api.fsm_tools import FSMToolProcessor, run_with_claude
 from compiler.core import Compiler
-from statemachine import StateMachine
 from fsm_core.llm_common import get_sync_client
 
 from .models import (
@@ -55,7 +53,7 @@ class AgentSession:
         self.settings = settings or {}
         self.is_running = False
         self.fsm_instance = None
-        self.app_instance = None
+        self.processor_instance = None
         self.langfuse_client = Langfuse()
         self.langfuse_trace = self.langfuse_client.trace(
             id=trace_id,
@@ -63,43 +61,39 @@ class AgentSession:
             user_id=chatbot_id,
             metadata={"agent_controlled": True},
         )
-        self.aws_client = get_sync_client()
+        self.llm_client = get_sync_client()
         self.compiler = Compiler("botbuild/tsp_compiler", "botbuild/app_schema")
         self._initialize_app()
 
         
     def _initialize_app(self):
         """Initialize the application instance"""
-
-        #TODO: Extract settings
-        
-        self.app_instance = Application(
-            client=self.aws_client,
-            compiler=self.compiler,
-            langfuse_client=self.langfuse_client,
-            interaction_mode=InteractionMode.INTERACTIVE
-        )
+        self.processor_instance = FSMToolProcessor()
+  
     
     def initialize_fsm(self, messages: List[str], agent_state: Optional[Dict[str, Any]] = None):
         """Initialize the FSM with messages and optional state"""
-        pass
+        
+        return self.processor_instance.tool_start_fsm(messages.join("\n"), agent_state)
+    
     
     def get_state(self) -> Dict[str, Any]:
         """Get the current FSM state"""
-        pass
-        
+        return self.processor_instance.fsm_manager.fsm_instance.context
+    
+            
     def process_step(self) -> Optional[AgentSseEvent]:
         """Process a single step and return an SSE event"""
-        if not self.fsm_instance:
+        if not self.processor_instance:
             return None
             
-        pass
-            
+        current_messages, is_complete = run_with_claude(self.processor_instance, self.llm_client, messages)
+          
        
     def cleanup(self):
         """Cleanup resources for this session"""
         #self.is_running = False
-        #self.fsm_instance = None
+        self.processor_instance = None
         pass
 
 
@@ -127,22 +121,22 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
         if initial_event:
             yield f"data: {json.dumps(initial_event.dict(by_alias=True))}\n\n"
         
-        #while True:
-            #should_continue = await run_in_threadpool(session.advance_fsm)
-            #if not should_continue:
-            #    final_event = await run_in_threadpool(session.process_step)
-            #    if final_event:
-            #        yield f"data: {json.dumps(final_event.dict(by_alias=True))}\n\n"
-            #    break
+        while True:
+            should_continue = await run_in_threadpool(session.advance_fsm)
+            if not should_continue:
+                final_event = await run_in_threadpool(session.process_step)
+                if final_event:
+                    yield f"data: {json.dumps(final_event.dict(by_alias=True))}\n\n"
+                break
             
-            #event = await run_in_threadpool(session.process_step)
-            #if event:
-            #    yield f"data: {json.dumps(event.dict(by_alias=True))}\n\n"
+            event = await run_in_threadpool(session.process_step)
+            if event:
+                yield f"data: {json.dumps(event.dict(by_alias=True))}\n\n"
             
-            #if event and event.status == AgentStatus.IDLE:
-            #    break
+            if event and event.status == AgentStatus.IDLE:
+                break
             
-            #await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
     except Exception as e:
         logger.error(f"Error in SSE generator: {str(e)}")
         error_event = AgentSseEvent(
