@@ -226,7 +226,7 @@ class FSMToolProcessor:
 
 
 def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
-                   messages: List[MessageParam]) -> Tuple[List[MessageParam], bool, ToolResult | None]:
+                   messages: List[MessageParam]) -> Tuple[MessageParam, bool, ToolResult | None]:
     """
     Send messages to Claude with FSM tool definitions and process tool use responses.
 
@@ -312,11 +312,10 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
             "role": "user",
             "content": f"Tool execution results:\n{'\n'.join(formatted_results)}\nPlease continue based on these results, addressing any failures or errors if they exist."
         }
-        return messages + [new_message], is_complete, final_tool_result
+        return new_message, is_complete, final_tool_result
     else:
         # No tools were used
-        return messages, is_complete, final_tool_result
-
+        return None, is_complete, final_tool_result
 
 def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
     """
@@ -375,11 +374,15 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
 
     # Main interaction loop
     while not is_complete:
-        current_messages, is_complete, final_tool_result = run_with_claude(
+        new_message, is_complete, final_tool_result = run_with_claude(
             processor,
             client,
             current_messages
         )
+        
+        logger.info(f"[Main] New message: {new_message}")
+        if new_message:
+            current_messages = current_messages + [new_message]
 
         # breaking for test purposes
         if len(current_messages) < 3 and "typespec_review" in current_messages[-1]["content"]:
