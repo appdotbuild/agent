@@ -26,7 +26,8 @@ async def test_message_endpoint(
     trace_id: Optional[str] = None,
     agent_state: Optional[Dict[str, Any]] = None,
     settings: Optional[Dict[str, Any]] = None,
-    verbose: bool = False
+    verbose: bool = False,
+    timeout: int = 60
 ):
     """Test the SSE /message endpoint."""
     if not chatbot_id:
@@ -52,64 +53,76 @@ async def test_message_endpoint(
     print("\nReceiving SSE events:")
     
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            server_url,
-            json=request_data,
-            headers={"Accept": "text/event-stream"}
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                print(f"Error {response.status}: {error_text}")
-                return None
-            
-            # Process SSE stream
-            buffer = ""
-            last_agent_state = None
-            
-            async for line in response.content:
-                line = line.decode('utf-8')
-                buffer += line
+        # Use a client timeout to avoid hanging indefinitely
+        client_timeout = aiohttp.ClientTimeout(total=timeout)
+        try:
+            async with session.post(
+                server_url,
+                json=request_data,
+                headers={"Accept": "text/event-stream"},
+                timeout=client_timeout
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    print(f"Error {response.status}: {error_text}")
+                    return None
                 
-                if buffer.endswith('\n\n'):
-                    # Process complete event
-                    event_data = None
-                    for part in buffer.split('\n'):
-                        if part.startswith('data: '):
-                            event_data = part[6:]  # Remove 'data: ' prefix
-                    
-                    if event_data:
-                        try:
-                            event_json = json.loads(event_data)
-                            print(f"Event received:")
+                # Process SSE stream
+                buffer = ""
+                last_agent_state = None
+                
+                try:
+                    async for line in response.content:
+                        line = line.decode('utf-8')
+                        buffer += line
+                        
+                        if buffer.endswith('\n\n'):
+                            # Process complete event
+                            event_data = None
+                            for part in buffer.split('\n'):
+                                if part.startswith('data: '):
+                                    event_data = part[6:]  # Remove 'data: ' prefix
                             
-                            if verbose:
-                                print(json.dumps(event_json, indent=2))
-                            else:
-                                # Print a simplified version
-                                status = event_json.get("status")
-                                kind = event_json.get("message", {}).get("kind")
-                                content = event_json.get("message", {}).get("content")
-                                if content and len(content) > 100:
-                                    content = content[:97] + "..."
-                                
-                                print(f"Status: {status}, Kind: {kind}")
-                                print(f"Content: {content}")
+                            if event_data:
+                                try:
+                                    event_json = json.loads(event_data)
+                                    print(f"Event received:")
+                                    
+                                    if verbose:
+                                        print(json.dumps(event_json, indent=2))
+                                    else:
+                                        # Print a simplified version
+                                        status = event_json.get("status")
+                                        kind = event_json.get("message", {}).get("kind")
+                                        content = event_json.get("message", {}).get("content")
+                                        if content and len(content) > 100:
+                                            content = content[:97] + "..."
+                                        
+                                        print(f"Status: {status}, Kind: {kind}")
+                                        print(f"Content: {content}")
+                                    
+                                    print("-" * 40)
+                                    
+                                    # Extract agent state for possible future requests
+                                    last_agent_state = event_json.get("message", {}).get("agent_state")
+                                    
+                                except json.JSONDecodeError:
+                                    print(f"Invalid JSON in event: {event_data}")
                             
-                            print("-" * 40)
-                            
-                            # Extract agent state for possible future requests
-                            last_agent_state = event_json.get("message", {}).get("agentState")
-                            
-                        except json.JSONDecodeError:
-                            print(f"Invalid JSON in event: {event_data}")
-                    
-                    buffer = ""
-            
-            return {
-                "chatbot_id": chatbot_id,
-                "trace_id": uuid.uuid4().hex,  # Generate new trace ID for continuation
-                "agent_state": last_agent_state
-            }
+                            buffer = ""
+                except asyncio.TimeoutError:
+                    print("Connection timed out while receiving events")
+                except Exception as e:
+                    print(f"Error receiving events: {str(e)}")
+                
+                return {
+                    "chatbot_id": chatbot_id,
+                    "trace_id": uuid.uuid4().hex,  # Generate new trace ID for continuation
+                    "agent_state": last_agent_state
+                }
+        except aiohttp.ClientError as e:
+            print(f"Connection error: {str(e)}")
+            return None
 
 async def interactive_session(server_url: str):
     """Run an interactive session with the Agent Server API."""
@@ -158,6 +171,7 @@ async def main():
     parser.add_argument("--max-iterations", type=int, default=3, help="Maximum iterations")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
+    parser.add_argument("--timeout", type=int, default=10, help="Timeout in seconds (default: 10)")
     
     args = parser.parse_args()
     
@@ -179,7 +193,8 @@ async def main():
             chatbot_id=args.chatbot_id,
             trace_id=args.trace_id,
             settings=settings,
-            verbose=args.verbose
+            verbose=args.verbose,
+            timeout=args.timeout
         )
 
 if __name__ == "__main__":
