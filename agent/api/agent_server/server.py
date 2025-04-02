@@ -87,6 +87,10 @@ class AgentSession:
     
     def get_state(self) -> Dict[str, Any]:
         """Get the current FSM state"""
+        
+        context = self.fsm_api.fsm_instance.context 
+        state = self.fsm_api.get_current_state
+        
         return self.processor_instance.fsm_manager.fsm_instance.context
     
             
@@ -94,26 +98,41 @@ class AgentSession:
         """Process a single step and return an SSE event"""
         if not self.processor_instance:
             return None
-            
-        new_message, is_complete = run_with_claude(self.processor_instance, self.llm_client, self.messages)
-        self.is_complete = is_complete
+        
+        try:
+            new_message, is_complete, _ = run_with_claude(self.processor_instance, self.llm_client, self.messages)
+            self.is_complete = is_complete
 
-        if new_message:
-            self.messages.append(new_message)
-            status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
+            if new_message:
+                self.messages.append(new_message)
+                status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
+                
+                return AgentSseEvent(
+                    status=status,
+                    trace_id=self.trace_id,
+                    message=AgentMessage(
+                        kind=MessageKind.STAGE_RESULT,
+                        content=new_message["content"],
+                        agent_state=self.get_state(),
+                        unified_diff=None
+                    )
+                )
             
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error in process_step: {str(e)}")
+            self.is_complete = True
             return AgentSseEvent(
-                status=status,
+                status=AgentStatus.IDLE,
                 trace_id=self.trace_id,
                 message=AgentMessage(
-                    kind=MessageKind.STAGE_RESULT,
-                    content=new_message["content"],
-                    agent_state=self.get_state(),
+                    kind=MessageKind.RUNTIME_ERROR,
+                    content=f"Error processing step: {str(e)}",
+                    agent_state=None,
                     unified_diff=None
                 )
             )
-        
-        return None
 
 
     def advance_fsm(self) -> bool:
@@ -177,6 +196,7 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
                 break
             
             await asyncio.sleep(0.1)
+            
     except Exception as e:
         logger.error(f"Error in SSE generator: {str(e)}")
         error_event = AgentSseEvent(
