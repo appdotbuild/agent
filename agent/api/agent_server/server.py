@@ -100,11 +100,8 @@ class AgentSession:
     def get_state(self) -> Dict[str, Any]:
         """Get the current FSM state"""
         try:
-            context = self.fsm_api.fsm_instance.context 
-            state = self.fsm_api.get_current_state
-            
             logger.debug(f"Getting state for trace {self.trace_id}")
-            return self.processor_instance.fsm_manager.fsm_instance.context
+            return self.fsm_api.get_full_external_state()
         except Exception as e:
             logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
             return {}
