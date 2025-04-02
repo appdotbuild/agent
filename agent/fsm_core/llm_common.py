@@ -1,4 +1,4 @@
-from typing import Union, TypeVar, Dict, Any, Optional, List, cast, Literal, Protocol
+from typing import Union, TypeVar, Dict, Any, Optional, List, cast, Literal, Protocol, TypedDict, NotRequired
 from anthropic.types import MessageParam, TextBlock, Message
 from anthropic import AnthropicBedrock, Anthropic, AsyncAnthropic, AsyncAnthropicBedrock
 from functools import partial
@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from google import genai
 from google.genai import types as genai_types
+import boto3
+from abc import abstractmethod
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,7 @@ CacheMode = Literal["off", "record", "replay"]
 
 GeminiModelType = Literal["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it"]
 AnthropicModelType = Literal["sonnet", "haiku"]
+DeepseekModelType = Literal["deepseek-r1"]
 BackendType = Literal["bedrock", "anthropic", "gemini"]
 
 
@@ -90,6 +93,10 @@ class LLMClient:
         if self._client is None:
             raise ValueError("Client not initialized")
         return getattr(self._client, name)
+
+    @abstractmethod
+    def async_create(self, *args, **kwargs):
+        raise NotImplementedError("async_create method must be implemented in subclass")
 
 
 class AnthropicClient(LLMClient):
@@ -418,16 +425,216 @@ class GeminiClient(LLMClient):
         return create_with_model_and_cache
 
 
+class DeepseekParams(TypedDict):
+    max_tokens: int
+    messages: List[Dict[str, Any]]
+    model: str
+    temperature: float
+    tools: NotRequired[List[Dict[str, Any]]]
+    tool_choice: NotRequired[Dict[str, Any]]
+
+
+class DeepseekClient(LLMClient):
+    """Client for Deepseek models on AWS Bedrock with caching support."""
+
+    def __init__(self,
+                 model_name: DeepseekModelType = "deepseek-r1",
+                 cache_mode: CacheMode = "off",
+                 cache_path: str = "deepseek_cache.json",
+                 client_params: dict = {}):
+        super().__init__("bedrock", model_name, cache_mode, cache_path, client_params=client_params)
+
+        # Initialize the Bedrock client
+        region_name = os.getenv("AWS_REGION", "us-west-2")
+        self._client = boto3.client("bedrock-runtime", region_name=region_name, **(client_params or {}))
+
+        # Map friendly model names to actual model identifiers - must match exact model ID
+        self.models_map = {
+            "deepseek-r1": "us.deepseek.r1-v1:0"
+        }
+
+        # Set the model name based on the mapping
+        if self.short_model_name in self.models_map:
+            self.model_name = self.models_map[self.short_model_name]
+        else:
+            # If not in mapping, assume it's a direct model identifier
+            self.model_name = self.short_model_name
+
+
+    @property
+    def messages(self):
+        """Access the messages property with customized create method."""
+        class Messages:
+            def __init__(self, parent):
+                self.parent = parent
+
+            def create(self, **kwargs):
+                # Use the model ID from kwargs if provided, otherwise use the default from parent
+                model_id = kwargs.get("model", self.parent.model_name)
+
+                # Handle different cache modes
+                match self.parent.cache_mode:
+                    case "off":
+                        return self._invoke_model(model_id, **kwargs)
+                    case "replay":
+                        cache_key = self.parent._get_cache_key(**kwargs)
+                        if cache_key in self.parent._cache:
+                            logger.info(f"Cache hit: {cache_key}")
+                            cached_response = self.parent._cache[cache_key]
+
+                            # Check if we need to reconstruct an object
+                            if isinstance(cached_response, dict) and "type" in cached_response:
+                                # This is likely a serialized response
+                                try:
+                                    # Try to reconstruct the Message object
+                                    if cached_response.get("type") == "message":
+                                        return Message.model_validate(cached_response)
+                                except (ImportError, ValueError):
+                                    logger.warning("failed to reconstruct response object, returning raw cache")
+                            return cached_response
+                        else:
+                            raise ValueError(
+                                "No cached response found for this request in replay mode. "
+                                "Run in record mode first to populate the cache."
+                            )
+                    case "record":
+                        response = self._invoke_model(model_id, **kwargs)
+                        cache_key = self.parent._get_cache_key(**kwargs)
+                        logger.info(f"Caching response with key: {cache_key}")
+                        serialized_response = response.to_dict() if hasattr(response, "to_dict") else response
+                        self.parent._cache[cache_key] = serialized_response
+                        self.parent._save_cache()
+                        return response
+
+            def _invoke_model(self, model_id, **kwargs):
+                # Format messages in Deepseek's expected format
+                messages = kwargs.get("messages", [])
+
+                # Create Deepseek-compatible request for Bedrock
+                request_body = {
+                    "prompt": self._format_messages(messages),
+                    "max_tokens": kwargs.get("max_tokens", 512),
+                    "temperature": kwargs.get("temperature", 0.7),
+                    "top_p": kwargs.get("top_p", 0.9)
+                }
+
+                # Handle stop sequences if present (optional)
+                if "stop" in kwargs:
+                    request_body["stop"] = kwargs.get("stop", [])
+
+                # Convert to JSON for the Bedrock invoke_model API
+                body = json.dumps(request_body)
+
+                try:
+                    # Remove debugging breakpoint that might be causing issues
+                    response = self.parent._client.invoke_model(
+                        modelId=model_id,
+                        contentType="application/json",
+                        accept="application/json",
+                        body=body.encode("utf-8")
+                    )
+                except Exception as e:
+                    logger.exception(f"error invoking deepseek model {model_id}")
+                    raise
+
+                response_body = response["body"].read()
+                response_json = json.loads(response_body.decode("utf-8"))
+
+                # Extract text from the Deepseek response format
+                response_text = ""
+                if "choices" in response_json and len(response_json["choices"]) > 0:
+                    response_text = response_json["choices"][0].get("text", "")
+
+                # Get stop reason - map to valid Anthropic stop reasons
+                stop_reason = "end_turn"  # Default valid value
+                if "choices" in response_json and len(response_json["choices"]) > 0:
+                    deepseek_stop = response_json["choices"][0].get("stop_reason")
+                    if deepseek_stop == "length":
+                        stop_reason = "max_tokens"  # Anthropic uses max_tokens, not length
+
+                # Estimate token count based on characters (rough approximation)
+                input_chars = len(self._format_messages(messages))
+                output_chars = len(response_text) if response_text else 0
+
+                # Very rough estimate: ~4 characters per token on average
+                est_input_tokens = max(1, input_chars // 4)
+                est_output_tokens = max(1, output_chars // 4)
+
+                # Format response to match Anthropic's format for compatibility
+                formatted_response = {
+                    "id": f"deepseek-{hashlib.md5(str(response_json).encode()).hexdigest()}",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": response_text}],
+                    "model": model_id,
+                    "stop_reason": stop_reason,
+                    "usage": {
+                        "input_tokens": est_input_tokens,
+                        "output_tokens": est_output_tokens
+                    }
+                }
+
+                return Message.model_validate(formatted_response)
+
+            def _format_messages(self, messages):
+                """Convert messages to Deepseek's expected format for Bedrock."""
+                # Follow the format shown in AWS documentation for Deepseek
+                conversation = "<｜begin▁of▁sentence｜>"
+                for message in messages:
+                    role = message.get("role", "user")
+
+                    # Extract content
+                    content = message.get("content", "")
+                    if isinstance(content, list):
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                        content = " ".join(text_parts)
+
+                    # Format based on role using Deepseek's specific format
+                    if role == "user":
+                        conversation += f"<｜User｜>{content}"
+                    elif role == "assistant":
+                        conversation += f"<｜Assistant｜>{content}"
+
+                # Add the final tag for the assistant to respond
+                if not conversation.endswith("<｜Assistant｜>"):
+                    conversation += "<｜Assistant｜>"
+
+                # Add the thinking instruction as shown in AWS example
+                conversation += "<think>\n"
+
+                return conversation
+
+            def _format_tools(self, tools):
+                """
+                Convert tools to Deepseek's format.
+                Note: DeepSeek R1 on Bedrock doesn't support tools in the standard format.
+                This method is kept for future compatibility.
+                """
+                # Tool calling is not supported in the current DeepSeek R1 version on Bedrock
+                # This is maintained for future compatibility when tool support is added
+                logger.warning("Tool calling is not supported by DeepSeek on Bedrock in this version")
+                return []
+
+        return Messages(self)
+
+    def async_create(self, **kwargs):
+        raise NotImplementedError("boto3 does not support async methods")
+
+
 def get_sync_client(
-    backend: Literal["bedrock", "anthropic", "gemini"] = "bedrock",
-    model_name: Literal["sonnet", "haiku", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it"] = "sonnet",
+    backend: BackendType = "bedrock",
+    model_name: Literal["sonnet", "haiku", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it", "deepseek-r1"] = "sonnet",
     cache_mode: CacheMode = "off",
     cache_path: str = os.path.join(os.path.dirname(__file__), "../../anthropic_cache.json"),
     api_key: str | None = None,
-    client_params: dict = None
+    client_params: dict = None,
+    region_name: str = "us-east-1"
 ) -> LLMClient:
-    match backend:
-        case "bedrock" | "anthropic":
+    match backend, model_name:
+        case "bedrock" | "anthropic", "sonnet" | "haiku":
             return AnthropicClient(
                 backend=backend,
                 model_name=model_name,
@@ -435,7 +642,14 @@ def get_sync_client(
                 cache_path=cache_path,
                 client_params=client_params
             )
-        case "gemini":
+        case "bedrock", "deepseek-r1":
+            return DeepseekClient(
+                model_name=model_name,
+                cache_mode=cache_mode,
+                cache_path=cache_path,
+                client_params=client_params
+            )
+        case "gemini", _:
             gemini_cache_path = os.path.join(os.path.dirname(cache_path), "gemini_cache.json")
             return GeminiClient(
                 model_name=model_name,
