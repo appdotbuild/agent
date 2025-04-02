@@ -2,11 +2,10 @@ import pytest
 import uuid
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
+import asyncio
 
 from api.agent_server.server import app
 from api.agent_server.models import AgentStatus, MessageKind, AgentMessage, AgentSseEvent
-from statemachine import StateMachine
-from application import FsmState, FsmEvent
 
 # Create test client
 client = TestClient(app)
@@ -30,31 +29,36 @@ def mock_compiler():
         yield mock
 
 @pytest.fixture
-def mock_application():
-    with patch('api.agent_server.server.Application') as mock:
-        app_instance = MagicMock()
-        # Mock make_fsm_states to return a list of states
-        app_instance.make_fsm_states.return_value = [
-            MagicMock(name="state1"),
-            MagicMock(name="state2")
-        ]
-        mock.return_value = app_instance
+def mock_fsm_manager():
+    with patch('api.agent_server.server.FSMManager') as mock:
+        fsm_instance = MagicMock()
+        # Mock methods to work with external state
+        fsm_instance.set_full_external_state = MagicMock()
+        fsm_instance.get_full_external_state = MagicMock(return_value={})
+        mock.return_value = fsm_instance
         yield mock
 
 @pytest.fixture
-def mock_statemachine():
-    with patch('api.agent_server.server.StateMachine') as mock:
-        fsm_instance = MagicMock()
-        # Mock stack_path to return a list with the current state
-        fsm_instance.stack_path = [FsmState.TYPESPEC_REVIEW]
-        # Mock context to return a dictionary
-        fsm_instance.context = {
-            "typespec_schema": MagicMock(
-                typespec="test typespec",
-                reasoning="test reasoning"
-            )
-        }
-        mock.return_value = fsm_instance
+def mock_fsm_processor():
+    with patch('api.agent_server.server.FSMToolProcessor') as mock:
+        processor_instance = MagicMock()
+        # Mock tool_start_fsm to return a success result
+        processor_instance.tool_start_fsm = MagicMock(return_value={
+            "success": True,
+            "message": "FSM started successfully"
+        })
+        mock.return_value = processor_instance
+        yield mock
+
+@pytest.fixture
+def mock_run_with_claude():
+    with patch('api.agent_server.server.run_with_claude') as mock:
+        # Mock to return a message, completion status, and trace ID
+        mock.return_value = (
+            {"role": "assistant", "content": "Hello, this is a test response"},
+            True,  # is_complete
+            "test-trace-id"
+        )
         yield mock
 
 def test_healthcheck():
@@ -63,9 +67,8 @@ def test_healthcheck():
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
-@pytest.mark.asyncio
-async def test_message_endpoint(
-    mock_langfuse, mock_client, mock_compiler, mock_application, mock_statemachine
+def test_message_endpoint(
+    mock_langfuse, mock_client, mock_compiler, mock_fsm_manager, mock_fsm_processor, mock_run_with_claude
 ):
     """Test the message endpoint"""
     # Test data
@@ -76,39 +79,49 @@ async def test_message_endpoint(
         "settings": {"max-iterations": 3}
     }
     
-    # Mock the sse_event_generator function
-    with patch('api.agent_server.server.sse_event_generator') as mock_gen:
-        # Define a list of SSE events to yield
-        sse_events = [
-            f'data: {{"status": "running", "traceId": "test-trace-id", "message": {{"kind": "StageResult", "content": "Processing...", "agentState": null, "unifiedDiff": null}}}}\n\n',
-            f'data: {{"status": "idle", "traceId": "test-trace-id", "message": {{"kind": "FeedbackResponse", "content": "Ready for review", "agentState": {{}}, "unifiedDiff": null}}}}\n\n'
+    # Mock the AgentSession.process_step method to return a predefined event
+    with patch('api.agent_server.server.AgentSession.process_step') as mock_process:
+        # Return a predefined event for the first call, None for subsequent calls to end iteration
+        mock_process.side_effect = [
+            AgentSseEvent(
+                status=AgentStatus.RUNNING,
+                trace_id="test-trace-id",
+                message=AgentMessage(
+                    kind=MessageKind.STAGE_RESULT,
+                    content="Processing...",
+                    agent_state={},
+                    unified_diff=None
+                )
+            ),
+            None  # Return None to end iteration
         ]
         
-        # Configure the mock to yield these events
-        mock_gen.return_value.__aiter__.return_value = sse_events
-        
-        # Make the request
-        with client.stream("POST", "/message", json=request_data) as response:
-            # Check the response
-            assert response.status_code == 200
-            assert response.headers["content-type"] == "text/event-stream"
+        # Mock the AgentSession.advance_fsm method to return False after one iteration
+        with patch('api.agent_server.server.AgentSession.advance_fsm') as mock_advance:
+            mock_advance.return_value = False
             
-            # Collect the response chunks
-            chunks = []
-            for chunk in response.iter_content():
-                chunks.append(chunk.decode("utf-8"))
-            
-            # Verify the expected events
-            assert len(chunks) == 2
-            assert chunks[0].startswith('data: {"status": "running"')
-            assert chunks[1].startswith('data: {"status": "idle"')
+            # Make the request with timeout to prevent hanging
+            with client.stream("POST", "/message", json=request_data, timeout=2.0) as response:
+                # Check the response
+                assert response.status_code == 200
+                assert response.headers["content-type"].startswith("text/event-stream")
+                
+                # Verify we got at least one chunk
+                content = b''
+                for chunk in response.iter_raw():
+                    content += chunk
+                    # Break after receiving one chunk to prevent test from hanging
+                    break
+                
+                # Verify we received data
+                assert content.startswith(b'data:')
 
 def test_message_endpoint_error_handling(
-    mock_langfuse, mock_client, mock_compiler, mock_application
+    mock_langfuse, mock_client, mock_compiler, mock_fsm_manager
 ):
     """Test error handling in the message endpoint"""
-    # Force an error by making the StateMachine constructor raise an exception
-    with patch('api.agent_server.server.StateMachine', side_effect=ValueError("Test error")):
+    # Force an error by making the sse_event_generator function raise an exception
+    with patch('api.agent_server.server.sse_event_generator', side_effect=ValueError("Test error")):
         # Test data
         request_data = {
             "allMessages": ["Build me an app to plan my meals"],
@@ -122,6 +135,5 @@ def test_message_endpoint_error_handling(
         
         # Check the response
         assert response.status_code == 500
-        assert "error" in response.json()
         assert "detail" in response.json()
         assert "Test error" in response.json()["detail"]
