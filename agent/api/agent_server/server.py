@@ -77,10 +77,12 @@ class AgentSession:
     
     def initialize_fsm(self, messages: List[str], agent_state: Optional[Dict[str, Any]] = None):
         """Initialize the FSM with messages and optional state"""
+        
+        self.fsm_api.set_full_external_state(agent_state)
+
+        #TODO: Avoid merging messages with the app description
         app_description = "\n".join(messages)
         self.messages = [{"role": "user", "content": app_description}]
-        
-        # TODO: init agent state via tool call
         result = self.processor_instance.tool_start_fsm(app_description)
         return result
     

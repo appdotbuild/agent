@@ -36,6 +36,28 @@ class FSMManager:
         self.trace_id = None
         self.app_instance = None
 
+    def get_full_external_state(self) -> Dict[str, Any]:
+        """
+        Get the full external state of the FSM for the external API
+        """
+        return {
+            "state": self._get_current_state(),
+            "context": self.fsm_instance.context,
+            "actions": self._get_available_actions()
+        }
+
+
+    def set_full_external_state(self, state: Dict[str, Any]):
+        """
+        Set full external state from external API
+        Theoretically, this should be the same as the internal state
+        But in case of blue-green deployment, the external state might be different from the internal state
+        So here we may need to try to restore from previous schema
+        """
+        self.fsm_instance.context = state["context"]
+        self.fsm_instance.state_stack = state["state"]
+        
+
     def _get_current_state(self) -> FsmState:
         return self.app_instance.get_effective_state(self.fsm_instance)
 
