@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from langfuse import Langfuse
 
 from api.fsm_tools import FSMToolProcessor, run_with_claude
+from api.fsm_api import FSMManager
 from compiler.core import Compiler
 from fsm_core.llm_common import get_sync_client
 
@@ -52,6 +53,7 @@ class AgentSession:
         self.trace_id = trace_id
         self.settings = settings or {}
         self.is_running = False
+        self.is_complete = False
         self.fsm_instance = None
         self.processor_instance = None
         self.langfuse_client = Langfuse()
@@ -68,7 +70,8 @@ class AgentSession:
         
     def _initialize_app(self):
         """Initialize the application instance"""
-        self.processor_instance = FSMToolProcessor()
+        self.fsm_api = FSMManager()
+        self.processor_instance = FSMToolProcessor(self.fsm_api)
         self.messages = []
     
     
@@ -94,9 +97,9 @@ class AgentSession:
             
         new_message, is_complete = run_with_claude(self.processor_instance, self.llm_client, self.messages)
         self.is_complete = is_complete
-          
+
         if new_message:
-            self.messages = self.messages + [new_message]
+            self.messages.append(new_message)
             status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
             
             return AgentSseEvent(
@@ -111,12 +114,27 @@ class AgentSession:
             )
         
         return None
-       
+
+
+    def advance_fsm(self) -> bool:
+        """
+        Advance the FSM state. Returns True if more steps are needed,
+        False if the FSM is complete or has reached a terminal state.
+        """
+        if self.is_complete:
+            return False
+            
+        if not self.processor_instance:
+            return False
+            
+        return True
+
+        
     def cleanup(self):
         """Cleanup resources for this session"""
-        #self.is_running = False
         self.processor_instance = None
-        pass
+        self.fsm_api = None
+        self.messages = []
 
 
 async def get_agent_session(
@@ -163,12 +181,12 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
         logger.error(f"Error in SSE generator: {str(e)}")
         error_event = AgentSseEvent(
             status=AgentStatus.IDLE,
-            traceId=session.trace_id,
+            trace_id=session.trace_id,
             message=AgentMessage(
                 kind=MessageKind.RUNTIME_ERROR,
                 content=f"Error processing request: {str(e)}",
-                agentState=None,
-                unifiedDiff=None
+                agent_state=None,
+                unified_diff=None
             )
         )
         yield f"data: {json.dumps(error_event.dict(by_alias=True))}\n\n"
