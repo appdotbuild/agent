@@ -397,6 +397,10 @@ class GeminiClient(LLMClient):
                     )
                     anthropic_response = self._build_anthropic_response(response, kwargs["model"])
                     cache_key = self._get_cache_key(**kwargs)
+
+                    if cache_key in self._cache:
+                        return Message.model_validate(anthropic_response)
+
                     logger.info(f"Caching response with key: {cache_key}")
                     self._cache[cache_key] = anthropic_response
                     self._save_cache()
