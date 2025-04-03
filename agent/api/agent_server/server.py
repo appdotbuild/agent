@@ -3,12 +3,16 @@ import json
 import logging
 from typing import Dict, List, Any, AsyncGenerator, Optional
 from contextlib import asynccontextmanager
+import tempfile
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from langfuse import Langfuse
 
+from core.interpolator import Interpolator
 from api.fsm_tools import FSMToolProcessor, run_with_claude
 from api.fsm_api import FSMManager
 from compiler.core import Compiler
@@ -23,7 +27,6 @@ from .models import (
     AgentStatus, 
     MessageKind,
     ErrorResponse,
-    parse_conversation_message
 )
 
 logger = logging.getLogger(__name__)
@@ -111,7 +114,14 @@ class AgentSession:
             logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
             return {}
     
-            
+    def bake_app_diff(self, app_out: Dict[str, Any]) -> str:
+        """Bake the app diff"""
+        interpolator = Interpolator()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            patch_on_template = interpolator.bake(app_out, temp_dir)
+            logger.info(f"Baked app successfully into {temp_dir}")
+            return patch_on_template
+    
     def process_step(self) -> Optional[AgentSseEvent]:
         """Process a single step and return an SSE event"""
         if not self.processor_instance:
@@ -120,26 +130,34 @@ class AgentSession:
         
         try:
             logger.info(f"Processing step for trace {self.trace_id}")
-            new_message, is_complete, _ = run_with_claude(self.processor_instance, self.llm_client, self.messages)
+            new_message, is_complete, final_tool_result = run_with_claude(self.processor_instance, self.llm_client, self.messages)
             self.is_complete = is_complete
 
-            if new_message:
-                self.messages.append(new_message)
+            if final_tool_result or new_message:
                 status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
-                logger.info(f"Step completed for trace {self.trace_id}. Status: {status}")
+
+                if new_message:
+                    self.messages.append(new_message)
                 
+                app_diff = None
+                if final_tool_result:
+                    logger.info(f"Final tool result for trace {self.trace_id}: {final_tool_result}")
+                    app_diff = self.bake_app_diff(final_tool_result.data["application_out"])
+                    logger.info(f"App diff for trace {self.trace_id}: {app_diff}")
+
+                # maybe we need to have 2 different messages instead: on message and on complete
                 return AgentSseEvent(
                     status=status,
                     traceId=self.trace_id,
                     message=AgentMessage(
                         role="agent",
                         kind=MessageKind.STAGE_RESULT,
-                        content=new_message["content"],
+                        content=new_message["content"] if new_message else final_tool_result, 
                         agent_state=self.get_state(),
-                        unified_diff=None
+                        unified_diff=app_diff
                     )
                 )
-            
+                
             logger.info(f"No new message generated for trace {self.trace_id}")
             return None
             
@@ -165,7 +183,7 @@ class AgentSession:
         False if the FSM is complete or has reached a terminal state.
         """
         if self.is_complete:
-            logger.info(f"FSM is already complete for trace {self.trace_id}")
+            logger.info(f"FSM is already complete for trace {self.trace_id}")    
             return False
             
         if not self.processor_instance:

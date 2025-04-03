@@ -1,3 +1,4 @@
+from asyncio import subprocess
 import os
 import jinja2
 from shutil import copytree, ignore_patterns
@@ -55,11 +56,21 @@ class Interpolator:
         self.root_dir = root_dir
         self.environment = jinja2.Environment()
 
-    def bake(self, application: ApplicationOut, output_dir: str, overwrite: bool = False):
+    def bake(self, application: ApplicationOut, output_dir: str, overwrite: bool = False) -> str:
         """
         Bake the application into the output directory.
         The template directory is copied to the output directory overwriting existing files.
+        Returns the diff of the application as a string relative to the application template.
         """
+        # we for now rely on git installed on the machine to generate the diff        
+        # Initialize git repository in the output directory if it doesn't exist
+        logger.info(f"Initializing git repository in {output_dir}")
+        subprocess.run(["git", "init"], cwd=output_dir, check=True)
+        
+        # Create initial commit if this is a new repository
+        subprocess.run(["git", "add", "."], cwd=output_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit of the template"], cwd=output_dir, check=True)
+        
         template_dir = os.path.join(self.root_dir, "templates")
         if not overwrite: # if overwrite is False, we are creating a new application, otherwise no need to update the template
             copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True)
@@ -106,3 +117,22 @@ class Interpolator:
         for name, handler_test in application.handler_tests.items():
             with open(os.path.join(output_dir, "app_schema", "src", "tests", "handlers", f"{name}.test.ts"), "w") as f:
                 f.write(handler_test.content)
+
+        # Add all local changes to git
+        try:
+            logger.info(f"Adding all changes to git in {output_dir}")
+            subprocess.run(["git", "add", "."], cwd=output_dir, check=True)
+            commit_message = "Update application files"
+            subprocess.run(["git", "commit", "-m", commit_message], cwd=output_dir, check=True)
+            logger.info(f"Successfully committed changes with message: '{commit_message}'")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to commit changes to git: {str(e)}")
+        except Exception as e:
+            logger.exception(f"Unexpected error when committing to git: {str(e)}")
+
+        # Generate unified diff using git
+        diff_command = ["git", "diff", "--cached", "--unified=0"]
+        diff_result = subprocess.run(diff_command, cwd=output_dir, capture_output=True, text=True)
+        
+        # Return the diff as a string
+        return diff_result.stdout
