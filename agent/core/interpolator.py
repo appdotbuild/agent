@@ -125,14 +125,13 @@ class Interpolator:
             commit_message = "Update application files"
             subprocess.run(["git", "commit", "-m", commit_message], cwd=output_dir, check=True)
             logger.info(f"Successfully committed changes with message: '{commit_message}'")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to commit changes to git: {str(e)}")
         except Exception as e:
             logger.exception(f"Unexpected error when committing to git: {str(e)}")
 
         # Generate unified diff using git
         diff_command = ["git", "diff", "--cached", "--unified=0"]
         diff_result = subprocess.run(diff_command, cwd=output_dir, capture_output=True, text=True)
-        
-        # Return the diff as a string
-        return diff_result.stdout
+        diff_string = diff_result.stdout
+        logger.info(f"Diff result: {diff_string}")
+
+        return diff_string
