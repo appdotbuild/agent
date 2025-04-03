@@ -1,5 +1,5 @@
-from asyncio import subprocess
 import os
+import subprocess
 import jinja2
 from shutil import copytree, ignore_patterns
 from capabilities import all_custom_tools
@@ -66,14 +66,14 @@ class Interpolator:
         # Initialize git repository in the output directory if it doesn't exist
         logger.info(f"Initializing git repository in {output_dir}")
         subprocess.run(["git", "init"], cwd=output_dir, check=True)
-        
-        # Create initial commit if this is a new repository
-        subprocess.run(["git", "add", "."], cwd=output_dir, check=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit of the template"], cwd=output_dir, check=True)
-        
+      
         template_dir = os.path.join(self.root_dir, "templates")
         if not overwrite: # if overwrite is False, we are creating a new application, otherwise no need to update the template
             copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True)
+
+        # Create initial commit if this is a new repository
+        subprocess.run(["git", "add", "."], cwd=output_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit of the template"], cwd=output_dir, check=True)
 
         # TODO: optimize overwriting some files below of user wants to update only some handlers / capabilities / etc
         with open(os.path.join(output_dir, "tsp_schema", "main.tsp"), "a") as f:
@@ -129,7 +129,7 @@ class Interpolator:
             logger.exception(f"Unexpected error when committing to git: {str(e)}")
 
         # Generate unified diff using git
-        diff_command = ["git", "diff", "--cached", "--unified=0"]
+        diff_command = ["git", "diff", "HEAD~1", "HEAD", "--unified=0"]
         diff_result = subprocess.run(diff_command, cwd=output_dir, capture_output=True, text=True)
         diff_string = diff_result.stdout
         logger.info(f"Diff result: {diff_string}")
