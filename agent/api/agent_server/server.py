@@ -22,7 +22,8 @@ from .models import (
     ConversationMessage,
     AgentStatus, 
     MessageKind,
-    ErrorResponse
+    ErrorResponse,
+    parse_conversation_message
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ class AgentSession:
     def _initialize_app(self):
         """Initialize the application instance"""
         logger.info(f"Initializing application for trace {self.trace_id}")
+        logger.debug(f"DEBUG: Agent session trace_id = {self.trace_id}")
         self.fsm_api = FSMManager()
         self.processor_instance = FSMToolProcessor(self.fsm_api)
         self.messages = []
@@ -128,7 +130,7 @@ class AgentSession:
                 
                 return AgentSseEvent(
                     status=status,
-                    trace_id=self.trace_id,
+                    traceId=self.trace_id,
                     message=AgentMessage(
                         role="agent",
                         kind=MessageKind.STAGE_RESULT,
@@ -146,7 +148,7 @@ class AgentSession:
             self.is_complete = True
             return AgentSseEvent(
                 status=AgentStatus.IDLE,
-                trace_id=self.trace_id,
+                traceId=self.trace_id,
                 message=AgentMessage(
                     role="agent",
                     kind=MessageKind.RUNTIME_ERROR,
@@ -197,23 +199,6 @@ async def get_agent_session(
     
     return active_agents[session_key]
 
-def _get_agent_state_by_messages(message: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Get the agent state from the messages and ensure all required fields are present.
-    Pydantic validation requires the traceId field to be present in the JSON output.
-    """
-    result = message.copy()  # Create a copy to avoid modifying the original
-    result["traceId"] = message.trace_id
-    if isinstance(message.get("message", {}).get("agentState"), dict):
-        if "message" not in result:
-            result["message"] = {}
-        if "agentState" not in result["message"]:
-            result["message"]["agentState"] = {}
-        for key, value in message["message"]["agentState"].items():
-            if hasattr(value, "to_dict"):
-                result["message"]["agentState"][key] = value.to_dict()
-    return result
-
 async def sse_event_generator(session: AgentSession, messages: List[ConversationMessage], agent_state: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
     """Generate SSE events for the agent session"""
     try:
@@ -224,9 +209,7 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
         initial_event = await run_in_threadpool(session.process_step)
         if initial_event:
             logger.info(f"Sending initial event for trace {session.trace_id}")
-            event_dict = initial_event.dict(by_alias=True)
-            agent_state = _get_agent_state_by_messages(event_dict)            
-            yield f"data: {json.dumps(agent_state)}\n\n"
+            yield f"data: {initial_event.to_json()}\n\n"
         
         while True:
             logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
@@ -236,18 +219,14 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
                 final_event = await run_in_threadpool(session.process_step)
                 if final_event:
                     logger.info(f"Sending final event for trace {session.trace_id}")
-                    event_dict = final_event.dict(by_alias=True)
-                    agent_state = _get_agent_state_by_messages(event_dict)                    
-                    yield f"data: {json.dumps(agent_state)}\n\n"
+                    yield f"data: {final_event.to_json()}\n\n"
                 break
             
             logger.info(f"Processing next step for trace {session.trace_id}")
             event = await run_in_threadpool(session.process_step)
             if event:
                 logger.info(f"Sending event with status {event.status} for trace {session.trace_id}")
-                event_dict = event.dict(by_alias=True)
-                agent_state = _get_agent_state_by_messages(event_dict)
-                yield f"data: {json.dumps(agent_state)}\n\n"
+                yield f"data: {event.to_json()}\n\n"
             
             if event and event.status == AgentStatus.IDLE:
                 logger.info(f"Agent is idle, stopping event stream for trace {session.trace_id}")
@@ -257,9 +236,10 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
             
     except Exception as e:
         logger.error(f"Error in SSE generator: {str(e)}")
+        logger.debug(f"Creating error event with trace_id: {session.trace_id}")
         error_event = AgentSseEvent(
             status=AgentStatus.IDLE,
-            trace_id=session.trace_id,
+            traceId=session.trace_id,
             message=AgentMessage(
                 role="agent",
                 kind=MessageKind.RUNTIME_ERROR,
@@ -269,8 +249,7 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
             )
         )
         logger.error(f"Sending error event for trace {session.trace_id}")
-        error_dict = error_event.dict(by_alias=True)
-        yield f"data: {json.dumps(error_dict)}\n\n"
+        yield f"data: {error_event.to_json()}\n\n"
     finally:
         logger.info(f"Cleaning up session for trace {session.trace_id}")
         await run_in_threadpool(session.cleanup)
@@ -288,6 +267,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
         logger.info(f"Received message request for chatbot {request.chatbot_id}, trace {request.trace_id}")
         logger.debug(f"Request settings: {request.settings}")
         logger.debug(f"Number of messages: {len(request.all_messages)}")
+        logger.debug(f"Request as JSON: {request.to_json()}")
         
         session = await get_agent_session(
             request.chatbot_id, 
@@ -306,9 +286,13 @@ async def message(request: AgentRequest) -> StreamingResponse:
         )
     except Exception as e:
         logger.error(f"Error processing message request: {str(e)}")
+        error_response = ErrorResponse(
+            error="Internal Server Error",
+            details=str(e)
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing request: {str(e)}"
+            detail=error_response.to_json()
         )
 
 
