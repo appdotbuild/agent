@@ -234,8 +234,9 @@ class GeminiClient(LLMClient):
                  cache_mode: CacheMode = "off",
                  cache_path: str = "gemini_cache.json",
                  api_key: str | None = None,
-                 client_params: dict = {}
+                 client_params: dict = {},
                  ):
+        self.use_search = (client_params or {}).pop("use_search", False)
         super().__init__("gemini", model_name, cache_mode, cache_path, client_params=client_params)
 
         # Initialize the Gemini client
@@ -259,8 +260,6 @@ class GeminiClient(LLMClient):
         else:
             # If not in mapping, assume it's a direct model identifier
             self.model_name = self.short_model_name
-
-
 
     def _convert_message(self, message: dict) -> genai_types.Content:
         match message.get("role", "user"):
@@ -329,6 +328,9 @@ class GeminiClient(LLMClient):
                         max_output_tokens=kwargs.get("max_tokens", 1024),
                         temperature=kwargs.get("temperature", 1.0),
                         response_mime_type="text/plain",
+                        tools=[
+                            genai_types.Tool(google_search=genai_types.GoogleSearch())
+                        ] if self.use_search else None,
                     )
                     response = self._client.models.generate_content(
                         model=kwargs["model"],
