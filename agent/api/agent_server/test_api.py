@@ -97,8 +97,8 @@ async def test_message_endpoint(
                                         status = event_json.get("status")
                                         kind = event_json.get("message", {}).get("kind")
                                         content = event_json.get("message", {}).get("content")
-                                        if content and len(content) > 100:
-                                            content = content[:97] + "..."
+                                        if content and len(content) > 1000:
+                                            content = content[:997] + "..."
                                         
                                         print(f"Status: {status}, Kind: {kind}")
                                         print(f"Content: {content}")
