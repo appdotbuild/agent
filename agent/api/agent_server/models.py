@@ -1,6 +1,10 @@
 from enum import Enum
-from typing import Dict, List, Optional, Any, Union, Literal
+import json
+from typing import Dict, List, Optional, Any, Union, Literal, Type, TypeVar
 from pydantic import BaseModel, Field
+
+
+T = TypeVar('T', bound='BaseModel')
 
 
 class AgentStatus(str, Enum):
@@ -20,6 +24,15 @@ class UserMessage(BaseModel):
     """Represents a message from the user to the agent."""
     role: Literal["user"] = Field("user", description="Fixed field for client to detect user message in the history")
     content: str = Field(..., description="The content of the user's message.")
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
 
 class AgentMessage(BaseModel):
@@ -37,9 +50,29 @@ class AgentMessage(BaseModel):
         alias="unifiedDiff", 
         description="A unified diff format string representing code changes made by the agent."
     )
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
 
 ConversationMessage = Union[UserMessage, AgentMessage]
+
+
+def parse_conversation_message(json_str: str) -> ConversationMessage:
+    """Parse a JSON string into the appropriate ConversationMessage type."""
+    data = json.loads(json_str)
+    if data.get("role") == "user":
+        return UserMessage.model_validate(data)
+    elif data.get("role") == "agent":
+        return AgentMessage.model_validate(data)
+    else:
+        raise ValueError(f"Unknown role in message: {data.get('role')}")
 
 
 class AgentSseEvent(BaseModel):
@@ -47,6 +80,15 @@ class AgentSseEvent(BaseModel):
     status: AgentStatus = Field(..., description="Current status of the agent (running or idle).")
     trace_id: str = Field(..., alias="traceId", description="The trace ID corresponding to the POST request.")
     message: AgentMessage = Field(..., description="The detailed message payload from the agent.")
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
 
 class AgentRequest(BaseModel):
@@ -63,9 +105,27 @@ class AgentRequest(BaseModel):
         None, 
         description="Settings for the agent execution, such as maximum number of iterations."
     )
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
 
 class ErrorResponse(BaseModel):
     """Error response model."""
     error: str
     details: Optional[str] = None
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json()
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
