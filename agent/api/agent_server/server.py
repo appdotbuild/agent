@@ -198,8 +198,12 @@ async def get_agent_session(
     return active_agents[session_key]
 
 def _get_agent_state_by_messages(message: Dict[str, Any]) -> Dict[str, Any]:
-    """Get the agent state from the messages"""
-    result = message
+    """
+    Get the agent state from the messages and ensure all required fields are present.
+    Pydantic validation requires the traceId field to be present in the JSON output.
+    """
+    result = message.copy()  # Create a copy to avoid modifying the original
+    result["traceId"] = message.trace_id
     if isinstance(message.get("message", {}).get("agentState"), dict):
         if "message" not in result:
             result["message"] = {}
@@ -220,8 +224,9 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
         initial_event = await run_in_threadpool(session.process_step)
         if initial_event:
             logger.info(f"Sending initial event for trace {session.trace_id}")
-            event_dict = _get_agent_state_by_messages(initial_event.dict(by_alias=True))            
-            yield f"data: {json.dumps(event_dict)}\n\n"
+            event_dict = initial_event.dict(by_alias=True)
+            agent_state = _get_agent_state_by_messages(event_dict)            
+            yield f"data: {json.dumps(agent_state)}\n\n"
         
         while True:
             logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
@@ -231,16 +236,18 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
                 final_event = await run_in_threadpool(session.process_step)
                 if final_event:
                     logger.info(f"Sending final event for trace {session.trace_id}")
-                    event_dict = _get_agent_state_by_messages(final_event.dict(by_alias=True))                    
-                    yield f"data: {json.dumps(event_dict)}\n\n"
+                    event_dict = final_event.dict(by_alias=True)
+                    agent_state = _get_agent_state_by_messages(event_dict)                    
+                    yield f"data: {json.dumps(agent_state)}\n\n"
                 break
             
             logger.info(f"Processing next step for trace {session.trace_id}")
             event = await run_in_threadpool(session.process_step)
             if event:
                 logger.info(f"Sending event with status {event.status} for trace {session.trace_id}")
-                event_dict = _get_agent_state_by_messages(event.dict(by_alias=True))
-                yield f"data: {json.dumps(event_dict)}\n\n"
+                event_dict = event.dict(by_alias=True)
+                agent_state = _get_agent_state_by_messages(event_dict)
+                yield f"data: {json.dumps(agent_state)}\n\n"
             
             if event and event.status == AgentStatus.IDLE:
                 logger.info(f"Agent is idle, stopping event stream for trace {session.trace_id}")

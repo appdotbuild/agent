@@ -119,7 +119,7 @@ async def test_message_endpoint(
                 
                 return {
                     "chatbot_id": chatbot_id,
-                    "trace_id": uuid.uuid4().hex,  # Generate new trace ID for continuation
+                    "trace_id": trace_id,  # Use the same trace ID for continuation
                     "agentState": last_agent_state
                 }
         except aiohttp.ClientError as e:
@@ -146,14 +146,9 @@ async def interactive_session(server_url: str):
             )
         else:
             # Continue conversation
-            # Add the new message to previous messages
-            messages = state.get("all_messages", [])
-            messages.append({"role": "user", "content": message})
-            state["all_messages"] = messages
-            
             state = await test_message_endpoint(
                 server_url=server_url,
-                messages=messages,
+                messages=[message],
                 chatbot_id=state["chatbot_id"],
                 trace_id=state["trace_id"],
                 agent_state=state["agentState"],
