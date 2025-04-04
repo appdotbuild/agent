@@ -35,7 +35,6 @@ async def test_message_endpoint(
     if not trace_id:
         trace_id = uuid.uuid4().hex
     
-    # Convert string messages to UserMessage format
     formatted_messages = [{
         "role": "user",
         "content": msg
@@ -69,7 +68,6 @@ async def test_message_endpoint(
                     print(f"Error {response.status}: {error_text}")
                     return None
                 
-                # Process SSE stream
                 buffer = ""
                 last_agent_state = None
                 
@@ -79,7 +77,6 @@ async def test_message_endpoint(
                         buffer += line
                         
                         if buffer.endswith('\n\n'):
-                            # Process complete event
                             event_data = None
                             for part in buffer.split('\n'):
                                 if part.startswith('data: '):
@@ -97,15 +94,14 @@ async def test_message_endpoint(
                                         status = event_json.get("status")
                                         kind = event_json.get("message", {}).get("kind")
                                         content = event_json.get("message", {}).get("content")
-                                        if content and len(content) > 100:
-                                            content = content[:97] + "..."
+                                        if content and len(content) > 1000:
+                                            content = content[:997] + "..."
                                         
                                         print(f"Status: {status}, Kind: {kind}")
                                         print(f"Content: {content}")
                                     
                                     print("-" * 40)
                                     
-                                    # Extract agent state for possible future requests
                                     last_agent_state = event_json.get("message", {}).get("agentState")
                                     
                                 except json.JSONDecodeError:
@@ -119,7 +115,7 @@ async def test_message_endpoint(
                 
                 return {
                     "chatbot_id": chatbot_id,
-                    "trace_id": trace_id,  # Use the same trace ID for continuation
+                    "trace_id": trace_id,
                     "agentState": last_agent_state
                 }
         except aiohttp.ClientError as e:
