@@ -287,13 +287,14 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
             logger.info(f"FSM ready status for trace {session.trace_id}: {is_ready}")
             if is_ready:
                 if not session.user_answered:
+                    # waiting for user input, stop the stream and wait
                     break
-
-                final_event = await run_in_threadpool(session.process_step)
-                if final_event:
-                    logger.info(f"Sending final event for trace {session.trace_id}")
-                    yield f"data: {final_event.to_json()}\n\n"
-                break
+                else:
+                    final_event = await run_in_threadpool(session.process_step)
+                    if final_event:
+                        logger.info(f"Sending final event for trace {session.trace_id}")
+                        yield f"data: {final_event.to_json()}\n\n"
+                    break
 
             logger.info(f"Processing next step for trace {session.trace_id}")
             event = await run_in_threadpool(session.process_step)

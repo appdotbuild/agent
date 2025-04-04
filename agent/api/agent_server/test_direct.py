@@ -50,10 +50,31 @@ async def test_agent_message_endpoint():
                     continue
 
         assert len(events) > 0, "No SSE events received"
+        print(f"Received {len(events)} events")
 
         for event in events:
             assert "traceId" in event, "Missing traceId in SSE payload"
             assert event["traceId"] == test_request["traceId"], "Trace IDs do not match"
+
+        response = await client.post(
+            "http://test/message",
+            json=create_test_request("make me an app that tracks my lunches"),
+            headers={"Accept": "application/json"},
+        )
+        assert response.status_code == 200
+
+        events = []
+        async for line in response.aiter_lines():
+            if line.startswith("data:"):
+                data_str = line.split("data:", 1)[1].strip()
+                try:
+                    event_json = json.loads(data_str)
+                    events.append(event_json)
+                except json.JSONDecodeError:
+                    continue
+
+        assert len(events) > 0, "No SSE events received"
+        print(f"Received {len(events)} events")
 
 
 if __name__ == "__main__":
