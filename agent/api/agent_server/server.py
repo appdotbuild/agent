@@ -127,7 +127,7 @@ During your review process, consider the following questions:
 - Does it match other requirements mentioned in the dialogue?
 
 When providing feedback, be specific and actionable. If you're unsure about any aspect, ask for clarification before proceeding.
-Do not ask too technical questions unless absolutely necessary. Instead, focus on the user requirements and delegate technical details to the FSM.
+Do not ask too technical questions unless absolutely necessary. Instead, focus on the user requirements and delegate technical details to the FSM. Do not mention the FSM in your feedback, as it is an internal tool.
 
 Do not consider the work complete until all five components (TypeSpec schema, Drizzle schema, TypeScript types and interfaces, handler test files, and handler implementation files) have been generated and the complete_fsm tool has been called."""
         system_message = UserMessage(
@@ -158,8 +158,8 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
         try:
             logger.debug(f"Getting state for trace {self.trace_id}")
             return self.fsm_api.get_full_external_state()
-        except Exception as e:
-            logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
+        except Exception:
+            logger.info(f"Getting empty state for trace {self.trace_id} - FSM not initialized")
             return {}
 
     def process_step(self) -> Optional[AgentSseEvent]:
@@ -178,10 +178,11 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
                 status = AgentStatus.IDLE if (is_complete or not self.processor_instance.work_in_progress) else AgentStatus.RUNNING
                 logger.info(f"Step completed for trace {self.trace_id}. Status: {status}")
                 message_kind = MessageKind.STAGE_RESULT if status == AgentStatus.IDLE else MessageKind.FEEDBACK_RESPONSE
-
+                # breakpoint()
                 return AgentSseEvent(
                     status=status,
-                    trace_id=self.trace_id,
+                    traceId=self.trace_id,
+                    # trace_id=self.trace_id,
                     message=AgentMessage(
                         role="agent",
                         kind=message_kind,
@@ -195,7 +196,7 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
             return None
 
         except Exception as e:
-            logger.error(f"Error in process_step: {str(e)}")
+            logger.exception(f"Error in process_step for trace {self.trace_id}")
             self.is_complete = True
             return AgentSseEvent(
                 status=AgentStatus.IDLE,
@@ -256,7 +257,7 @@ def _get_agent_state_by_messages(message: Dict[str, Any]) -> Dict[str, Any]:
     Pydantic validation requires the traceId field to be present in the JSON output.
     """
     result = message.copy()  # Create a copy to avoid modifying the original
-    result["traceId"] = message.trace_id
+    result["traceId"] = getattr(message, "traceId", message["traceId"])
     if isinstance(message.get("message", {}).get("agentState"), dict):
         if "message" not in result:
             result["message"] = {}
@@ -281,15 +282,22 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
             agent_state = _get_agent_state_by_messages(event_dict)
             yield f"data: {json.dumps(agent_state)}\n\n"
 
+
+        waiting_for_user = False
         while True:
-            logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
             if not session.user_answered or session.work_in_progress:
                 # sleep for a short duration to avoid busy waiting
-                logger.info(f"User has not answered, waiting for user input for trace {session.trace_id}")
+                if not waiting_for_user:
+                    logger.info(f"User has not answered, waiting for user input for trace {session.trace_id}")
+                    waiting_for_user = True
+
                 await asyncio.sleep(0.1)
+                continue
             else:
                 logger.warning(f"Not sleeping: user answer {session.user_answered}, work in progress {session.work_in_progress}")
+                waiting_for_user = False
 
+            logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
             should_continue = await run_in_threadpool(session.advance_fsm)
             if not should_continue:
                 logger.info(f"FSM complete, processing final step for trace {session.trace_id}")
@@ -316,7 +324,7 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
             await asyncio.sleep(0.1)
 
     except Exception as e:
-        logger.error(f"Error in SSE generator: {str(e)}")
+        logger.exception(f"Error in SSE generator, session {session.trace_id}")
         error_event = AgentSseEvent(
             status=AgentStatus.IDLE,
             trace_id=session.trace_id,
