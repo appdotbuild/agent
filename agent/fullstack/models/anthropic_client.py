@@ -1,5 +1,5 @@
 from typing import Iterable, TypedDict, NotRequired
-from anthropic import AsyncAnthropic
+import anthropic
 from anthropic.types import (
     ToolParam,
     TextBlock,
@@ -13,7 +13,7 @@ from anthropic.types import (
     ToolResultBlockParam,
     ToolChoiceParam,
 )
-from . import common
+from models import common
 
 
 class AnthropicParams(TypedDict):
@@ -26,9 +26,9 @@ class AnthropicParams(TypedDict):
 
 
 class AnthropicLLM(common.AsyncLLM):
-    def __init__(self, client: AsyncAnthropic):
+    def __init__(self, client: anthropic.AsyncAnthropic):
         self.client = client
-    
+
     async def completion(
         self,
         model: str,
@@ -50,7 +50,7 @@ class AnthropicLLM(common.AsyncLLM):
             call_args["tool_choice"] = {"type": "tool", "name": tool_choice}
         completion = await self.client.messages.create(**call_args)
         return self._completion_from(completion)
-    
+
     @staticmethod
     def _completion_from(completion: Message) -> common.Completion:
         ours_content: list[common.TextRaw | common.ToolUse | common.ThinkingBlock] = []
@@ -72,7 +72,7 @@ class AnthropicLLM(common.AsyncLLM):
             output_tokens=completion.usage.output_tokens,
             stop_reason=completion.stop_reason,
         )
-    
+
     @staticmethod
     def _messages_into(messages: list[common.Message]) -> list[MessageParam]:
         theirs_messages: list[MessageParam] = []
