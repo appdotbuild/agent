@@ -265,7 +265,11 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
                 tool_method = processor.tool_mapping.get(tool_use['name'])
 
                 if tool_method:
-                    result: ToolResult = tool_method(**tool_params)
+                    try:
+                        result: ToolResult = tool_method(**tool_params)
+                    except Exception as e:
+                        logger.exception(f"[Claude Response] Error executing tool {tool_use['name']}: {str(e)}")
+                        result = ToolResult(success=False, error=str(e))
                     logger.info(f"[Claude Response] Tool result: {result.to_dict()}")
 
                     # Special cases for determining if the interaction is complete
