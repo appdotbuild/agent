@@ -65,15 +65,16 @@ class Interpolator:
         # we for now rely on git installed on the machine to generate the diff        
         # Initialize git repository in the output directory if it doesn't exist
         logger.info(f"Initializing git repository in {output_dir}")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         subprocess.run(["git", "init"], cwd=output_dir, check=True)
       
         template_dir = os.path.join(self.root_dir, "templates")
         if not overwrite: # if overwrite is False, we are creating a new application, otherwise no need to update the template
             copytree(template_dir, output_dir, ignore=ignore_patterns('*.pyc', '__pycache__', 'node_modules'), dirs_exist_ok=True)
 
-        # Create initial commit if this is a new repository
-        subprocess.run(["git", "add", "."], cwd=output_dir, check=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit of the template"], cwd=output_dir, check=True)
+            subprocess.run(["git", "add", "."], cwd=output_dir, check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit of the template"], cwd=output_dir, check=True)
 
         # TODO: optimize overwriting some files below of user wants to update only some handlers / capabilities / etc
         with open(os.path.join(output_dir, "tsp_schema", "main.tsp"), "a") as f:
