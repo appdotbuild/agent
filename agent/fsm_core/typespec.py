@@ -34,6 +34,7 @@ Dates and Times
 - utcDateTime: Represents a date and time in Coordinated Universal Time (UTC)
 - offsetDateTime: Represents a date and time with a timezone offset
 - duration:	A duration/time period. e.g 5s, 10h
+- void: Represents no value (NEVER use this as a return type for functions/operations - always return meaningful values that provide useful information to the caller)
 NOTE: There are NO other types for date and time in TypeSpec.
 
 TypeSpec basic types:
@@ -70,7 +71,13 @@ LLM can extract and infer the arguments from plain text and pass them to the han
     {name: "tomato", calories: 20},
     {name: "cheese", calories: 50},
 ]})
-- recordDish(options: Dish): void;
+- recordDish(options: Dish): DishRecord;
+
+model DishRecord {
+    timestamp: utcDateTime;
+    name: string;
+    calories: integer;
+}
 ...
 </reasoning>
 
@@ -106,7 +113,7 @@ Examples:
     | "Just drank a protein shake"           | ["protein shake"] |
 \"\"\")
     @llm_func("Extract food entries from natural language")
-    recordDish(options: Dish): void;
+    recordDish(options: Dish): DishRecord;
 
     @scenario(
 \"\"\"

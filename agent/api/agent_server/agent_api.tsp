@@ -1,0 +1,138 @@
+import "@typespec/http";
+import "@typespec/rest";
+
+using TypeSpec.Http;
+using TypeSpec.Rest;
+
+@service({
+  title: "Neon Agent Server API",
+  version: "1.0.0",
+})
+
+namespace AgentServerApi;
+
+// --- Enums ---
+
+@doc("Defines the current status of the agent.") 
+enum AgentStatus {
+  @doc("Agent is actively processing the request, it is free to reject new requests in this state.")
+  running,
+
+  @doc("Agent has completed its current task or requires user feedback, current state can be requested with no overhead.")
+  idle,
+}
+
+@doc("Defines the type of message being sent by the agent to the user.")
+enum MessageKind {
+  @doc("An intermediate result/update while the agent is still running. The platform should not typically query API during this state unless restoring after a failure.")
+  StageResult,
+
+  @doc("The agent has paused and requires feedback or input from the user.")
+  FeedbackResponse,
+
+  @doc("The agent encountered an error it couldn't recover from. Retrying likely requires user intervention or infrastructure changes.")
+  RuntimeError,
+}
+
+// --- Models ---
+@doc("Represents a message from the agent to the user, including content, state, and any code changes.")
+model AgentMessage {
+  @doc("Fixed field for client to detect agent message in the history") 
+  role: 'agent';
+
+  @doc("The type of message being sent.")
+  kind: MessageKind;
+
+  @doc("Formatted content of the message. Can be long and contain formatting, including custom URLs for CLI handling.")
+  content: string;
+
+  @doc("Updated state of the Agent Server that should be presented in the next request to continue the conversation.")
+  agentState: Record<string, unknown> | null;
+
+  @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
+  unifiedDiff: string | null;
+}
+
+@doc("Structure of the data payload within each Server-Sent Event (SSE).")
+model AgentEvent {
+  @doc("Current status of the agent (running or idle).")
+  status: AgentStatus;
+
+  @doc("The trace ID corresponding to the POST request that initiated this stream of events.")
+  traceId: string;
+
+  @doc("The detailed message payload from the agent.")
+  message: AgentMessage;
+}
+
+@doc("Represents a message from the user to the agent.")
+model UserMessage {
+  @doc("Fixed field for client to detect user message in the history") 
+  role: 'user'
+
+  @doc("The content of the user's message.")
+  content: string;
+}
+
+@doc("Represents a conversation message that can be either from the user or the agent.")
+union ConversationMessage {
+  UserMessage,
+  AgentMessage,
+}
+
+@doc("Request body for initiating or continuing interaction with the Agent Server.")
+model AgentRequest {
+  @doc("History of all user messages in the current conversation thread.")
+  allMessages: ConversationMessage[];
+
+  @doc("Unique identifier for the chatbot instance. Used for tracing and context.")
+  chatbotId: string;
+
+  @doc("Unique identifier for this specific request/response cycle. Used to correlate SSE events back to the originating POST request.")
+  traceId: string;
+
+  @doc("The full state of the Agent Server to restore from. This is an opaque object from the platform's perspective and should not be modified.")
+  agentState?: Record<string, unknown> | null;
+
+  @doc("Settings for the agent execution, such as maximum number of iterations.")
+  settings?: Record<string, unknown>;
+}
+
+// --- Operations ---
+
+@doc("Main endpoint for sending user messages and receiving agent responses via Server-Sent Events.")
+@route("/message")
+interface MessageOperations {
+  @post
+  @summary("Send a message to the agent and stream responses.")
+  @doc("""
+  Sends user input and conversation context to the Agent Server.
+  The server responds with a stream of Server-Sent Events (SSE) of type `text/event-stream`.
+  Each event in the stream will have a `data` field containing a JSON payload conforming to the `AgentSseEvent` model.
+  The connection remains open until the agent reaches an 'idle' state or a 'RuntimeError' occurs.
+
+  **SSE Event Format:**
+  event: message
+  data: {"status": "...", "traceId": "...", "message": {...}}
+  """)
+  sendMessage(
+    @body body: AgentRequest
+  ): OkResponse<string> | BadRequestResponse | InternalServerErrorResponse;
+}
+
+@doc("Standard Bad Request response.")
+model BadRequestResponse {
+  @statusCode _: 400;
+  @body body: {
+    error: string;
+  };
+}
+
+@doc("Standard Internal Server Error response.")
+model InternalServerErrorResponse {
+  @statusCode _: 500;
+  @body body: {
+    error: string;
+    details?: string;
+  };
+}

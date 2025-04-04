@@ -4,6 +4,7 @@ import coloredlogs
 import sys
 from dataclasses import dataclass
 from anthropic.types import MessageParam
+from threading import Lock
 from fire import Fire
 import jinja2
 from fsm_core.llm_common import LLMClient, get_sync_client
@@ -51,6 +52,7 @@ class FSMToolProcessor:
             fsm_api: FSM API implementation to use
         """
         self.fsm_api = fsm_api
+        self.work_in_progress = Lock()
 
         # Define tool definitions for the AI agent
         self.tool_definitions = [
@@ -226,7 +228,7 @@ class FSMToolProcessor:
 
 
 def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
-                   messages: List[MessageParam]) -> Tuple[List[MessageParam], bool, ToolResult | None]:
+                   messages: List[MessageParam]) -> Tuple[MessageParam, bool, ToolResult | None]:
     """
     Send messages to Claude with FSM tool definitions and process tool use responses.
 
@@ -253,7 +255,9 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
         match message.type:
             case "text":
                 logger.info(f"[Claude Response] Message: {message.text}")
+                new_message = {"role": "assistant", "content": message.text}
             case "tool_use":
+                processor.work_in_progress.acquire()
                 tool_use = message.to_dict()
 
                 tool_params = tool_use['input']
@@ -261,7 +265,11 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
                 tool_method = processor.tool_mapping.get(tool_use['name'])
 
                 if tool_method:
-                    result: ToolResult = tool_method(**tool_params)
+                    try:
+                        result: ToolResult = tool_method(**tool_params)
+                    except Exception as e:
+                        logger.exception(f"[Claude Response] Error executing tool {tool_use['name']}: {str(e)}")
+                        result = ToolResult(success=False, error=str(e))
                     logger.info(f"[Claude Response] Tool result: {result.to_dict()}")
 
                     # Special cases for determining if the interaction is complete
@@ -274,8 +282,12 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
                         "tool": tool_use['name'],
                         "result": result
                     })
+
                 else:
                     raise ValueError(f"Unexpected tool name: {tool_use['name']}")
+
+                processor.work_in_progress.release()
+
             case _:
                 raise ValueError(f"Unexpected message type: {message.type}")
 
@@ -312,11 +324,10 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
             "role": "user",
             "content": f"Tool execution results:\n{'\n'.join(formatted_results)}\nPlease continue based on these results, addressing any failures or errors if they exist."
         }
-        return messages + [new_message], is_complete, final_tool_result
+        return new_message, is_complete, final_tool_result
     else:
         # No tools were used
-        return messages, is_complete, final_tool_result
-
+        return new_message, is_complete, final_tool_result
 
 def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
     """
@@ -375,11 +386,15 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
 
     # Main interaction loop
     while not is_complete:
-        current_messages, is_complete, final_tool_result = run_with_claude(
+        new_message, is_complete, final_tool_result = run_with_claude(
             processor,
             client,
             current_messages
         )
+
+        logger.info(f"[Main] New message: {new_message}")
+        if new_message:
+            current_messages = current_messages + [new_message]
 
         # breaking for test purposes
         if len(current_messages) < 3 and "typespec_review" in current_messages[-1]["content"]:
