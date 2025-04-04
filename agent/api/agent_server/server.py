@@ -166,6 +166,7 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
         except Exception:
             logger.info(f"Getting empty state for trace {self.trace_id} - FSM not initialized")
             return {}
+
     def bake_app_diff(self, app_out: Dict[str, Any]) -> str:
         """Bake the app diff"""
         interpolator = Interpolator()
@@ -173,6 +174,7 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
             patch_on_template = interpolator.bake(app_out, temp_dir)
             logger.info(f"Baked app successfully into {temp_dir}")
             return patch_on_template
+
     def process_step(self) -> Optional[AgentSseEvent]:
         """Process a single step and return an SSE event"""
         if not self.processor_instance:
@@ -189,7 +191,7 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
 
                 if new_message:
                     self.messages.append(new_message)
-                
+
                 app_diff = None
                 if final_tool_result:
                     logger.info(f"Final tool result for trace {self.trace_id}: {final_tool_result}")
@@ -227,21 +229,21 @@ Do not consider the work complete until all five components (TypeSpec schema, Dr
             )
 
 
-    def advance_fsm(self) -> bool:
-        """
-        Advance the FSM state. Returns True if more steps are needed,
-        False if the FSM is complete or has reached a terminal state.
-        """
+    def check_if_ready(self) -> bool:
         if self.is_complete:
-            logger.info(f"FSM is already complete for trace {self.trace_id}")    
+            logger.info(f"FSM is already complete for trace {self.trace_id}")
+            return True
+
+        if self.work_in_progress:
+            logger.info(f"FSM is still processing for trace {self.trace_id}")
             return False
 
-        if not self.processor_instance:
-            logger.warning(f"No processor instance found for trace {self.trace_id}")
-            return False
+        if not self.user_answered:
+            logger.info(f"User has not answered for trace {self.trace_id}")
+            return True
 
         logger.info(f"FSM should continue for trace {self.trace_id}")
-        return True
+        return False
 
 
     def cleanup(self):
@@ -270,7 +272,6 @@ async def get_agent_session(
 async def sse_event_generator(session: AgentSession, messages: List[ConversationMessage], agent_state: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
     """Generate SSE events for the agent session"""
     try:
-        logger.info(f"Initializing FSM for trace {session.trace_id}")
         await run_in_threadpool(session.initialize_fsm, messages, agent_state)
 
         logger.info(f"Processing initial step for trace {session.trace_id}")
@@ -278,25 +279,16 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
         if initial_event:
             logger.info(f"Sending initial event for trace {session.trace_id}")
             yield f"data: {initial_event.to_json()}\n\n"
-        
+
         waiting_for_user = False
         while True:
-            if not session.user_answered or session.work_in_progress:
-                # sleep for a short duration to avoid busy waiting
-                if not waiting_for_user:
-                    logger.info(f"User has not answered, waiting for user input for trace {session.trace_id}")
-                    waiting_for_user = True
-
-                await asyncio.sleep(0.1)
-                continue
-            else:
-                logger.warning(f"Not sleeping: user answer {session.user_answered}, work in progress {session.work_in_progress}")
-                waiting_for_user = False
-
             logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
-            should_continue = await run_in_threadpool(session.advance_fsm)
-            if not should_continue:
-                logger.info(f"FSM complete, processing final step for trace {session.trace_id}")
+            is_ready = await run_in_threadpool(session.check_if_ready)
+            logger.info(f"FSM ready status for trace {session.trace_id}: {is_ready}")
+            if is_ready:
+                if not session.user_answered:
+                    break
+
                 final_event = await run_in_threadpool(session.process_step)
                 if final_event:
                     logger.info(f"Sending final event for trace {session.trace_id}")
@@ -308,12 +300,13 @@ async def sse_event_generator(session: AgentSession, messages: List[Conversation
             if event:
                 logger.info(f"Sending event with status {event.status} for trace {session.trace_id}")
                 yield f"data: {event.to_json()}\n\n"
-            
+
             if event and event.status == AgentStatus.IDLE:
                 logger.info(f"Agent is idle, stopping event stream for trace {session.trace_id}")
                 break
 
             await asyncio.sleep(0.1)
+
 
     except Exception as e:
         logger.exception(f"Error in SSE generator, session {session.trace_id}")
