@@ -1,39 +1,23 @@
-# Build stage
-FROM oven/bun:1 as builder
+# Use Bun as the base image
+FROM oven/bun:1
 
 # Set working directory
-WORKDIR /app
+WORKDIR /app/client
 
-# Copy package.json and lockfile
-COPY package.json bun.lockb ./
+# Copy client package.json
+COPY client/package.json ./
 
-# Create directories for client and server
-RUN mkdir -p client server
+# Copy root package.json and lockfile if needed for dependencies
+COPY package.json bun.lockb /app/
 
-# Copy package.json for client and server
-COPY client/package.json ./client/
-COPY server/package.json ./server/
+# Install dependencies
+RUN bun install
 
-# Install all dependencies
-RUN bun install --frozen-lockfile
+# Copy client source files
+COPY client/ ./
 
-# Copy the entire project
-COPY . .
+# Expose dev server port
+EXPOSE 5173
 
-# Build client
-RUN cd client && bun run build
-
-# Production stage for frontend
-FROM nginx:alpine
-
-WORKDIR /usr/share/nginx/
-RUN rm -rf html
-RUN mkdir html
-
-# Copy your existing nginx configuration
-COPY ./client/nginx/nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy the built client files
-COPY --from=builder /app/client/dist /usr/share/nginx/html
-
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+# Run client dev server with host set to 0.0.0.0 to allow external access
+CMD bun run dev

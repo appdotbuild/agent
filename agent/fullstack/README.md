@@ -12,7 +12,7 @@ Generates full stack apps using trpc + shadcn components.
 
 `uv run main.py --num_beams 1 --export_dir demo_app`
 
-### Running generated code
+### Running generated code locally
 
 Change directory:
 
@@ -22,6 +22,10 @@ Configure postgres address:
 
 `export DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres`
 
+Run migrations:
+
+`bun run db:push`
+
 Start the app:
 
 `bun run dev:all`
@@ -30,18 +34,15 @@ Start the app:
 
 `bun run server/src/helpers/reset.ts `
 
-### Running with docker - doesn't have hot reload
+### Running with docker
 
 Change directory:
-
 `cd demo_app`
 
 Run through docker compose:
-`docker compose up --build`
+`docker compose watch`
 
-This will apply DB migrations and start the server/client.
-
-Just open the browser and go to `http://localhost:80`
+Just open the browser and go to `http://localhost:5173`
 
 ### Deploying to fly
 

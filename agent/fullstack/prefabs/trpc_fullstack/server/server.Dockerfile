@@ -1,29 +1,23 @@
+# Use Bun as the base image
 FROM oven/bun:1
 
-# Set working directory
-WORKDIR /app
+# Set working directory directly to server directory
+WORKDIR /app/server
 
-# Copy package.json and lockfile
-COPY package.json bun.lockb ./
+# Copy server package.json
+COPY server/package.json ./
 
-# Create directories for client and server
-RUN mkdir -p client server
+# Copy root package.json and lockfile if needed for dependencies
+COPY package.json bun.lockb /app/
 
-# Copy package.json for client and server
-COPY client/package.json ./client/
-COPY server/package.json ./server/
+# Install dependencies
+RUN bun install
 
-# Install all dependencies
-RUN bun install --frozen-lockfile
-
-# Copy the entire project
-COPY . .
-
-# Build the server
-RUN cd server && bun run build
+# Copy server source files
+COPY server/ ./
 
 # Expose the server port
 EXPOSE 2022
 
-# Run the server
-CMD cd server && bun run start:build
+# Run migrations the server in development mode
+CMD bun run db:push && bun run dev

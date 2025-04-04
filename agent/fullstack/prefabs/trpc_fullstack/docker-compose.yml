@@ -10,14 +10,28 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
     container_name: app-backend
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./server # Path to backend code on host
+          target: /app/server # Path in container
+          ignore:
+            - node_modules
 
   frontend:
     build:
       context: .
       dockerfile: client/client.Dockerfile
     ports:
-      - '80:80'
+      - '5173:5173'
     depends_on:
       - backend
     environment:
       - BACKEND_URL=http://app-backend:2022 # Reference the backend by container name
+    develop:
+      watch:
+        - action: sync
+          path: ./client # Path to frontend code on host
+          target: /app/client # Path in container
+          ignore:
+            - node_modules
