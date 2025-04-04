@@ -5,7 +5,8 @@
     "build": "tsc",
     "dev": "bun --hot src/index.ts",
     "db:push": "drizzle-kit push --force",
-    "lint": "eslint --cache src/index.ts"
+    "lint": "eslint --cache src/index.ts",
+    "start:build": "drizzle-kit push --force && node dist/src/index.js"
   },
   "dependencies": {
     "@trpc/server": "npm:@trpc/server@next",

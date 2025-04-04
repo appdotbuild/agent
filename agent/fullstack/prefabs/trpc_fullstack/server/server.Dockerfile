@@ -25,5 +25,5 @@ RUN cd server && bun run build
 # Expose the server port
 EXPOSE 2022
 
-# Run the server (adjust the path if needed)
-CMD ["node", "server/dist/src/index.js"]
+# Run the server
+CMD cd server && bun run start:build
