@@ -5,10 +5,14 @@
     "client",
     "server"
   ],
+  "devDependencies": {},
   "scripts": {
     "db:push": "bun run --filter app-build-server db:push",
     "dev:server": "bun run --filter app-build-server dev",
     "dev:client": "bun run --filter app-build-client dev",
     "dev:all": "bun run dev:server & bun run dev:client"
+  },
+  "dependencies": {
+    "app-build": "."
   }
 }
