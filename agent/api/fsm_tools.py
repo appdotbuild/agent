@@ -228,7 +228,8 @@ class FSMToolProcessor:
 
 
 def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
-                   messages: List[MessageParam]) -> Tuple[MessageParam, bool, ToolResult | None]:
+                   messages: List[MessageParam], system_prompt: Optional[str] = None
+) -> Tuple[MessageParam, bool, ToolResult | None]:
     """
     Send messages to Claude with FSM tool definitions and process tool use responses.
 
@@ -243,6 +244,7 @@ def run_with_claude(processor: FSMToolProcessor, client: LLMClient,
         max_tokens=1024 * 16,
         stream=False,
         tools=processor.tool_definitions,
+        system=system_prompt,
     )
 
     # Record if any tool was used (requiring further processing)
