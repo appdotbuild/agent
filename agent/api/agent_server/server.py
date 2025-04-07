@@ -3,12 +3,16 @@ import json
 import logging
 from typing import Dict, List, Any, AsyncGenerator, Optional
 from contextlib import asynccontextmanager
+import tempfile
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from langfuse import Langfuse
 
+from core.interpolator import Interpolator
 from api.fsm_tools import FSMToolProcessor, run_with_claude
 from api.fsm_api import FSMManager
 from compiler.core import Compiler
@@ -18,9 +22,11 @@ from .models import (
     AgentRequest, 
     AgentSseEvent, 
     AgentMessage, 
+    UserMessage,
+    ConversationMessage,
     AgentStatus, 
     MessageKind,
-    ErrorResponse
+    ErrorResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,13 +77,14 @@ class AgentSession:
     def _initialize_app(self):
         """Initialize the application instance"""
         logger.info(f"Initializing application for trace {self.trace_id}")
+        logger.debug(f"DEBUG: Agent session trace_id = {self.trace_id}")
         self.fsm_api = FSMManager()
         self.processor_instance = FSMToolProcessor(self.fsm_api)
         self.messages = []
         logger.info(f"Application initialized for trace {self.trace_id}")
     
     
-    def initialize_fsm(self, messages: List[str], agent_state: Optional[Dict[str, Any]] = None):
+    def initialize_fsm(self, messages: List[ConversationMessage], agent_state: Optional[Dict[str, Any]] = None):
         """Initialize the FSM with messages and optional state"""
         logger.info(f"Initializing FSM for trace {self.trace_id}")
         logger.debug(f"Agent state present: {agent_state is not None}")
@@ -86,8 +93,9 @@ class AgentSession:
             logger.info(f"Setting external state for trace {self.trace_id}")
             self.fsm_api.set_full_external_state(agent_state)
 
-        #TODO: Avoid merging messages with the app description
-        app_description = "\n".join(messages)
+        # Extract user messages from the conversation history
+        user_messages = [msg.content for msg in messages if hasattr(msg, "role") and msg.role == "user"]
+        app_description = "\n".join(user_messages)
         logger.debug(f"App description length: {len(app_description)}")
         self.messages = [{"role": "user", "content": app_description}]
         
@@ -106,7 +114,14 @@ class AgentSession:
             logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
             return {}
     
-            
+    def bake_app_diff(self, app_out: Dict[str, Any]) -> str:
+        """Bake the app diff"""
+        interpolator = Interpolator()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            patch_on_template = interpolator.bake(app_out, temp_dir)
+            logger.info(f"Baked app successfully into {temp_dir}")
+            return patch_on_template
+    
     def process_step(self) -> Optional[AgentSseEvent]:
         """Process a single step and return an SSE event"""
         if not self.processor_instance:
@@ -115,25 +130,34 @@ class AgentSession:
         
         try:
             logger.info(f"Processing step for trace {self.trace_id}")
-            new_message, is_complete, _ = run_with_claude(self.processor_instance, self.llm_client, self.messages)
+            new_message, is_complete, final_tool_result = run_with_claude(self.processor_instance, self.llm_client, self.messages)
             self.is_complete = is_complete
 
-            if new_message:
-                self.messages.append(new_message)
+            if final_tool_result or new_message:
                 status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
-                logger.info(f"Step completed for trace {self.trace_id}. Status: {status}")
+
+                if new_message:
+                    self.messages.append(new_message)
                 
+                app_diff = None
+                if final_tool_result:
+                    logger.info(f"Final tool result for trace {self.trace_id}: {final_tool_result}")
+                    app_diff = self.bake_app_diff(final_tool_result.data["application_out"])
+                    logger.info(f"App diff for trace {self.trace_id}: {app_diff}")
+
+                # maybe we need to have 2 different messages instead: on message and on complete
                 return AgentSseEvent(
                     status=status,
-                    trace_id=self.trace_id,
+                    traceId=self.trace_id,
                     message=AgentMessage(
+                        role="agent",
                         kind=MessageKind.STAGE_RESULT,
-                        content=new_message["content"],
+                        content=new_message["content"] if new_message else final_tool_result, 
                         agent_state=self.get_state(),
-                        unified_diff=None
+                        unified_diff=app_diff
                     )
                 )
-            
+                
             logger.info(f"No new message generated for trace {self.trace_id}")
             return None
             
@@ -142,8 +166,9 @@ class AgentSession:
             self.is_complete = True
             return AgentSseEvent(
                 status=AgentStatus.IDLE,
-                trace_id=self.trace_id,
+                traceId=self.trace_id,
                 message=AgentMessage(
+                    role="agent",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing step: {str(e)}",
                     agent_state=None,
@@ -158,7 +183,7 @@ class AgentSession:
         False if the FSM is complete or has reached a terminal state.
         """
         if self.is_complete:
-            logger.info(f"FSM is already complete for trace {self.trace_id}")
+            logger.info(f"FSM is already complete for trace {self.trace_id}")    
             return False
             
         if not self.processor_instance:
@@ -192,16 +217,7 @@ async def get_agent_session(
     
     return active_agents[session_key]
 
-def _get_agent_state_by_messages(message: Dict[str, Any]) -> Dict[str, Any]:
-    """Get the agent state from the messages"""
-    result = {}
-    if isinstance(message.get("message", {}).get("agent_state"), dict):
-            for key, value in message["message"]["agent_state"].items():
-                if hasattr(value, "to_dict"):
-                    result["message"]["agent_state"][key] = value.to_dict()
-    return result
-
-async def sse_event_generator(session: AgentSession, messages: List[str], agent_state: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
+async def sse_event_generator(session: AgentSession, messages: List[ConversationMessage], agent_state: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
     """Generate SSE events for the agent session"""
     try:
         logger.info(f"Initializing FSM for trace {session.trace_id}")
@@ -211,8 +227,7 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
         initial_event = await run_in_threadpool(session.process_step)
         if initial_event:
             logger.info(f"Sending initial event for trace {session.trace_id}")
-            event_dict = _get_agent_state_by_messages(initial_event.dict(by_alias=True))            
-            yield f"data: {json.dumps(event_dict)}\n\n"
+            yield f"data: {initial_event.to_json()}\n\n"
         
         while True:
             logger.info(f"Checking if FSM should continue for trace {session.trace_id}")
@@ -222,16 +237,14 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
                 final_event = await run_in_threadpool(session.process_step)
                 if final_event:
                     logger.info(f"Sending final event for trace {session.trace_id}")
-                    event_dict = _get_agent_state_by_messages(final_event.dict(by_alias=True))                    
-                    yield f"data: {json.dumps(event_dict)}\n\n"
+                    yield f"data: {final_event.to_json()}\n\n"
                 break
             
             logger.info(f"Processing next step for trace {session.trace_id}")
             event = await run_in_threadpool(session.process_step)
             if event:
                 logger.info(f"Sending event with status {event.status} for trace {session.trace_id}")
-                event_dict = _get_agent_state_by_messages(event.dict(by_alias=True))
-                yield f"data: {json.dumps(event_dict)}\n\n"
+                yield f"data: {event.to_json()}\n\n"
             
             if event and event.status == AgentStatus.IDLE:
                 logger.info(f"Agent is idle, stopping event stream for trace {session.trace_id}")
@@ -241,10 +254,12 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
             
     except Exception as e:
         logger.error(f"Error in SSE generator: {str(e)}")
+        logger.debug(f"Creating error event with trace_id: {session.trace_id}")
         error_event = AgentSseEvent(
             status=AgentStatus.IDLE,
-            trace_id=session.trace_id,
+            traceId=session.trace_id,
             message=AgentMessage(
+                role="agent",
                 kind=MessageKind.RUNTIME_ERROR,
                 content=f"Error processing request: {str(e)}",
                 agent_state=None,
@@ -252,8 +267,7 @@ async def sse_event_generator(session: AgentSession, messages: List[str], agent_
             )
         )
         logger.error(f"Sending error event for trace {session.trace_id}")
-        error_dict = error_event.dict(by_alias=True)
-        yield f"data: {json.dumps(error_dict)}\n\n"
+        yield f"data: {error_event.to_json()}\n\n"
     finally:
         logger.info(f"Cleaning up session for trace {session.trace_id}")
         await run_in_threadpool(session.cleanup)
@@ -271,6 +285,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
         logger.info(f"Received message request for chatbot {request.chatbot_id}, trace {request.trace_id}")
         logger.debug(f"Request settings: {request.settings}")
         logger.debug(f"Number of messages: {len(request.all_messages)}")
+        logger.debug(f"Request as JSON: {request.to_json()}")
         
         session = await get_agent_session(
             request.chatbot_id, 
@@ -289,9 +304,13 @@ async def message(request: AgentRequest) -> StreamingResponse:
         )
     except Exception as e:
         logger.error(f"Error processing message request: {str(e)}")
+        error_response = ErrorResponse(
+            error="Internal Server Error",
+            details=str(e)
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing request: {str(e)}"
+            detail=error_response.to_json()
         )
 
 

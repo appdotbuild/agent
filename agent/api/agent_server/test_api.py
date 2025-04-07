@@ -35,8 +35,13 @@ async def test_message_endpoint(
     if not trace_id:
         trace_id = uuid.uuid4().hex
     
+    formatted_messages = [{
+        "role": "user",
+        "content": msg
+    } for msg in messages]
+    
     request_data = {
-        "allMessages": messages,
+        "allMessages": formatted_messages,
         "chatbotId": chatbot_id,
         "traceId": trace_id,
     }
@@ -63,7 +68,6 @@ async def test_message_endpoint(
                     print(f"Error {response.status}: {error_text}")
                     return None
                 
-                # Process SSE stream
                 buffer = ""
                 last_agent_state = None
                 
@@ -73,7 +77,6 @@ async def test_message_endpoint(
                         buffer += line
                         
                         if buffer.endswith('\n\n'):
-                            # Process complete event
                             event_data = None
                             for part in buffer.split('\n'):
                                 if part.startswith('data: '):
@@ -91,16 +94,15 @@ async def test_message_endpoint(
                                         status = event_json.get("status")
                                         kind = event_json.get("message", {}).get("kind")
                                         content = event_json.get("message", {}).get("content")
-                                        if content and len(content) > 100:
-                                            content = content[:97] + "..."
+                                        if content and len(content) > 1000:
+                                            content = content[:997] + "..."
                                         
                                         print(f"Status: {status}, Kind: {kind}")
                                         print(f"Content: {content}")
                                     
                                     print("-" * 40)
                                     
-                                    # Extract agent state for possible future requests
-                                    last_agent_state = event_json.get("message", {}).get("agent_state")
+                                    last_agent_state = event_json.get("message", {}).get("agentState")
                                     
                                 except json.JSONDecodeError:
                                     print(f"Invalid JSON in event: {event_data}")
@@ -113,8 +115,8 @@ async def test_message_endpoint(
                 
                 return {
                     "chatbot_id": chatbot_id,
-                    "trace_id": uuid.uuid4().hex,  # Generate new trace ID for continuation
-                    "agent_state": last_agent_state
+                    "trace_id": trace_id,
+                    "agentState": last_agent_state
                 }
         except aiohttp.ClientError as e:
             print(f"Connection error: {str(e)}")
@@ -140,17 +142,12 @@ async def interactive_session(server_url: str):
             )
         else:
             # Continue conversation
-            # Add the new message to previous messages
-            messages = state.get("all_messages", [])
-            messages.append(message)
-            state["all_messages"] = messages
-            
             state = await test_message_endpoint(
                 server_url=server_url,
-                messages=messages,
+                messages=[message],
                 chatbot_id=state["chatbot_id"],
                 trace_id=state["trace_id"],
-                agent_state=state["agent_state"],
+                agent_state=state["agentState"],
                 settings={"max-iterations": 3},
                 verbose=False
             )

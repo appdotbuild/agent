@@ -5,9 +5,6 @@
     "client",
     "server"
   ],
-  "devDependencies": {
-    "bun": "1.2.5"
-  },
   "scripts": {
     "db:push": "bun run --filter app-build-server db:push",
     "dev:server": "bun run --filter app-build-server dev",

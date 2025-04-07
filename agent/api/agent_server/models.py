@@ -1,6 +1,10 @@
 from enum import Enum
-from typing import Dict, List, Optional, Any, Union
+import json
+from typing import Dict, List, Optional, Any, Union, Literal, Type, TypeVar
 from pydantic import BaseModel, Field
+
+
+T = TypeVar('T', bound='BaseModel')
 
 
 class AgentStatus(str, Enum):
@@ -16,8 +20,24 @@ class MessageKind(str, Enum):
     RUNTIME_ERROR = "RuntimeError"
 
 
+class UserMessage(BaseModel):
+    """Represents a message from the user to the agent."""
+    role: Literal["user"] = Field("user", description="Fixed field for client to detect user message in the history")
+    content: str = Field(..., description="The content of the user's message.")
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
+
+
 class AgentMessage(BaseModel):
     """The detailed message payload from the agent."""
+    role: Literal["agent"] = Field("agent", description="Fixed field for client to detect agent message in the history") 
     kind: MessageKind = Field(..., description="The type of message being sent.")
     content: str = Field(..., description="Formatted content of the message. Can be long and contain formatting.")
     agent_state: Optional[Dict[str, Any]] = Field(
@@ -30,10 +50,29 @@ class AgentMessage(BaseModel):
         alias="unifiedDiff", 
         description="A unified diff format string representing code changes made by the agent."
     )
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
-    class Config:
-        populate_by_name = True
-        allow_population_by_field_name = True
+
+ConversationMessage = Union[UserMessage, AgentMessage]
+
+
+def parse_conversation_message(json_str: str) -> ConversationMessage:
+    """Parse a JSON string into the appropriate ConversationMessage type."""
+    data = json.loads(json_str)
+    if data.get("role") == "user":
+        return UserMessage.model_validate(data)
+    elif data.get("role") == "agent":
+        return AgentMessage.model_validate(data)
+    else:
+        raise ValueError(f"Unknown role in message: {data.get('role')}")
 
 
 class AgentSseEvent(BaseModel):
@@ -41,15 +80,20 @@ class AgentSseEvent(BaseModel):
     status: AgentStatus = Field(..., description="Current status of the agent (running or idle).")
     trace_id: str = Field(..., alias="traceId", description="The trace ID corresponding to the POST request.")
     message: AgentMessage = Field(..., description="The detailed message payload from the agent.")
-
-    class Config:
-        populate_by_name = True
-        allow_population_by_field_name = True
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
 
 class AgentRequest(BaseModel):
     """Request body for initiating or continuing interaction with the Agent Server."""
-    all_messages: List[str] = Field(..., alias="allMessages", description="History of all user messages.")
+    all_messages: List[ConversationMessage] = Field(..., alias="allMessages", description="History of all messages in the current conversation thread.")
     chatbot_id: str = Field(..., alias="chatbotId", description="Unique identifier for the chatbot instance.")
     trace_id: str = Field(..., alias="traceId", description="Unique identifier for this request/response cycle.")
     agent_state: Optional[Dict[str, Any]] = Field(
@@ -61,13 +105,27 @@ class AgentRequest(BaseModel):
         None, 
         description="Settings for the agent execution, such as maximum number of iterations."
     )
-
-    class Config:
-        populate_by_name = True
-        allow_population_by_field_name = True
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json(by_alias=True)
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))
 
 
 class ErrorResponse(BaseModel):
     """Error response model."""
     error: str
     details: Optional[str] = None
+    
+    def to_json(self) -> str:
+        """Serialize the model to JSON string."""
+        return self.model_dump_json()
+    
+    @classmethod
+    def from_json(cls: Type[T], json_str: str) -> T:
+        """Deserialize a JSON string to a model instance."""
+        return cls.model_validate(json.loads(json_str))

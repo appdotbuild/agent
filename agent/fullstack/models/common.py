@@ -40,54 +40,62 @@ class ToolUseResult:
 ContentBlock: TypeAlias = Union[TextRaw, ToolUse, ToolUseResult, ThinkingBlock]
 
 
+def dump_content(content: Iterable[ContentBlock]) -> list[dict]:
+    result = []
+    for block in content:
+        match block:
+            case TextRaw(text):
+                result.append({"type": "text", "text": text})
+            case ToolUse(name, input, id):
+                result.append({"type": "tool_use", "name": name, "input": input, "id": id})
+            case ThinkingBlock(thinking):
+                result.append({"type": "thinking", "thinking": thinking})
+            case ToolUseResult(tool_use, tool_result):
+                result.append({
+                    "type": "tool_use_result",
+                    "tool_use": {
+                        "name": tool_use.name,
+                        "input": tool_use.input,
+                        "id": tool_use.id,
+                    },
+                    "tool_result": {
+                        "content": tool_result.content,
+                        "name": tool_result.name,
+                        "is_error": tool_result.is_error,
+                    },
+                })
+    return result
+
+
+def load_content(data: list[dict]) -> list[ContentBlock]:
+    content = []
+    for block in data:
+        match block:
+            case {"type": "text", "text": text}:
+                content.append(TextRaw(text))
+            case {"type": "tool_use", "name": name, "input": input, "id": id}:
+                content.append(ToolUse(name, input, id))
+            case {"type": "thinking", "thinking": thinking}:
+                content.append(ThinkingBlock(thinking))
+            case {"type": "tool_use_result", "tool_use": tool_use, "tool_result": tool_result}:
+                content.append(ToolUseResult(
+                    ToolUse(tool_use["name"], tool_use["input"], tool_use["id"]),
+                    ToolResult(tool_result["content"], tool_result["name"], tool_result["is_error"])
+                ))
+    return content
+
+
 @dataclass
 class Message:
     role: Literal["user", "assistant"]
     content: Iterable[ContentBlock]
 
     def to_dict(self) -> dict:
-        content = []
-        for block in self.content:
-            match block:
-                case TextRaw(text):
-                    content.append({"type": "text", "text": text})
-                case ToolUse(name, input, id):
-                    content.append({"type": "tool_use", "name": name, "input": input, "id": id})
-                case ThinkingBlock(thinking):
-                    content.append({"type": "thinking", "thinking": thinking})
-                case ToolUseResult(tool_use, tool_result):
-                    content.append({
-                        "type": "tool_use_result",
-                        "tool_use": {
-                            "name": tool_use.name,
-                            "input": tool_use.input,
-                            "id": tool_use.id,
-                        },
-                        "tool_result": {
-                            "content": tool_result.content,
-                            "name": tool_result.name,
-                            "is_error": tool_result.is_error,
-                        },
-                    })
-        return {"role": self.role, "content": content}
+        return {"role": self.role, "content": dump_content(self.content)}
     
     @classmethod
     def from_dict(cls, data: dict) -> Self:
-        content = []
-        for block in data["content"]:
-            match block:
-                case {"type": "text", "text": text}:
-                    content.append(TextRaw(text))
-                case {"type": "tool_use", "name": name, "input": input, "id": id}:
-                    content.append(ToolUse(name, input, id))
-                case {"type": "thinking", "thinking": thinking}:
-                    content.append(ThinkingBlock(thinking))
-                case {"type": "tool_use_result", "tool_use": tool_use, "tool_result": tool_result}:
-                    content.append(ToolUseResult(
-                        ToolUse(tool_use["name"], tool_use["input"], tool_use["id"]),
-                        ToolResult(tool_result["content"], tool_result["name"], tool_result["is_error"])
-                    ))
-        return cls(data["role"], content)
+        return cls(data["role"], load_content(data["content"]))
 
 
 @dataclass
@@ -98,6 +106,27 @@ class Completion:
     output_tokens: int
     stop_reason: Literal["end_turn", "max_tokens", "stop_sequence", "tool_use"]
     thinking_tokens: int | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "role": self.role,
+            "content": dump_content(self.content),
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "stop_reason": self.stop_reason,
+            "thinking_tokens": self.thinking_tokens,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> Self:
+        return cls(
+            data["role"],
+            load_content(data["content"]),
+            data["input_tokens"],
+            data["output_tokens"],
+            data["stop_reason"],
+            data.get("thinking_tokens"),
+        )
 
 
 class Tool(TypedDict, total=False):

@@ -19,6 +19,12 @@ class InterpolatorTest(unittest.TestCase):
         os.makedirs(os.path.join(self.app_schema_dir, "tests", "handlers"), exist_ok=True)
         os.makedirs(self.tsp_schema_dir, exist_ok=True)
         
+        # Create some dummy files to ensure git commit works
+        with open(os.path.join(self.app_schema_dir, "dummy.ts"), "w") as f:
+            f.write("// Dummy file for testing")
+        with open(os.path.join(self.tsp_schema_dir, "dummy.tsp"), "w") as f:
+            f.write("// Dummy file for testing")
+            
         self.output_dir = os.path.join(self.test_dir, "output")
         
     def tearDown(self):

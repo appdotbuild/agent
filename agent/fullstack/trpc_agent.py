@@ -13,35 +13,6 @@ from base_node import Node
 from workspace import Workspace, ExecResult
 from actors import BaseData, BaseActor, LLMActor
 from models.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
-#from ..api.agent_server.models import AgentSseEvent
-
-
-class FSMState(str, enum.Enum):
-    DRAFT_GEN = "generating_draft"
-    HANDLERS = "generating_handlers"
-    INDEX = "generating_index"
-    FRONTEND = "generating_frontend"
-    IDLE = "idle"
-
-
-class FSMEvent(str, enum.Enum):
-    MESSAGE = "message"
-
-
-@dataclasses.dataclass
-class Command:
-    kind: Literal["create", "confirm", "edit"]
-    prompt: str
-    run_queue: list[FSMState]
-
-
-@dataclasses.dataclass
-class Context:
-    history: list[Message]
-    command: Command
-    files: dict[str, str]
-    error: Exception | None
-    #event_tx: MemoryObjectSendStream[AgentSseEvent] | None
 
 
 async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
@@ -342,28 +313,49 @@ class FrontendActor(BaseTRPCActor):
     root: Node[BaseData] | None = None
 
     def __init__(self, llm: AsyncLLM, workspace: Workspace, model_params: dict, beam_width: int = 1, max_depth: int = 5):
-        super().__init__(llm, workspace, model_params, beam_width=beam_width, max_depth=max_depth)
+        super().__init__(llm, workspace, {**model_params, "tools": self.tools}, beam_width=beam_width, max_depth=max_depth)
         self.root = None
     
-    async def execute(self, user_prompt: str) -> Node[BaseData]:
-        await self.cmd_create(user_prompt)
+    async def execute(self, user_prompt: str, server_files: dict[str, str]) -> Node[BaseData]:
+        await self.cmd_create(user_prompt, server_files)
         solution = await self.search(self.root)
         if solution is None:
             raise ValueError("No solution found")
         return solution
     
-    async def cmd_create(self, user_prompt: str, files: dict[str, str]):
+    async def cmd_create(self, user_prompt: str, server_files: dict[str, str]):
         workspace = self.workspace.clone()
-        ...
+        for file, content in server_files.items():
+            workspace.write_file("/app/server/" + file, content)
+        workspace = workspace.permissions(protected=self.files_protected, allowed=self.files_allowed)
+        context = []
+        for path in self.files_relevant:
+            content = await workspace.read_file(path)
+            context.append(f"\n<file path=\"{path}\">\n{content.strip()}\n</file>\n")
+        ui_files = await self.workspace.ls("src/components/ui")
+        context.extend([
+            f"UI components in src/components/ui: {ui_files}",
+            f"Allowed paths and directories: {self.files_allowed}",
+            f"Protected paths and directories: {self.files_protected}",
+        ])
+        jinja_env = jinja2.Environment()
+        prompt_template = jinja_env.from_string(playbooks.FRONTEND_PROMPT)
+        prompt = prompt_template.render(
+            project_context="\n".join(context),
+            user_prompt=user_prompt,
+        )
+        message = Message(role="user", content=[TextRaw(prompt)])
+        self.root = Node(BaseData(workspace, [message], {}))
 
     async def eval_node(self, node: Node[BaseData]) -> bool:
         content = await self.run_tools(node)
         files_err = await run_write_files(node)
         if files_err:
             content.append(files_err)
-        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"])
-        if tsc_result.exit_code != 0:
-            content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
+        if node.data.files:
+            tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"])
+            if tsc_result.exit_code != 0:
+                content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
         if content:
             node.data.messages.append(Message(role="user", content=content))
             return False
@@ -396,4 +388,31 @@ class FrontendActor(BaseTRPCActor):
     @property
     def files_allowed(self) -> list[str]:
         return ["src/App.tsx", "src/components/", "src/App.css"]
-        
+    
+    @property
+    def tools(self) -> list[Tool]:
+        return [
+            {
+                "name": "read_file",
+                "description": "Read a file",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                    },
+                    "required": ["path"],
+                }
+            },
+        ]
+
+    async def dump(self) -> object:
+        if self.root is None:
+            return []
+        return await self.dump_node(self.root)
+    
+    async def load(self, data: object):
+        if not isinstance(data, list):
+            raise ValueError(f"Expected list got {type(data)}")
+        if not data:
+            return
+        self.root = await self.load_node(data)
