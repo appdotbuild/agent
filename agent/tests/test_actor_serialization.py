@@ -1,9 +1,9 @@
 import pytest
 import dagger
-from base_node import Node
-from actors import BaseActor, BaseData
-from models.common import Message, TextRaw
-from workspace import Workspace
+from core.base_node import Node
+from core.actors import BaseActor, BaseData
+from llm.common import Message, TextRaw
+from core.workspace import Workspace
 
 pytestmark = pytest.mark.anyio
 

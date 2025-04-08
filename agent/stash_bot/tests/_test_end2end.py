@@ -54,13 +54,13 @@ async def test_end2end(initial_description: str = DEFAULT_PROMPT, mode: CacheMod
     application = Application(client, compiler)
     langfuse_context.configure(enabled=bool(os.getenv("LANGFUSE_ENABLED", "")))
 
-        bot_id = str(uuid.uuid4().hex)
-        prepared_bot = await application.prepare_bot([initial_description], bot_id=bot_id)
-        my_bot = await application.update_bot(
-            typespec_schema=prepared_bot.typespec.typespec_definitions or "",
-            bot_id=bot_id,
-            capabilities=prepared_bot.capabilities.capabilities or [],
-        )
+    bot_id = str(uuid.uuid4().hex)
+    prepared_bot = await application.prepare_bot([initial_description], bot_id=bot_id)
+    my_bot = await application.update_bot(
+        typespec_schema=prepared_bot.typespec.typespec_definitions or "",
+        bot_id=bot_id,
+        capabilities=prepared_bot.capabilities.capabilities or [],
+    )
 
     with tempfile.TemporaryDirectory() as temp_dir:
         current_dir = os.path.dirname(os.path.abspath(__file__))

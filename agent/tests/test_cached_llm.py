@@ -1,9 +1,9 @@
 import pytest
 import tempfile
 import anthropic
-from models.cached import CachedLLM
-from models.anthropic_client import AnthropicLLM
-from models.common import Message, TextRaw
+from llm.cached import CachedLLM
+from llm.anthropic_client import AnthropicLLM
+from llm.common import Message, TextRaw
 
 pytestmark = pytest.mark.anyio
 

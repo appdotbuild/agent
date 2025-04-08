@@ -6,11 +6,11 @@ import enum
 from typing import Dict, Any, List, TypedDict, NotRequired, Optional, Callable, Literal
 from dataclasses import dataclass, field, asdict
 import json
-from statemachine import StateMachine, State, Actor, Context
-from models.anthropic_bedrock import AnthropicBedrockLLM
+from core.statemachine import StateMachine, State, Actor, Context
+from llm.anthropic_bedrock import AnthropicBedrockLLM
 from anthropic import AsyncAnthropicBedrock
-from workspace import Workspace
-from trpc_agent import DraftActor, HandlersActor, IndexActor, FrontendActor
+from core.workspace import Workspace
+from trpc_agent.actors import DraftActor, HandlersActor, IndexActor, FrontendActor
 import dagger
 
 # Set up logging
@@ -113,7 +113,7 @@ class FSMApplication:
     async def initialize(self):
         self.workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./prefabs/trpc_fullstack"),
+            context=dagger.dag.host().directory("./template"),
             setup_cmd=[["bun", "install"]],
         )
         self.backend_workspace = self.workspace.clone().cwd("/app/server")

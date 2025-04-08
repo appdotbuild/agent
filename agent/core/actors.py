@@ -2,11 +2,11 @@ from typing import Protocol
 import dataclasses
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
-import statemachine
-from base_node import Node
-from models.common import AsyncLLM, Message
-from models.utils import loop_completion
-from workspace import Workspace
+from core import statemachine
+from core.base_node import Node
+from llm.common import AsyncLLM, Message
+from llm.utils import loop_completion
+from core.workspace import Workspace
 
 
 @dataclasses.dataclass

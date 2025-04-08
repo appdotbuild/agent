@@ -9,10 +9,10 @@ from anyio.streams.memory import MemoryObjectSendStream
 import jinja2
 import dagger
 import playbooks
-import statemachine
-from base_node import Node
-from workspace import Workspace, ExecResult
-from actors import BaseData, BaseActor, LLMActor
+import core.statemachine
+from core.base_node import Node
+from core.workspace import Workspace, ExecResult
+from core.actors import BaseData, BaseActor, LLMActor
 from models.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
 
 logger = logging.getLogger(__name__)

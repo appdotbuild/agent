@@ -1,5 +1,5 @@
 from langfuse.decorators import langfuse_context, observe
-from .common import AsyncLLM, Message, Tool, Completion
+from llm.common import AsyncLLM, Message, Tool, Completion
 
 
 class LangfuseLLM(AsyncLLM):

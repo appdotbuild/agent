@@ -1,5 +1,5 @@
 import pytest
-from statemachine import State, StateMachine
+from core.statemachine import State, StateMachine
 
 pytestmark = pytest.mark.anyio
 

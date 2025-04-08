@@ -1,6 +1,6 @@
 import anthropic
-from models import common
-from models.anthropic_client import AnthropicLLM, AnthropicParams
+from llm import common
+from llm.anthropic_client import AnthropicLLM, AnthropicParams
 
 class AnthropicBedrockLLM(AnthropicLLM):
     def __init__(self, client: anthropic.AsyncAnthropicBedrock):
