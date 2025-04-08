@@ -3,8 +3,9 @@ import anyio
 import logging
 import uuid
 import enum
-from typing import Dict, Any, List, TypedDict, NotRequired, Optional
-
+from typing import Dict, Any, List, TypedDict, NotRequired, Optional, Callable
+from dataclasses import dataclass, field
+import json
 from statemachine import StateMachine, State, Actor, Context
 from models.anthropic_bedrock import AnthropicBedrockLLM
 from anthropic import AsyncAnthropicBedrock
@@ -43,17 +44,41 @@ class FSMEvent(str, enum.Enum):
     FEEDBACK_FRONTEND = "FEEDBACK_FRONTEND"
 
 
-class ApplicationContext(TypedDict, Context):
+
+@dataclass
+class ApplicationContext(Context):
     """Context for the fullstack application state machine"""
     user_prompt: str
-    draft: NotRequired[str]
-    draft_feedback: NotRequired[str]
-    handlers_feedback: NotRequired[Dict[str, str]]
-    index_feedback: NotRequired[str]
-    frontend_feedback: NotRequired[str]
-    server_files: NotRequired[Dict[str, str]]
-    frontend_files: NotRequired[Dict[str, str]]
-    error: NotRequired[str]
+    draft: Optional[str] = None
+    draft_feedback: Optional[str] = None
+    # Using default_factory for mutable types like dict
+    handlers_feedback: Optional[Dict[str, str]] = field(default_factory=dict)
+    index_feedback: Optional[str] = None
+    frontend_feedback: Optional[str] = None
+    server_files: Optional[Dict[str, str]] = field(default_factory=dict)
+    frontend_files: Optional[Dict[str, str]] = field(default_factory=dict)
+    error: Optional[str] = None
+
+    def dump(self) -> dict:
+        """Dump context to a serializable dictionary"""
+        # Convert dataclass to dictionary
+        data = {
+            "user_prompt": self.user_prompt,
+            "draft": self.draft,
+            "draft_feedback": self.draft_feedback,
+            "handlers_feedback": self.handlers_feedback,
+            "index_feedback": self.index_feedback,
+            "frontend_feedback": self.frontend_feedback,
+            "server_files": self.server_files,
+            "frontend_files": self.frontend_files,
+            "error": self.error
+        }
+        return data
+
+    @classmethod
+    def load(cls, data: object) -> "ApplicationContext":
+        """Load context from a serializable dictionary"""
+        return cls(**data)
 
 
 class FSMApplication:
@@ -95,7 +120,7 @@ class FSMApplication:
     def create_fsm(self, user_prompt: str):
         """Create the state machine for the application"""
         # Create the initial context
-        self.context: ApplicationContext = {"user_prompt": user_prompt}
+        self.context: ApplicationContext = ApplicationContext(user_prompt=user_prompt)
 
         # Define actions to update context
         async def update_server_files(ctx: ApplicationContext, result: Any) -> None:
@@ -104,9 +129,9 @@ class FSMApplication:
             if hasattr(result, "get_trajectory"):
                 for node in result.get_trajectory():
                     if hasattr(node.data, "files") and node.data.files:
-                        if "server_files" not in ctx:
-                            ctx["server_files"] = {}
-                        ctx["server_files"].update(node.data.files)
+                        if not hasattr(ctx, "server_files"):
+                            ctx.server_files = {}
+                        ctx.server_files.update(node.data.files)
 
         async def update_frontend_files(ctx: ApplicationContext, result: Any) -> None:
             """Update frontend files in context from actor result"""
@@ -114,7 +139,7 @@ class FSMApplication:
             if hasattr(result, "get_trajectory"):
                 for node in result.get_trajectory():
                     if hasattr(node.data, "files") and node.data.files:
-                        ctx["frontend_files"] = node.data.files
+                        ctx.frontend_files = node.data.files
 
         async def update_draft(ctx: ApplicationContext, result: Any) -> None:
             """Update the draft in context"""
@@ -124,20 +149,21 @@ class FSMApplication:
                 for node in result.get_trajectory():
                     if hasattr(node.data, "files") and node.data.files:
                         draft_content = "\n".join(node.data.files.values())
-                ctx["draft"] = draft_content
+                ctx.draft = draft_content
 
         async def set_error(ctx: ApplicationContext, error: Exception) -> None:
             """Set error in context"""
             logger.error(f"Setting error in context: {error}")
-            ctx["error"] = str(error)
+            ctx.error = str(error)
 
         # Define state machine states
         states: State[ApplicationContext] = {
+            "initial": FSMState.DRAFT, # Define the initial state
             "states": {
                 FSMState.DRAFT: {
                     "invoke": {
                         "src": self.draft_actor,
-                        "input_fn": lambda ctx: (ctx.get("draft_feedback", ctx["user_prompt"]),),
+                        "input_fn": lambda ctx: (ctx.draft_feedback or ctx.user_prompt,),
                         "on_done": {
                             "target": FSMState.REVIEW_DRAFT,
                             "actions": [update_server_files, update_draft],
@@ -157,7 +183,7 @@ class FSMApplication:
                 FSMState.HANDLERS: {
                     "invoke": {
                         "src": self.handlers_actor,
-                        "input_fn": lambda ctx: (ctx["server_files"],),
+                        "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
                             "target": FSMState.REVIEW_HANDLERS,
                             "actions": [update_server_files],
@@ -177,7 +203,7 @@ class FSMApplication:
                 FSMState.INDEX: {
                     "invoke": {
                         "src": self.index_actor,
-                        "input_fn": lambda ctx: (ctx["server_files"],),
+                        "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
                             "target": FSMState.REVIEW_INDEX,
                             "actions": [update_server_files],
@@ -197,7 +223,7 @@ class FSMApplication:
                 FSMState.FRONTEND: {
                     "invoke": {
                         "src": self.front_actor,
-                        "input_fn": lambda ctx: (ctx["user_prompt"], ctx["server_files"]),
+                        "input_fn": lambda ctx: (ctx.user_prompt, ctx.server_files),
                         "on_done": {
                             "target": FSMState.REVIEW_FRONTEND,
                             "actions": [update_frontend_files],
@@ -215,44 +241,42 @@ class FSMApplication:
                     }
                 },
                 FSMState.COMPLETE: {
-                    # Terminal success state
+                    "type": "final" # Mark as a final state
                 },
                 FSMState.FAILURE: {
-                    # Terminal failure state
+                    "type": "final" # Mark as a final state
                 }
             },
-            "on": {
-                FSMEvent.START: FSMState.DRAFT,
-                FSMEvent.PROMPT: FSMState.DRAFT
-            }
         }
 
-        # Create the state machine
         logger.info("Creating state machine")
         self.fsm = StateMachine[ApplicationContext](states, self.context)
+        if "on" not in states:
+            states["on"] = {}
+        states["on"][FSMEvent.PROMPT] = FSMState.DRAFT
         self.current_state = FSMState.DRAFT
 
-    async def start(self, user_prompt: str):
-        if not self.draft_actor:
+    async def start(self, client_callback: Callable | None):
+        if not self.workspace:
+
             await self.initialize()
 
-        self.create_fsm(user_prompt)
-
-        # Start the FSM
-        logger.info("Starting FSM with prompt")
         try:
-            await self.fsm.send(FSMEvent.START)
-            self.current_state = self.fsm.stack_path[-1] if self.fsm.stack_path else FSMState.FAILURE
+            await self.send_event(FSMEvent.PROMPT, client_callback=client_callback)
         except Exception as e:
             logger.exception(f"Error starting FSM: {e}")
             self.current_state = FSMState.FAILURE
             if self.context:
-                self.context["error"] = str(e)
+                self.context.error = str(e)
+
+            error_checkpoint = self.as_checkpoint()
+            if client_callback:
+                client_callback(self.current_state, error_checkpoint)
 
         return self.current_state
 
-    async def send_event(self, event: FSMEvent, data: Optional[str] = None):
-        """Send an event to the FSM"""
+    async def send_event(self, event: FSMEvent, data: Optional[str] = None,
+                     client_callback : Callable | None = None):
         if not self.fsm:
             logger.error("FSM not initialized")
             return False
@@ -260,35 +284,46 @@ class FSMApplication:
         # Handle feedback events using match-case
         match event:
             case FSMEvent.FEEDBACK_DRAFT if data:
-                self.context["draft_feedback"] = data
+                self.context.draft_feedback = data
             case FSMEvent.FEEDBACK_HANDLERS if data:
-                if "handlers_feedback" not in self.context:
-                    self.context["handlers_feedback"] = {}
+                if not self.context.handlers_feedback:
+                    self.context.handlers_feedback = {}
                 # In a real implementation, we would need to specify which handler
                 # gets the feedback, for now we'll just set a general feedback
-                self.context["handlers_feedback"]["general"] = data
+                self.context.handlers_feedback["general"] = data
             case FSMEvent.FEEDBACK_INDEX if data:
-                self.context["index_feedback"] = data
+                self.context.index_feedback = data
             case FSMEvent.FEEDBACK_FRONTEND if data:
-                self.context["frontend_feedback"] = data
+                self.context.frontend_feedback = data
             case _:
-                raise ValueError(f"Invalid event or data: {event}, {data}")
+                pass   # not a feedback event
+
+        # Store the previous state for change detection
+        previous_state = self.current_state
 
         # Send the event
         logger.info(f"Sending event {event} to FSM")
-        try:
-            await self.fsm.send(event)
-            self.current_state = self.fsm.stack_path[-1] if self.fsm.stack_path else FSMState.FAILURE
-            return True
-        except Exception as e:
-            logger.exception(f"Error sending event to FSM: {e}")
-            return False
+
+        async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+            try:
+                await self.fsm.send(event)
+                self.current_state = self.fsm.stack_path[-1] if self.fsm.stack_path else FSMState.FAILURE
+
+                # Dump context after transition if requested
+                if previous_state != self.current_state:
+                    checkpoint = self.as_checkpoint()
+                    if client_callback:
+                        client_callback(self.current_state, checkpoint)
+                return True
+            except Exception as e:
+                logger.exception(f"Error sending event to FSM: {e}")
+                return False
 
     def get_state(self) -> FSMState:
         return self.current_state
 
     def get_context(self) -> ApplicationContext:
-        return self.context if self.context else {"user_prompt": ""}
+        return self.context if self.context else ApplicationContext(user_prompt="")
 
     def is_complete(self) -> bool:
         if not self.fsm or not self.fsm.stack_path:
@@ -319,38 +354,59 @@ class FSMApplication:
 
         return []
 
-    async def run(self, user_prompt: str):
-        async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-            state = await self.start(user_prompt)
-            logger.info(f"FSM started, current state: {state}")
+    def as_checkpoint(self) -> dict:
+        if not self.fsm:
+            raise RuntimeError("FSM not initialized")
 
-            # In a real application, this would interact with a user interface
-            # For this example, we'll just auto-confirm each review state
-            while not self.is_complete():
-                if self.is_review_state():
-                    logger.info(f"FSM is in review state {self.get_state()}, available events: {self.get_available_events()}")
+        checkpoint = self.get_context().dump()
+        checkpoint["current_state"] = self.current_state
+        return checkpoint
 
-                    # Auto-confirm in this example
-                    await self.send_event(FSMEvent.CONFIRM)
-                else:
-                    # Wait for the FSM to complete the current state
-                    await anyio.sleep(0.1)
+    @classmethod
+    async def from_checkpoint(cls, checkpoint: dict) -> "FSMApplication":
+        app = cls()
+        await app.initialize()
 
-        # Print the results
-        context = self.get_context()
-        if self.is_error():
-            logger.error(f"Application run failed: {context.get('error', 'Unknown error')}")
-        else:
-            logger.info("Application run completed successfully")
-            # Count files generated
-            server_files = context.get("server_files", {})
-            frontend_files = context.get("frontend_files", {})
-            logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
+        app.create_fsm("")  # Create with empty prompt - will be replaced
+        state = checkpoint.pop("current_state", FSMState.DRAFT)
+        app.context = ApplicationContext.load(checkpoint.get("context", {}))
+        app.current_state = state
+        logger.info(f"Restored FSM checkpoint to state: {app.current_state}")
+        return app
+
+    @classmethod
+    async def from_prompt(cls, user_prompt: str, client_callback: Callable | None):
+        app = cls()
+        await app.initialize()
+        app.create_fsm(user_prompt)
+        initial_checkpoint = app.as_checkpoint()
+        return app
 
 
 async def main(user_prompt="Simple todo app"):
-    fsm_app = FSMApplication()
-    await fsm_app.run(user_prompt)
+    client_callback = None
+    fsm_app = await FSMApplication.from_prompt(user_prompt, client_callback=None)
+    await fsm_app.start(client_callback)
+
+    while not fsm_app.is_complete():
+        if fsm_app.is_review_state():
+            logger.info(f"FSM is in review state {fsm_app.get_state()}, available events: {fsm_app.get_available_events()}")
+            # Auto-confirm in this example
+            await fsm_app.send_event(FSMEvent.CONFIRM, client_callback=client_callback)
+        else:
+            # Wait for the FSM to complete the current state
+            await anyio.sleep(0.1)
+
+    # Print the results
+    context = fsm_app.get_context()
+    if fsm_app.is_error():
+        logger.error(f"Application run failed: {context.error or 'Unknown error'}")
+    else:
+        logger.info("Application run completed successfully")
+        # Count files generated
+        server_files = context.server_files or {}
+        frontend_files = context.frontend_files or {}
+        logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
 
 
 if __name__ == "__main__":
