@@ -8,9 +8,9 @@ class AnthropicBedrockLLM(AnthropicLLM):
 
     async def completion(
         self,
-        model: str,
         messages: list[common.Message],
         max_tokens: int,
+        model: str = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
         temperature: float = 1.0,
         tools: list[common.Tool] | None = None,
         tool_choice: str | None = None,

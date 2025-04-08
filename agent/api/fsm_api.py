@@ -3,13 +3,12 @@ import uuid
 import logging
 from typing import Dict, Any, Optional, Protocol
 from dataclasses import asdict
-from langfuse import Langfuse
-from fullstack.models.utils import get_llm_client, AsyncLLM
+from llm.utils import get_llm_client, AsyncLLM
 
 import socket
 
-from fullstack.application import FSMEvent as FsmEvent, FSMState as FsmState, FSMApplication as Application
-from fullstack.statemachine import StateMachine
+from trpc_agent.application import FSMEvent as FsmEvent, FSMState as FsmState, FSMApplication as Application
+from core.statemachine import StateMachine
 
 
 # Configure logging
@@ -28,7 +27,7 @@ class FSMManager:
             compiler: Compiler instance (created if not provided)
             langfuse_client: Langfuse client (created if not provided)
         """
-        self.client
+        self.client = client or get_llm_client()
         self.fsm_instance = None
         self.trace_id = None
         self.app_instance = None
@@ -74,16 +73,6 @@ class FSMManager:
             Dict containing current_state, output, and available_actions
         """
         logger.info(f"Starting new FSM session with user input: {user_input[:100]}...")
-
-        # Create trace
-        self.trace_id = uuid.uuid4().hex
-        trace = self.langfuse_client.trace(
-            id=self.trace_id,
-            name="agent_controlled_fsm",
-            user_id=os.environ.get("USER_ID", socket.gethostname()),
-            metadata={"agent_controlled": True},
-        )
-        logger.debug(f"Created Langfuse trace with ID: {self.trace_id}")
 
         # Create FSM application from prompt
         self.app_instance = await Application.from_prompt(user_input)
