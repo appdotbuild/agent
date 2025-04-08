@@ -158,6 +158,7 @@ class DraftActor(BaseTRPCActor):
 
         # Collect relevant files for context
         logger.info(f"Collecting {len(self.files_relevant)} relevant files for context")
+
         for path in self.files_relevant:
             content = await workspace.read_file(path)
             context.append(f"\n<file path=\"{path}\">\n{content.strip()}\n</file>\n")
