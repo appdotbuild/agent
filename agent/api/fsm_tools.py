@@ -1,25 +1,20 @@
-from typing import List, Dict, Any, Optional, Tuple, TypedDict
+from typing import List, Dict, Any, Optional, Tuple
 import logging
 import coloredlogs
 import sys
-from dataclasses import dataclass
 import anyio
 from fire import Fire
-import jinja2
 
 from llm.utils import get_llm_client, AsyncLLM
-from llm.common import Message, Completion, ToolUse, ToolResult as CommonToolResult
-from llm.common import ToolUseResult, TextRaw, ContentBlock, Tool
+from llm.common import Message, ToolUse, ToolResult as CommonToolResult
+from llm.common import ToolUseResult, TextRaw, Tool
 from api.fsm_api import FSMManager
-from trpc_agent.application import FSMState as FsmState, FSMApplication as Application
+from trpc_agent.application import FSMState as FsmState
 from common import get_logger
 
 # Configure logging to use stderr instead of stdout
 coloredlogs.install(level="INFO", stream=sys.stderr)
 logger = get_logger(__name__)
-
-
-# Use the common ToolResult structure directly
 
 
 class FSMToolProcessor:

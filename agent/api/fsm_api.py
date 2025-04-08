@@ -1,15 +1,8 @@
-import os
-import uuid
 import logging
-from typing import Dict, Any, Optional, Protocol
-from dataclasses import asdict
+from typing import Dict, Any, Optional
 from llm.utils import get_llm_client, AsyncLLM
 
-import socket
-
 from trpc_agent.application import FSMEvent as FsmEvent, FSMState as FsmState, FSMApplication as Application
-from core.statemachine import StateMachine
-
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -292,95 +285,6 @@ class FSMManager:
         return self.app_instance is not None
 
     # Helper methods
-
-    def _collect_artifacts(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Collect artifacts from FSM context"""
-        result = {}
-
-        if "typespec_schema" in context:
-            logger.debug("Adding TypeSpec schema to results")
-            result["typespec"] = {
-                "reasoning": context["typespec_schema"].reasoning,
-                "typespec": context["typespec_schema"].typespec,
-                "llm_functions": context["typespec_schema"].llm_functions
-            }
-
-        if "drizzle_schema" in context:
-            logger.debug("Adding Drizzle schema to results")
-            result["drizzle"] = {
-                "reasoning": context["drizzle_schema"].reasoning,
-                "drizzle_schema": context["drizzle_schema"].drizzle_schema
-            }
-
-        if "typescript_schema" in context:
-            logger.debug("Adding TypeScript schema to results")
-            try:
-                # Check if functions is a valid attribute and iterable
-                if not hasattr(context["typescript_schema"], "functions"):
-                    logger.error("typescript_schema has no 'functions' attribute")
-                    result["typescript"] = {
-                        "reasoning": context["typescript_schema"].reasoning,
-                        "typescript_schema": context["typescript_schema"].typescript_schema,
-                        "functions_error": "typescript_schema object has no 'functions' attribute"
-                    }
-                elif context["typescript_schema"].functions is None:
-                    logger.error("typescript_schema.functions is None")
-                    result["typescript"] = {
-                        "reasoning": context["typescript_schema"].reasoning,
-                        "typescript_schema": context["typescript_schema"].typescript_schema,
-                        "functions_error": "typescript_schema.functions is None"
-                    }
-                else:
-                    # Debug the functions structure
-                    functions = context["typescript_schema"].functions
-                    logger.debug(f"Functions type: {type(functions)}")
-
-                    # Process the functions safely
-                    processed_functions = []
-                    for i, f in enumerate(functions):
-                        logger.debug(f"Processing function {i}: {type(f)}")
-                        try:
-                            processed_functions.append(asdict(f))
-                        except Exception as e:
-                            logger.error(f"Error converting function {i} to dict: {str(e)}")
-                            # Add as much info as we can extract
-                            func_info = {"error": str(e)}
-                            for attr in ["name", "argument_type", "argument_schema", "return_type"]:
-                                if hasattr(f, attr):
-                                    func_info[attr] = getattr(f, attr)
-                            processed_functions.append(func_info)
-
-                    result["typescript"] = {
-                        "reasoning": context["typescript_schema"].reasoning,
-                        "typescript_schema": context["typescript_schema"].typescript_schema,
-                        "functions": processed_functions
-                    }
-                    logger.debug(f"Successfully processed {len(processed_functions)} TypeScript functions")
-            except Exception as e:
-                logger.exception(f"Error processing TypeScript functions: {str(e)}")
-                result["typescript"] = {
-                    "reasoning": context["typescript_schema"].reasoning,
-                    "typescript_schema": context["typescript_schema"].typescript_schema,
-                    "functions_error": f"Error processing functions: {str(e)}"
-                }
-
-        if "handler_tests" in context:
-            logger.debug("Adding handler tests to results")
-            result["handler_tests"] = {
-                name: {"source": test.source}
-                for name, test in context["handler_tests"].items()
-            }
-            logger.debug(f"Added {len(context['handler_tests'])} handler tests")
-
-        if "handlers" in context:
-            logger.debug("Adding handlers to results")
-            result["handlers"] = {
-                name: {"source": handler.source}
-                for name, handler in context["handlers"].items()
-            }
-            logger.debug(f"Added {len(context['handlers'])} handlers")
-
-        return result
 
     def _get_revision_event_type(self, state: str) -> Optional[str]:
         """Map review state to corresponding revision event type"""
