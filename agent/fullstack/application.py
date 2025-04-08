@@ -3,8 +3,8 @@ import anyio
 import logging
 import uuid
 import enum
-from typing import Dict, Any, List, TypedDict, NotRequired, Optional, Callable
-from dataclasses import dataclass, field
+from typing import Dict, Any, List, TypedDict, NotRequired, Optional, Callable, Literal
+from dataclasses import dataclass, field, asdict
 import json
 from statemachine import StateMachine, State, Actor, Context
 from models.anthropic_bedrock import AnthropicBedrockLLM
@@ -34,15 +34,26 @@ class FSMState(str, enum.Enum):
     FAILURE = "failure"
 
 
-class FSMEvent(str, enum.Enum):
-    START = "START"
-    PROMPT = "PROMPT"
-    CONFIRM = "CONFIRM"
-    FEEDBACK_DRAFT = "FEEDBACK_DRAFT"
-    FEEDBACK_HANDLERS = "FEEDBACK_HANDLERS"
-    FEEDBACK_INDEX = "FEEDBACK_INDEX"
-    FEEDBACK_FRONTEND = "FEEDBACK_FRONTEND"
 
+@dataclass(frozen=True) # Use dataclass for easier serialization, frozen=True makes it hashable by default if needed
+class FSMEvent:
+    type_: Literal["PROMPT", "CONFIRM", "FEEDBACK_DRAFT", "FEEDBACK_HANDLERS", "FEEDBACK_INDEX", "FEEDBACK_FRONTEND"]
+    feedback: Optional[str] = None
+
+    def __eq__(self, other):
+        match other:
+            case FSMEvent():
+                return self.type_ == other.type_
+            case str():
+                return self.type_ == other
+            case _:
+                raise TypeError(f"Cannot compare FSMEvent with {type(other)}")
+
+    def __hash__(self):
+        return hash(self.type_)
+
+    def __str__(self):
+        return self.type_
 
 
 @dataclass
@@ -176,8 +187,8 @@ class FSMApplication:
                 },
                 FSMState.REVIEW_DRAFT: {
                     "on": {
-                        FSMEvent.CONFIRM: FSMState.HANDLERS,
-                        FSMEvent.FEEDBACK_DRAFT: FSMState.DRAFT,
+                        FSMEvent("CONFIRM"): FSMState.HANDLERS,
+                        FSMEvent("FEEDBACK_DRAFT"): FSMState.DRAFT,
                     }
                 },
                 FSMState.HANDLERS: {
@@ -196,8 +207,8 @@ class FSMApplication:
                 },
                 FSMState.REVIEW_HANDLERS: {
                     "on": {
-                        FSMEvent.CONFIRM: FSMState.INDEX,
-                        FSMEvent.FEEDBACK_HANDLERS: FSMState.HANDLERS,
+                        FSMEvent("CONFIRM"): FSMState.INDEX,
+                        FSMEvent("FEEDBACK_HANDLERS"): FSMState.HANDLERS,
                     }
                 },
                 FSMState.INDEX: {
@@ -216,8 +227,8 @@ class FSMApplication:
                 },
                 FSMState.REVIEW_INDEX: {
                     "on": {
-                        FSMEvent.CONFIRM: FSMState.FRONTEND,
-                        FSMEvent.FEEDBACK_INDEX: FSMState.INDEX,
+                        FSMEvent("CONFIRM"): FSMState.FRONTEND,
+                        FSMEvent("FEEDBACK_INDEX"): FSMState.INDEX,
                     }
                 },
                 FSMState.FRONTEND: {
@@ -236,8 +247,8 @@ class FSMApplication:
                 },
                 FSMState.REVIEW_FRONTEND: {
                     "on": {
-                        FSMEvent.CONFIRM: FSMState.COMPLETE,
-                        FSMEvent.FEEDBACK_FRONTEND: FSMState.FRONTEND,
+                        FSMEvent("CONFIRM"): FSMState.COMPLETE,
+                        FSMEvent("FEEDBACK_FRONTEND"): FSMState.FRONTEND,
                     }
                 },
                 FSMState.COMPLETE: {
@@ -253,16 +264,15 @@ class FSMApplication:
         self.fsm = StateMachine[ApplicationContext](states, self.context)
         if "on" not in states:
             states["on"] = {}
-        states["on"][FSMEvent.PROMPT] = FSMState.DRAFT
+        states["on"][FSMEvent("PROMPT")] = FSMState.DRAFT
         self.current_state = FSMState.DRAFT
 
     async def start(self, client_callback: Callable | None):
         if not self.workspace:
-
             await self.initialize()
 
         try:
-            await self.send_event(FSMEvent.PROMPT, client_callback=client_callback)
+            await self.send_event(FSMEvent("PROMPT"), client_callback=client_callback)
         except Exception as e:
             logger.exception(f"Error starting FSM: {e}")
             self.current_state = FSMState.FAILURE
@@ -283,17 +293,17 @@ class FSMApplication:
 
         # Handle feedback events using match-case
         match event:
-            case FSMEvent.FEEDBACK_DRAFT if data:
+            case FSMEvent("FEEDBACK_DRAFT") if data:
                 self.context.draft_feedback = data
-            case FSMEvent.FEEDBACK_HANDLERS if data:
+            case FSMEvent("FEEDBACK_HANDLERS") if data:
                 if not self.context.handlers_feedback:
                     self.context.handlers_feedback = {}
                 # In a real implementation, we would need to specify which handler
                 # gets the feedback, for now we'll just set a general feedback
                 self.context.handlers_feedback["general"] = data
-            case FSMEvent.FEEDBACK_INDEX if data:
+            case FSMEvent("FEEDBACK_INDEX") if data:
                 self.context.index_feedback = data
-            case FSMEvent.FEEDBACK_FRONTEND if data:
+            case FSMEvent("FEEDBACK_FRONTEND") if data:
                 self.context.frontend_feedback = data
             case _:
                 pass   # not a feedback event
@@ -366,7 +376,6 @@ class FSMApplication:
     async def from_checkpoint(cls, checkpoint: dict) -> "FSMApplication":
         app = cls()
         await app.initialize()
-
         app.create_fsm("")  # Create with empty prompt - will be replaced
         state = checkpoint.pop("current_state", FSMState.DRAFT)
         app.context = ApplicationContext.load(checkpoint.get("context", {}))
@@ -375,7 +384,7 @@ class FSMApplication:
         return app
 
     @classmethod
-    async def from_prompt(cls, user_prompt: str, client_callback: Callable | None):
+    async def from_prompt(cls, user_prompt: str):
         app = cls()
         await app.initialize()
         app.create_fsm(user_prompt)
@@ -385,14 +394,14 @@ class FSMApplication:
 
 async def main(user_prompt="Simple todo app"):
     client_callback = None
-    fsm_app = await FSMApplication.from_prompt(user_prompt, client_callback=None)
+    fsm_app = await FSMApplication.from_prompt(user_prompt)
     await fsm_app.start(client_callback)
 
     while not fsm_app.is_complete():
         if fsm_app.is_review_state():
             logger.info(f"FSM is in review state {fsm_app.get_state()}, available events: {fsm_app.get_available_events()}")
             # Auto-confirm in this example
-            await fsm_app.send_event(FSMEvent.CONFIRM, client_callback=client_callback)
+            await fsm_app.send_event(FSMEvent("CONFIRM"), client_callback=client_callback)
         else:
             # Wait for the FSM to complete the current state
             await anyio.sleep(0.1)
