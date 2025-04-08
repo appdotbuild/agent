@@ -14,6 +14,10 @@ import dagger
 # Set up logging
 logger = logging.getLogger(__name__)
 
+logging.basicConfig(level=logging.INFO)
+for package in ['urllib3', 'httpx', 'google_genai.models']:
+    logging.getLogger(package).setLevel(logging.WARNING)
+
 
 class ApplicationContext(TypedDict):
     """Context for the fullstack application state machine"""
@@ -23,14 +27,8 @@ class ApplicationContext(TypedDict):
     error: NotRequired[str]
 
 
-async def main():
-    """Simple runnable example to demonstrate the application"""
-    # Set up logging
-    logging.basicConfig(level=logging.INFO)
-    for package in ['urllib3', 'httpx', 'google_genai.models']:
-        logging.getLogger(package).setLevel(logging.WARNING)
+async def main(user_prompt= "Simple todo app"):
 
-    # Connect to dagger
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Import actors from trpc_agent
 
