@@ -5,7 +5,7 @@ import uuid
 import enum
 from typing import Dict, Any, List, TypedDict, NotRequired, Optional
 
-from statemachine import StateMachine, State, Actor
+from statemachine import StateMachine, State, Actor, Context
 from models.anthropic_bedrock import AnthropicBedrockLLM
 from anthropic import AsyncAnthropicBedrock
 from workspace import Workspace
@@ -43,7 +43,7 @@ class FSMEvent(str, enum.Enum):
     FEEDBACK_FRONTEND = "FEEDBACK_FRONTEND"
 
 
-class ApplicationContext(TypedDict):
+class ApplicationContext(TypedDict, Context):
     """Context for the fullstack application state machine"""
     user_prompt: str
     draft: NotRequired[str]
@@ -233,7 +233,6 @@ class FSMApplication:
         self.current_state = FSMState.DRAFT
 
     async def start(self, user_prompt: str):
-        """Start the FSM with a prompt"""
         if not self.draft_actor:
             await self.initialize()
 
@@ -258,19 +257,22 @@ class FSMApplication:
             logger.error("FSM not initialized")
             return False
 
-        # Handle feedback events
-        if event == FSMEvent.FEEDBACK_DRAFT and data:
-            self.context["draft_feedback"] = data
-        elif event == FSMEvent.FEEDBACK_HANDLERS and data:
-            if "handlers_feedback" not in self.context:
-                self.context["handlers_feedback"] = {}
-            # In a real implementation, we would need to specify which handler
-            # gets the feedback, for now we'll just set a general feedback
-            self.context["handlers_feedback"]["general"] = data
-        elif event == FSMEvent.FEEDBACK_INDEX and data:
-            self.context["index_feedback"] = data
-        elif event == FSMEvent.FEEDBACK_FRONTEND and data:
-            self.context["frontend_feedback"] = data
+        # Handle feedback events using match-case
+        match event:
+            case FSMEvent.FEEDBACK_DRAFT if data:
+                self.context["draft_feedback"] = data
+            case FSMEvent.FEEDBACK_HANDLERS if data:
+                if "handlers_feedback" not in self.context:
+                    self.context["handlers_feedback"] = {}
+                # In a real implementation, we would need to specify which handler
+                # gets the feedback, for now we'll just set a general feedback
+                self.context["handlers_feedback"]["general"] = data
+            case FSMEvent.FEEDBACK_INDEX if data:
+                self.context["index_feedback"] = data
+            case FSMEvent.FEEDBACK_FRONTEND if data:
+                self.context["frontend_feedback"] = data
+            case _:
+                raise ValueError(f"Invalid event or data: {event}, {data}")
 
         # Send the event
         logger.info(f"Sending event {event} to FSM")
@@ -283,25 +285,20 @@ class FSMApplication:
             return False
 
     def get_state(self) -> FSMState:
-        """Get the current state of the FSM"""
         return self.current_state
 
     def get_context(self) -> ApplicationContext:
-        """Get the current context"""
         return self.context if self.context else {"user_prompt": ""}
 
     def is_complete(self) -> bool:
-        """Check if the FSM has completed"""
         if not self.fsm or not self.fsm.stack_path:
             return False
         return self.current_state in (FSMState.COMPLETE, FSMState.FAILURE)
 
     def is_error(self) -> bool:
-        """Check if the FSM has failed"""
         return self.current_state == FSMState.FAILURE
 
     def is_review_state(self) -> bool:
-        """Check if the FSM is in a review state"""
         return self.current_state in (
             FSMState.REVIEW_DRAFT,
             FSMState.REVIEW_HANDLERS,
@@ -313,47 +310,47 @@ class FSMApplication:
         """Get the events available in the current state"""
         if not self.fsm:
             return []
-        
+
         # Find the current state definition in the FSM
         for state in self.fsm.state_stack:
             if "states" in state and self.current_state in state["states"]:
                 state_def = state["states"][self.current_state]
                 return list(state_def.get("on", {}).keys())
-                
+
         return []
+
+    async def run(self, user_prompt: str):
+        async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+            state = await self.start(user_prompt)
+            logger.info(f"FSM started, current state: {state}")
+
+            # In a real application, this would interact with a user interface
+            # For this example, we'll just auto-confirm each review state
+            while not self.is_complete():
+                if self.is_review_state():
+                    logger.info(f"FSM is in review state {self.get_state()}, available events: {self.get_available_events()}")
+
+                    # Auto-confirm in this example
+                    await self.send_event(FSMEvent.CONFIRM)
+                else:
+                    # Wait for the FSM to complete the current state
+                    await anyio.sleep(0.1)
+
+        # Print the results
+        context = self.get_context()
+        if self.is_error():
+            logger.error(f"Application run failed: {context.get('error', 'Unknown error')}")
+        else:
+            logger.info("Application run completed successfully")
+            # Count files generated
+            server_files = context.get("server_files", {})
+            frontend_files = context.get("frontend_files", {})
+            logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
 
 
 async def main(user_prompt="Simple todo app"):
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        fsm_app = FSMApplication()
-
-        # Start the FSM with the user prompt
-        state = await fsm_app.start(user_prompt)
-        logger.info(f"FSM started, current state: {state}")
-
-        # In a real application, this would interact with a user interface
-        # For this example, we'll just auto-confirm each review state
-        while not fsm_app.is_complete():
-            if fsm_app.is_review_state():
-                logger.info(f"FSM is in review state {fsm_app.get_state()}, available events: {fsm_app.get_available_events()}")
-
-                # Auto-confirm in this example
-                await fsm_app.send_event(FSMEvent.CONFIRM)
-            else:
-                # Wait for the FSM to complete the current state
-                await anyio.sleep(0.1)
-
-    # Print the results
-    context = fsm_app.get_context()
-    if fsm_app.is_error():
-        logger.error(f"Application run failed: {context.get('error', 'Unknown error')}")
-    else:
-        logger.info("Application run completed successfully")
-
-        # Count files generated
-        server_files = context.get("server_files", {})
-        frontend_files = context.get("frontend_files", {})
-        logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
+    fsm_app = FSMApplication()
+    await fsm_app.run(user_prompt)
 
 
 if __name__ == "__main__":
