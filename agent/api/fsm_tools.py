@@ -4,6 +4,7 @@ import coloredlogs
 import sys
 import anyio
 from fire import Fire
+import uuid
 
 from llm.utils import get_llm_client, AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
@@ -300,7 +301,7 @@ class FSMToolProcessor:
             new_state = self.fsm_app.get_state()
 
             # Check for errors
-            if new_state == FSMApplication.FSMState.FAILURE:
+            if new_state == FSMState.FAILURE:
                 context = self.fsm_app.get_context()
                 error_msg = context.error or "Unknown error"
                 return CommonToolResult(content=f"Error while processing feedback: {error_msg}", is_error=True)
@@ -339,20 +340,20 @@ class FSMToolProcessor:
             context = self.fsm_app.get_context()
 
             # Check for errors
-            if current_state == FSMApplication.FSMState.FAILURE:
+            if current_state == FSMState.FAILURE:
                 error_msg = context.error or "Unknown error"
                 logger.error(f"[FSMTools] FSM failed with error: {error_msg}")
                 return CommonToolResult(content=f"FSM failed: {error_msg}", is_error=True)
 
             # Check for empty outputs with completed state
-            if current_state == FSMApplication.FSMState.COMPLETE and not context.server_files and not context.frontend_files:
+            if current_state == FSMState.COMPLETE and not context.server_files and not context.frontend_files:
                 error_msg = "FSM completed but didn't generate any artifacts"
                 logger.error(f"[FSMTools] {error_msg}")
                 return CommonToolResult(content=error_msg, is_error=True)
 
             # Prepare result based on state
             result = {}
-            if current_state == FSMApplication.FSMState.COMPLETE:
+            if current_state == FSMState.COMPLETE:
                 # Include all artifacts
                 result = {
                     "status": "complete",
@@ -377,7 +378,7 @@ class FSMToolProcessor:
 
 
 async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
-                   messages: List[Message]) -> Tuple[Message, bool, CommonToolResult | None]:
+                   messages: List[Message]) -> Tuple[List[Message] | None, bool, CommonToolResult | None]:
     """
     Send messages to Claude with FSM tool definitions and process tool use responses.
 
@@ -410,8 +411,6 @@ async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
                 tool_method = processor.tool_mapping.get(message.name)
 
                 if tool_method:
-                    if message.name == "start_fsm":
-                        breakpoint()
                     # Call the async method and await the result
                     result: CommonToolResult = await tool_method(**tool_params)
                     logger.info(f"[Claude Response] Tool result: {result.content}")
@@ -433,15 +432,16 @@ async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
                 raise ValueError(f"Unexpected message type: {message.type}")
 
     # Create a single new message with all tool results
+
+    new_messages = []
     if tool_results:
         # Convert the results to ToolUseResult objects
-        formatted_results = []
         for result_item in tool_results:
             tool_name = result_item["tool"]
             result = result_item["result"]
 
             # Create a ToolUse object
-            tool_use = ToolUse(name=tool_name, input={})
+            tool_use = ToolUse(name=tool_name, input={}, id=uuid.uuid4().hex)
 
             # Create a ToolUseResult object
             tool_use_result = ToolUseResult.from_tool_use(
@@ -449,20 +449,19 @@ async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
                 content=result.content,
                 is_error=result.is_error
             )
+            new_messages.append(Message(
+                role="assistant",
+                content=[tool_use]
+            ))
+            new_messages.append(Message(
+                role="user",
+                content=[
+                    tool_use_result,
+                    TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
+                ]
+            ))
 
-            formatted_results.append(tool_use_result)
-
-        # Create a new Message with the tool results
-        new_message = Message(
-            role="user",
-            content=[
-                TextRaw("Tool execution results:"),
-                *formatted_results,
-                TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
-            ]
-        )
-
-        return new_message, is_complete, final_tool_result
+        return new_messages, is_complete, final_tool_result
     else:
         # No tools were used
         return None, is_complete, final_tool_result
@@ -527,15 +526,15 @@ Do not consider the work complete until all components have been generated and t
 
     # Main interaction loop
     while not is_complete:
-        new_message, is_complete, final_tool_result = await run_with_claude(
+        new_messages, is_complete, final_tool_result = await run_with_claude(
             processor,
             client,
             current_messages
         )
 
-        logger.info(f"[Main] New message: {new_message}")
-        if new_message:
-            current_messages.append(new_message)
+        logger.info(f"[Main] New messages: {new_messages}")
+        if new_messages:
+            current_messages += new_messages
 
         logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
 

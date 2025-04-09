@@ -91,5 +91,7 @@ class AnthropicLLM(common.AsyncLLM):
                             "content": tool_result.content,
                             "is_error": tool_result.is_error or False
                         })
+                    case _:
+                        raise ValueError(f"Unknown block type {type(block)} for {block}")
             theirs_messages.append({"role": message.role, "content": theirs_content})
         return theirs_messages
