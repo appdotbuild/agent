@@ -1,5 +1,4 @@
 from mcp.server.fastmcp import FastMCP
-from jinja2 import Environment
 
 from api.fsm_tools import FSMToolProcessor
 from tracing_client import TracingClient

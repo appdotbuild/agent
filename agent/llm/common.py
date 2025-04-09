@@ -92,7 +92,7 @@ class Message:
 
     def to_dict(self) -> dict:
         return {"role": self.role, "content": dump_content(self.content)}
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> Self:
         return cls(data["role"], load_content(data["content"]))
@@ -116,7 +116,7 @@ class Completion:
             "stop_reason": self.stop_reason,
             "thinking_tokens": self.thinking_tokens,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> Self:
         return cls(
@@ -138,9 +138,9 @@ class Tool(TypedDict, total=False):
 class AsyncLLM(Protocol):
     async def completion(
         self,
-        model: str,
         messages: list[Message],
         max_tokens: int,
+        model: str | None = None,
         temperature: float = 1.0,
         tools: list[Tool] | None = None,
         tool_choice: str | None = None,

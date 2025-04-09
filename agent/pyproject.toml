@@ -7,13 +7,21 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic[bedrock]>=0.49.0",
     "anyio>=4.9.0",
+    "coloredlogs>=15.0.1",
     "dagger-io>=0.17.1",
     "fastapi>=0.115.12",
+    "fire>=0.7.0",
     "jinja2>=3.1.6",
+    "sentry-sdk>=2.25.1",
     "uvicorn==0.34.0",
+    "watchtower>=3.4.0",
 ]
 
 [dependency-groups]
+dev = [
+    "pdbpp>=0.10.3",
+    "ruff>=0.11.4",
+]
 google = [
     "google-genai>=1.7.0",
 ]
