@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -6,7 +7,7 @@ import anyio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 
-from models import (
+from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,
@@ -14,8 +15,9 @@ from models import (
     MessageKind,
     ErrorResponse
 )
-from interface import AgentInterface
-from empty_diff_impl import EmptyDiffAgentImplementation
+from api.agent_server.interface import AgentInterface
+from api.agent_server.async_agent_session import AsyncAgentSession
+from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,14 @@ async def run_agent[T: AgentInterface](
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Creating new agent session for {request.chatbot_id}:{request.trace_id}")
-    event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](0)
-    agent = agent_class(*args, **kwargs)
+    event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
+    agent = agent_class(
+        chatbot_id=request.chatbot_id,
+        trace_id=request.trace_id,
+        settings=request.settings,
+        *args,
+        **kwargs
+    )
     try:
         async with anyio.create_task_group() as tg:
             tg.start_soon(agent.process, request, event_tx)
@@ -71,7 +79,7 @@ async def run_agent[T: AgentInterface](
 async def message(request: AgentRequest) -> StreamingResponse:
     """
     Send a message to the agent and stream responses via SSE.
-    
+
     Platform (Backend) -> Agent Server API Spec:
     POST Request:
     - allMessages: [str] - history of all user messages
@@ -79,28 +87,28 @@ async def message(request: AgentRequest) -> StreamingResponse:
     - traceId: str - required - a string used in SSE events
     - agentState: {..} or null - the full state of the Agent to restore from
     - settings: {...} - json with settings with number of iterations etc
-    
+
     SSE Response:
     - status: "running" | "idle" - defines if the Agent stopped or continues running
     - traceId: corresponding traceId of the input
     - message: {kind, content, agentState, unifiedDiff} - response from the Agent Server
-    
+
     Args:
         request: The agent request containing all necessary fields
-        
+
     Returns:
         Streaming response with SSE events according to the API spec
     """
     try:
-        logger.info(f"Received message request for chatbot {request.chatbot_id}, trace {request.trace_id}")       
-        
+        logger.info(f"Received message request for chatbot {request.chatbot_id}, trace {request.trace_id}")
+
         # Start the SSE stream
         logger.info(f"Starting SSE stream for chatbot {request.chatbot_id}, trace {request.trace_id}")
         return StreamingResponse(
-            run_agent(request, EmptyDiffAgentImplementation),
+            run_agent(request, AsyncAgentSession),
             media_type="text/event-stream"
         )
-        
+
     except Exception as e:
         logger.error(f"Error processing message request: {str(e)}")
         # Return an HTTP error response for non-SSE errors
@@ -125,29 +133,29 @@ if __name__ == "__main__":
     import argparse
     import sys
     import os
-    
+
     # Add parent directory to path to enable imports
     parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     sys.path.append(parent_dir)
-    
+
     # Configure argument parser
     parser = argparse.ArgumentParser(description="Run the Async Agent Server API")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8001, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
-    parser.add_argument("--log-level", default="info", 
+    parser.add_argument("--log-level", default="info",
                       choices=["debug", "info", "warning", "error", "critical"],
                       help="Logging level")
-    
+
     args = parser.parse_args()
-    
+
     # Configure logging
     log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
+
     # Run the server
     uvicorn.run(
         "api.agent_server.async_server:app",
