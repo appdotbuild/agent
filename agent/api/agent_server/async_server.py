@@ -7,7 +7,7 @@ import anyio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 
-from .models import (
+from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,
@@ -15,9 +15,9 @@ from .models import (
     MessageKind,
     ErrorResponse
 )
-from .interface import AgentInterface
-from .async_agent_session import AsyncAgentSession
-from .empty_diff_impl import EmptyDiffAgentImplementation
+from api.agent_server.interface import AgentInterface
+from api.agent_server.async_agent_session import AsyncAgentSession
+from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
 
 logger = logging.getLogger(__name__)
 

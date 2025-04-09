@@ -10,7 +10,7 @@ from llm.common import Message, TextRaw, ToolUse, ToolResult, ToolUseResult
 from api.fsm_tools import FSMToolProcessor, run_with_claude
 from uuid import uuid4
 
-from .models import (
+from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,
