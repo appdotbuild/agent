@@ -14,7 +14,6 @@ from langfuse import Langfuse
 
 from core.interpolator import Interpolator
 from api.fsm_tools import FSMToolProcessor, run_with_claude
-from api.fsm_api import FSMManager
 from compiler.core import Compiler
 from fsm_core.llm_common import get_sync_client
 
@@ -78,8 +77,7 @@ class AgentSession:
         """Initialize the application instance"""
         logger.info(f"Initializing application for trace {self.trace_id}")
         logger.debug(f"DEBUG: Agent session trace_id = {self.trace_id}")
-        self.fsm_api = FSMManager()
-        self.processor_instance = FSMToolProcessor(self.fsm_api)
+        self.processor_instance = FSMToolProcessor()
         self.messages = []
         logger.info(f"Application initialized for trace {self.trace_id}")
     
@@ -88,10 +86,6 @@ class AgentSession:
         """Initialize the FSM with messages and optional state"""
         logger.info(f"Initializing FSM for trace {self.trace_id}")
         logger.debug(f"Agent state present: {agent_state is not None}")
-        
-        if agent_state:
-            logger.info(f"Setting external state for trace {self.trace_id}")
-            self.fsm_api.set_full_external_state(agent_state)
 
         # Extract user messages from the conversation history
         user_messages = [msg.content for msg in messages if hasattr(msg, "role") and msg.role == "user"]
@@ -109,7 +103,21 @@ class AgentSession:
         """Get the current FSM state"""
         try:
             logger.debug(f"Getting state for trace {self.trace_id}")
-            return self.fsm_api.get_full_external_state()
+            if not self.processor_instance.fsm_app:
+                return {}
+                
+            fsm_app = self.processor_instance.fsm_app
+            # Build state representation
+            state_data = {
+                "state": fsm_app.get_state(),
+                "context": fsm_app.get_context().dump() if hasattr(fsm_app.get_context(), "dump") else {}
+            }
+            
+            # Add available actions if the method exists in FSMToolProcessor
+            if hasattr(self.processor_instance, "_get_available_actions"):
+                state_data["actions"] = self.processor_instance._get_available_actions()
+                
+            return state_data
         except Exception as e:
             logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
             return {}
