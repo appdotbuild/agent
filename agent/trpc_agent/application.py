@@ -113,7 +113,7 @@ class FSMApplication:
     async def initialize(self):
         self.workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./template"),
+            context=dagger.dag.host().directory("./trpc_agent/template"),
             setup_cmd=[["bun", "install"]],
         )
         self.backend_workspace = self.workspace.clone().cwd("/app/server")

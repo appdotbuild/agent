@@ -75,10 +75,8 @@ async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]
 
 
 async def run_tests(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
-    logger.info("Running tests")
     result = await node.data.workspace.exec_with_pg(["bun", "test"])
     if result.exit_code == 0:
-        logger.info("Tests passed successfully")
         return result, None
 
     logger.info(f"Tests failed with exit code {result.exit_code}")
