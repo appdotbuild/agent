@@ -2,8 +2,8 @@ import logging
 from typing import Dict, Any, Optional
 
 from anyio.streams.memory import MemoryObjectSendStream
-from interface import AgentInterface
-from models import (
+from api.agent_server.interface import AgentInterface
+from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,

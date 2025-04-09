@@ -1,6 +1,6 @@
 from typing import Protocol
 from anyio.streams.memory import MemoryObjectSendStream
-from models import AgentRequest, AgentSseEvent
+from api.agent_server.models import AgentRequest, AgentSseEvent
 
 
 class AgentInterface(Protocol):
