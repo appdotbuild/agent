@@ -18,6 +18,7 @@ from api.agent_server.models import (
 from api.agent_server.interface import AgentInterface
 from api.agent_server.async_agent_session import AsyncAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
+from api import config
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +105,12 @@ async def message(request: AgentRequest) -> StreamingResponse:
 
         # Start the SSE stream
         logger.info(f"Starting SSE stream for chatbot {request.chatbot_id}, trace {request.trace_id}")
+        agent_type = {
+            "empty_diff": EmptyDiffAgentImplementation,
+            "trpc_agent": AsyncAgentSession,
+        }
         return StreamingResponse(
-            run_agent(request, AsyncAgentSession),
+            run_agent(request, agent_type[config.agent_type]),
             media_type="text/event-stream"
         )
 
