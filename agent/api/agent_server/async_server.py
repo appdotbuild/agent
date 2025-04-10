@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 import anyio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+import os
+import uvicorn
+from fire import Fire
 
 from api.agent_server.models import (
     AgentRequest,
@@ -19,6 +22,7 @@ from api.agent_server.interface import AgentInterface
 from api.agent_server.async_agent_session import AsyncAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
 from api import config
+from common import get_logger, init_sentry
 
 logger = logging.getLogger(__name__)
 
@@ -133,39 +137,20 @@ async def healthcheck():
     return {"status": "healthy"}
 
 
-if __name__ == "__main__":
-    import uvicorn
-    import argparse
-    import sys
-    import os
-
-    # Add parent directory to path to enable imports
-    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    sys.path.append(parent_dir)
-
-    # Configure argument parser
-    parser = argparse.ArgumentParser(description="Run the Async Agent Server API")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8001, help="Port to bind to")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
-    parser.add_argument("--log-level", default="info",
-                      choices=["debug", "info", "warning", "error", "critical"],
-                      help="Logging level")
-
-    args = parser.parse_args()
-
-    # Configure logging
-    log_level = getattr(logging, args.log_level.upper())
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
-    # Run the server
+def main(
+    host: str = "127.0.0.1",
+    port: int = 8001,
+    reload: bool = False,
+    log_level: str = "info"
+):
+    init_sentry()
     uvicorn.run(
         "api.agent_server.async_server:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-        log_level=args.log_level
+        host=host,
+        port=port,
+        reload=reload,
+        log_level=log_level
     )
+
+if __name__ == "__main__":
+    Fire(main)
