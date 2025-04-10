@@ -24,7 +24,7 @@ from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
 from api import config
 from common import get_logger, init_sentry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
