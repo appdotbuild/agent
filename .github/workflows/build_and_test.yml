@@ -36,7 +36,6 @@ jobs:
         run: |
           echo "Checking health of container: ${{ env.CONTAINER_NAME }}"
           status=$(docker inspect --format='{{.State.Health.Status}}' ${{ env.CONTAINER_NAME }})
-          echo "Container status: $status"
 
           if [ "$status" = "healthy" ]; then
             echo "Container is healthy!"
