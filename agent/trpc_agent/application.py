@@ -110,10 +110,20 @@ class FSMApplication:
         self.fsm = None
         self.current_state = FSMState.DRAFT
 
+
+    @property
+    @classmethod
+    def base_execution_plan(cls) -> str:
+        return """1. Draft app design
+2. Implement handlers
+3. Create index file
+4. Build frontend
+"""
+
     async def initialize(self):
         self.workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./template"),
+            context=dagger.dag.host().directory("./trpc_agent/template"),
             setup_cmd=[["bun", "install"]],
         )
         self.backend_workspace = self.workspace.clone().cwd("/app/server")

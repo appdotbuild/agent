@@ -144,6 +144,7 @@ class AsyncLLM(Protocol):
         temperature: float = 1.0,
         tools: list[Tool] | None = None,
         tool_choice: str | None = None,
+        system_prompt: str | None = None,
         *args,
         **kwargs,
     ) -> Completion:

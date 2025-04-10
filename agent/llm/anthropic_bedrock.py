@@ -14,6 +14,7 @@ class AnthropicBedrockLLM(AnthropicLLM):
         temperature: float = 1.0,
         tools: list[common.Tool] | None = None,
         tool_choice: str | None = None,
+        system_prompt: str | None = None,
     ) -> common.Completion:
         call_args: AnthropicParams = {
             "model": model,
@@ -21,6 +22,8 @@ class AnthropicBedrockLLM(AnthropicLLM):
             "temperature": temperature,
             "messages": self._messages_into(messages),
         }
+        if system_prompt is not None:
+            call_args["system"] = system_prompt
         if tools is not None:
             call_args["tools"] = tools # type: ignore
         if tool_choice is not None:
