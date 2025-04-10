@@ -138,7 +138,7 @@ async def healthcheck():
 
 
 def main(
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",
     port: int = 8001,
     reload: bool = False,
     log_level: str = "info"
