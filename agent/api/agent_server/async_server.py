@@ -130,7 +130,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
             detail=error_response.to_json()
         )
 
-@app.get("/healthcheck")
+@app.get("/health")
 async def healthcheck():
     """Health check endpoint"""
     logger.debug("Health check requested")
