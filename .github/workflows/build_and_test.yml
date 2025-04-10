@@ -26,6 +26,7 @@ jobs:
         uses: docker/setup-compose-action@v1
 
       - name: Start Docker Compose services
+        working-directory: ./agent/
         run: docker compose up -d --build
 
       - name: Wait for container to potentially start and stabilize
@@ -49,6 +50,7 @@ jobs:
 
       # This step will run even if the health check step fails
       - name: Clean up Docker Compose services
+        working-directory: ./agent/
         if: always() # Ensures this step runs even if previous steps fail
         run: |
           echo "Stopping and removing Docker Compose services..."
