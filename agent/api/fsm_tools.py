@@ -11,6 +11,8 @@ from llm.common import Message, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
 from trpc_agent.application import FSMApplication, FSMEvent, FSMState
 from common import get_logger
+from asyncio import Lock
+
 
 # Configure logging to use stderr instead of stdout
 coloredlogs.install(level="INFO", stream=sys.stderr)
@@ -48,6 +50,7 @@ class FSMToolProcessor:
             fsm_app: FSM application instance to use, or None if it will be created later
         """
         self.fsm_app = fsm_app
+        self.work_in_progress = Lock()
 
         # Define tool definitions for the AI agent using the common Tool structure
         self.tool_definitions: list[Tool] = [
@@ -432,6 +435,7 @@ async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
             case TextRaw():
                 logger.info(f"[Claude Response] Message: {message.text}")
             case ToolUse():
+                await processor.work_in_progress.acquire()
                 tool_use_obj = message
                 tool_params = message.input
                 logger.info(f"[Claude Response] Tool use: {message.name}, params: {tool_params}")
@@ -455,6 +459,8 @@ async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
                     })
                 else:
                     raise ValueError(f"Unexpected tool name: {message.name}")
+
+                processor.work_in_progress.release()
             case _:
                 raise ValueError(f"Unexpected message type: {message.type}")
 

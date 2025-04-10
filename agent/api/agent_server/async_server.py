@@ -110,7 +110,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
             "trpc_agent": AsyncAgentSession,
         }
         return StreamingResponse(
-            run_agent(request, agent_type[config.agent_type]),
+            run_agent(request, agent_type[config.AGENT_TYPE]),
             media_type="text/event-stream"
         )
 

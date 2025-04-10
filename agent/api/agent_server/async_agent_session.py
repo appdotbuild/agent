@@ -72,6 +72,12 @@ class AsyncAgentSession(AgentInterface):
             logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
             return {}
 
+    @property
+    def user_answered(self) -> bool:
+        if not self.messages:
+              return False
+        return self.messages[-1].role == "user"
+
     def bake_app_diff(self, app_out: Dict[str, Any]) -> None:
         logger.warning(f"No baking at the moment 🥖")
 
@@ -148,6 +154,14 @@ class AsyncAgentSession(AgentInterface):
         if self.is_complete:
             logger.info(f"FSM is already complete for trace {self.trace_id}")
             return False
+
+        if self.processor_instance.work_in_progress.locked():
+            logger.info(f"FSM is locked for trace {self.trace_id}, work in progress")
+            return False
+
+        if not self.user_answered:
+             logger.info(f"User has not answered for trace {self.trace_id}")
+             return False
 
         if not self.processor_instance:
             logger.warning(f"No processor instance found for trace {self.trace_id}")
