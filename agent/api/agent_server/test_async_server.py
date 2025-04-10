@@ -39,8 +39,6 @@ async def test_async_agent_message_endpoint():
         assert response.status_code == 200
         events = []
         async for line in response.aiter_lines():
-            # SSE lines can be empty or have the "data:" prefix.
-            # We only care about lines starting with "data:".
             if line.startswith("data:"):
                 # Remove the "data:" and any leading whitespace
                 data_str = line.split("data:", 1)[1].strip()
@@ -51,12 +49,12 @@ async def test_async_agent_message_endpoint():
                     # Skip lines that are not valid JSON
                     continue
 
-        assert len(events) > 0, "No SSE events received"
-        print(f"Received {len(events)} events")
-
+        assert len(events), "No SSE events received"
         for event in events:
             assert "traceId" in event, "Missing traceId in SSE payload"
             assert event["traceId"] == test_request["traceId"], "Trace IDs do not match"
+
+        # FixMe: add test for restoring state and continuing the conversation
 
 
 if __name__ == "__main__":
