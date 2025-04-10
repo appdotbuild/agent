@@ -92,10 +92,10 @@ class AsyncAgentSession(AgentInterface):
             new_messages, is_complete, final_tool_result = await run_with_claude(self.processor_instance, self.llm_client, self.messages)
             self.is_complete = is_complete
             if final_tool_result or new_messages:
-                status = AgentStatus.IDLE if is_complete else AgentStatus.RUNNING
-
                 if new_messages:
                     self.messages += new_messages
+
+                status = AgentStatus.IDLE if (is_complete or not self.user_answered) else AgentStatus.RUNNING
 
                 app_diff = None
                 if final_tool_result and hasattr(final_tool_result, 'data') and 'application_out' in final_tool_result.data:
@@ -202,11 +202,7 @@ class AsyncAgentSession(AgentInterface):
             while True:
                 should_continue = await self.advance_fsm()
                 if not should_continue:
-                    logger.info(f"FSM complete, processing final step for trace {self.trace_id}")
-                    final_event = await self.process_step()
-                    if final_event:
-                        logger.info(f"Sending final event for trace {self.trace_id}")
-                        await event_tx.send(final_event)
+                    logger.info(f"Stopping event stream for trace {self.trace_id}")
                     break
 
                 logger.info(f"Processing next step for trace {self.trace_id}")
@@ -239,3 +235,4 @@ class AsyncAgentSession(AgentInterface):
         finally:
             logger.info(f"Cleaning up session for trace {self.trace_id}")
             self.cleanup()
+            await event_tx.aclose()
