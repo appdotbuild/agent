@@ -6,6 +6,9 @@ on:
       - mock/sdk
   pull_request:
 
+env:
+  CONTAINER_NAME: agent-apiserver-1
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -21,3 +24,33 @@ jobs:
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
+
+      - name: Start Docker Compose services
+        run: docker compose up -d --build
+
+      - name: Wait for container to potentially start and stabilize
+        run: sleep 30s
+
+      - name: Check Container Health
+        run: |
+          echo "Checking health of container: ${{ env.CONTAINER_NAME }}"
+          status=$(docker inspect --format='{{.State.Health.Status}}' ${{ env.CONTAINER_NAME }})
+          echo "Container status: $status"
+
+          if [ "$status" = "healthy" ]; then
+            echo "Container is healthy!"
+            exit 0
+          else
+            echo "Error: Container is not healthy (status: $status). Failing workflow."
+            echo "--- Recent container logs: ---"
+            docker logs --tail 50 ${{ env.CONTAINER_NAME }} || echo "Could not retrieve container logs."
+            exit 1
+          fi
+
+      # This step will run even if the health check step fails
+      - name: Clean up Docker Compose services
+        if: always() # Ensures this step runs even if previous steps fail
+        run: |
+          echo "Stopping and removing Docker Compose services..."
+          docker compose down -v --remove-orphans # Stop, remove containers, networks, AND volumes (-v)
+          echo "Cleanup complete."
