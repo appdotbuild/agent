@@ -80,6 +80,7 @@ def get_llm_client(
 
     if backend == "auto":
         backend = _guess_llm_backend(backend)
+        logger.info(f"Auto-detected backend: {backend}")
 
     # Create a unique key for this client configuration
     cache_key = (backend, model_name, cache_mode, cache_path, params_key)
