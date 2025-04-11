@@ -21,6 +21,7 @@ from api.agent_server.models import (
 from api.agent_server.interface import AgentInterface
 from api.agent_server.async_agent_session import AsyncAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
+from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api import config
 from log import get_logger, init_sentry
 
@@ -163,6 +164,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
         logger.info(f"Starting SSE stream for chatbot {request.chatbot_id}, trace {request.trace_id}")
         agent_type = {
             "empty_diff": EmptyDiffAgentImplementation,
+            "template_diff": TemplateDiffAgentImplementation,
             "trpc_agent": AsyncAgentSession,
         }
         return StreamingResponse(

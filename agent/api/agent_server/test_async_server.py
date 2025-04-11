@@ -147,5 +147,113 @@ async def test_agent_reaches_idle_state():
         assert final_event.message.role == "agent", "Final message role is not 'agent'"
 
 
+@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
+async def test_agent_completes_app_generation():
+    """Test that the agent transitions to IDLE state after processing an app generation request.
+    
+    This test verifies:
+    1. The agent processes the request and returns events
+    2. The agent reaches the IDLE state when done
+    3. The response contains some message content
+    4. For non-test agents, the content should include app-related terminology
+    5. If the agent generates diffs, they should be non-empty
+    """
+    async with AgentApiClient() as client:
+        # Send a prompt to generate a simple app
+        (events, event_dicts), request = await client.send_message("Generate a simple counter app with increment and decrement buttons")
+
+        # Check that we received some events
+        assert len(events) > 0, "No events received"
+        
+        # Verify the final event has IDLE status indicating completion
+        final_event = events[-1]
+        assert final_event.status == AgentStatus.IDLE, "Agent did not complete app generation (not in IDLE state)"
+        
+        # Verify the response includes a message with agent role
+        assert final_event.message is not None, "Final event has no message"
+        assert final_event.message.role == "agent", "Final message role is not 'agent'"
+        
+        # Verify there is some content in the message
+        content = final_event.message.content
+        assert content, "No content in the final message"
+        
+        # For the "empty_diff" agent implementation used in tests, we can't expect 
+        # real app content, so we skip the content verification
+        if os.environ.get("CODEGEN_AGENT") != "empty_diff":
+            # For real agent implementations, verify the content includes app-related terms
+            app_indicators = [
+                "counter", "increment", "decrement", "button",
+                "function", "component", "app", "application",
+                "code", "html", "javascript", "react"
+            ]
+            
+            has_app_content = any(indicator.lower() in content.lower() for indicator in app_indicators)
+            assert has_app_content, "Generated content does not appear to include app-related content"
+        
+        # If the agent implementation includes unified diffs (code changes), verify they're non-empty
+        if hasattr(final_event.message, 'unified_diff') and final_event.message.unified_diff:
+            assert len(final_event.message.unified_diff) > 0, "Unified diff is empty"
+
+
+@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
+async def test_template_diff_agent():
+    """Test that the TemplateDiffAgentImplementation properly generates a counter app with a unified diff."""
+    
+    # Import the config module to directly modify the agent type
+    from api import config
+    
+    # Temporarily set the agent type to use the template diff agent
+    original_agent_type = config.AGENT_TYPE
+    config.AGENT_TYPE = "template_diff"
+    
+    try:
+        async with AgentApiClient() as client:
+            # Send a prompt to generate a counter app
+            (events, event_dicts), request = await client.send_message(
+                "Create a counter app with increment and decrement buttons"
+            )
+
+            # Check that we received events
+            assert len(events) > 0, "No events received"
+            
+            # Verify the final event has IDLE status
+            final_event = events[-1]
+            assert final_event.status == AgentStatus.IDLE, "Agent did not reach IDLE state"
+            
+            # Verify the app content is included in the response
+            assert final_event.message is not None, "Final event has no message"
+            
+            # Check for counter app specific content
+            content = final_event.message.content
+            assert "counter app" in content.lower(), "Response doesn't mention counter app"
+            assert "increment" in content.lower(), "Response doesn't mention increment"
+            assert "decrement" in content.lower(), "Response doesn't mention decrement"
+            
+            # Verify unified diff was created
+            assert hasattr(final_event.message, 'unified_diff'), "Message doesn't have unified_diff attribute"
+            assert final_event.message.unified_diff is not None, "Unified diff is None"
+            assert len(final_event.message.unified_diff) > 0, "Unified diff is empty"
+            
+            # Check that the diff includes the expected changes
+            diff = final_event.message.unified_diff
+            assert "useState" in diff, "Diff doesn't include React useState"
+            assert "Counter App" in diff, "Diff doesn't include Counter App title"
+            assert "increment" in diff.lower(), "Diff doesn't include increment function"
+            assert "decrement" in diff.lower(), "Diff doesn't include decrement function"
+            
+            # Check the agent state for app generation info
+            assert final_event.message.agent_state is not None, "Agent state is None"
+            assert final_event.message.agent_state.get("app_generated") is True, "app_generated flag not set in state"
+            assert final_event.message.agent_state.get("app_type") == "counter", "app_type not set to counter in state"
+            
+            # Verify expected modified files are tracked in state
+            assert "template_files" in final_event.message.agent_state, "template_files not in state"
+            assert "modified_files" in final_event.message.agent_state, "modified_files not in state"
+            assert "App.tsx" in final_event.message.agent_state["modified_files"], "App.tsx not in modified files"
+    finally:
+        # Restore the original agent implementation
+        config.AGENT_TYPE = original_agent_type
+
+
 if __name__ == "__main__":
     anyio.run(test_async_agent_message_endpoint, backend="asyncio")
