@@ -7,8 +7,7 @@ from typing import Dict, Any, List, TypedDict, NotRequired, Optional, Callable, 
 from dataclasses import dataclass, field, asdict
 import json
 from core.statemachine import StateMachine, State, Actor, Context
-from llm.anthropic_bedrock import AnthropicBedrockLLM
-from anthropic import AsyncAnthropicBedrock
+from llm.utils import get_llm_client, AsyncLLM
 from core.workspace import Workspace
 from trpc_agent.actors import DraftActor, HandlersActor, IndexActor, FrontendActor
 import dagger
@@ -99,7 +98,6 @@ class FSMApplication:
         self.frontend_workspace = None
         self.m_client = None
         self.model_params = {
-            "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "max_tokens": 8192,
         }
         self.context = None
@@ -129,10 +127,8 @@ class FSMApplication:
         self.backend_workspace = self.workspace.clone().cwd("/app/server")
         self.frontend_workspace = self.workspace.clone().cwd("/app/client")
 
-        # Set up LLM client
-        self.m_client = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
+        self.m_client = self.m_client or get_llm_client()
 
-        # Create actors
         self.draft_actor = DraftActor(self.m_client, self.backend_workspace.clone(), self.model_params)
         self.handlers_actor = HandlersActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
         self.index_actor = IndexActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)

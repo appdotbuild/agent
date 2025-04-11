@@ -4,11 +4,12 @@ import hashlib
 import logging
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool, TextRaw
+import os
 
 from log import get_logger
 logger = get_logger(__name__)
 
-CacheMode = Literal["off", "record", "replay"]
+CacheMode = Literal["off", "record", "replay", "auto"]
 
 
 class CachedLLM(AsyncLLM):
@@ -25,15 +26,29 @@ class CachedLLM(AsyncLLM):
         cache_path: str = "llm_cache.json",
     ):
         self.client = client
-        self.cache_mode = cache_mode
+        match cache_mode:
+            case "auto":
+                effective_cache_mode = self._infer_cache_mode()
+                logger.info(f"Inferred cache mode {effective_cache_mode}")
+            case "replay" | "record" | "off":
+                effective_cache_mode = cache_mode
+        self.cache_mode = effective_cache_mode
         self.cache_path = cache_path
-        self._cache = self._load_cache() if cache_mode != "off" else {}
+        self._cache = self._load_cache() if self.cache_mode != "off" else {}
 
         match (self.cache_mode, Path(self.cache_path)):
             case ("replay", file) if not file.exists():
                 raise ValueError(f"cache file missing: {file}")
             case ("record", file) if file.exists():
                 file.unlink()
+
+    @staticmethod
+    def _infer_cache_mode():
+        if env_mode := os.getenv("LLM_VCR_CACHE_MODE"):
+            if env_mode in ["off", "record", "replay"]:
+                return env_mode
+            raise ValueError(f"invalid cache mode from env: {env_mode}")
+        return "off"
 
     def _load_cache(self) -> Dict[str, Any]:
         """load cache from file if it exists, otherwise return empty dict."""
@@ -66,13 +81,15 @@ class CachedLLM(AsyncLLM):
 
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
+
+        logger.debug(f"Getting key for {key_str}")
         return hashlib.md5(key_str.encode()).hexdigest()
 
     async def completion(
         self,
-        model: str,
         messages: List[Message],
         max_tokens: int,
+        model: str | None = None,
         temperature: float = 1.0,
         tools: List[Tool] | None = None,
         tool_choice: str | None = None,
@@ -92,7 +109,7 @@ class CachedLLM(AsyncLLM):
         }
 
         match self.cache_mode:
-            case "off" | "record":
+            case "off":
                 response = await self.client.completion(
                     model=model,
                     messages=messages,
@@ -103,9 +120,25 @@ class CachedLLM(AsyncLLM):
                     *args,
                     **kwargs
                 )
-                if self.cache_mode == "record":
-                    cache_key = self._get_cache_key(**request_params)
-                    logger.info(f"caching response with key: {cache_key}")
+                return response
+            case "record"
+                cache_key = self._get_cache_key(**request_params)
+                logger.info(f"caching response with key: {cache_key}")
+
+                if cache_key in self._cache:
+                    logger.info(f"Fetching from cache")
+                    return self._cache[cache_key]
+                else:
+                    response = await self.client.completion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        *args,
+                        **kwargs
+                    )
                     self._cache[cache_key] = response.to_dict()
                     self._save_cache()
                 return response

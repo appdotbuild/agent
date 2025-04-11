@@ -55,8 +55,8 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
 def get_llm_client(
     backend: Literal["auto"] | LLMBackend = "auto",
     model_name: Literal["sonnet", "haiku"] = "sonnet",
-    cache_mode: CacheMode = "off",
-    cache_path: str = os.path.join(os.path.dirname(__file__), "../../../anthropic_cache.json"),
+    cache_mode: CacheMode = "auto",
+    cache_path: str = os.path.join(os.path.dirname(__file__), "../../../llm_cache.json"),
     client_params: dict | None = None,
 ) -> AsyncLLM:
     """Get a configured LLM client for the fullstack application.
@@ -102,13 +102,15 @@ def get_llm_client(
         },
     }
 
+    chosen_model = models_map[model_name][backend]
+
     match backend:
         case "bedrock":
             base_client = AsyncAnthropicBedrock(**client_params)
-            client = AnthropicBedrockLLM(base_client)
+            client = AnthropicBedrockLLM(base_client, default_model=chosen_model)
         case "anthropic":
             base_client = AsyncAnthropic(**client_params)
-            client = AnthropicLLM(base_client)
+            client = AnthropicLLM(base_client, default_model=chosen_model)
         case _:
             raise ValueError(f"Unknown backend: {backend}")
 

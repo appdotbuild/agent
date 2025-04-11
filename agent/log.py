@@ -66,7 +66,7 @@ def _init_logging():
     root_logger.setLevel(logging.INFO)
 
     # Set log levels for noisy loggers
-    for package in ['urllib3', 'httpx', 'google_genai.models']:
+    for package in ['urllib3', 'httpx', 'google_genai.models', "anthropic._base_client"]:
         logging.getLogger(package).setLevel(logging.WARNING)
 
     return handlers
