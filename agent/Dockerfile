@@ -16,7 +16,7 @@ EXPOSE 8001
 ENV PYTHONPATH=/app
 ENTRYPOINT ["uv", "run", "api/agent_server/async_server.py"]
 
-FROM prod AS dev
+FROM prod AS test
 WORKDIR /app
 
 RUN uv sync --dev --compile-bytecode
