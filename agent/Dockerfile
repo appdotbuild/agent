@@ -14,7 +14,7 @@ COPY . /app
 
 EXPOSE 8001
 ENV PYTHONPATH=/app
-ENTRYPOINT ["uv", "run", "api/agent_server/async_server.py"]
+ENTRYPOINT ["uv", "run", "server"]
 
 FROM prod AS test
 ENTRYPOINT []

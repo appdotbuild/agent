@@ -1,5 +1,7 @@
 from typing import Any, Awaitable, Callable, NotRequired, Protocol, Self, TypedDict
+from log import get_logger
 
+logger = get_logger(__name__)
 
 class Actor(Protocol):
     async def execute(self, *args, **kwargs) -> Any:
@@ -15,7 +17,7 @@ class Actor(Protocol):
 class Context(Protocol):
     def dump(self) -> object:
         ...
-    
+
     @classmethod
     def load(cls, data: object) -> Self:
         ...
@@ -66,7 +68,7 @@ class StateMachine[T: Context]:
         self.context = context
         self.state_stack: list[State[T]] = [root]
         self._queued_transition: str | None = None
-    
+
     async def send(self, event: str):
         for state in reversed(self.state_stack):
             if "on" in state and event in state["on"]:
@@ -74,14 +76,14 @@ class StateMachine[T: Context]:
                 await self._process_transitions()
                 return
         raise RuntimeError(f"Invalid event: {event}, stack: {self.stack_path}")
-    
+
     async def _process_transitions(self):
         while self._queued_transition:
-            print("Processing transition:", self.stack_path, self._queued_transition)
+            logger.info(f"Processing transition: {self.stack_path} {self._queued_transition}")
             next_state = self._queued_transition
             self._queued_transition = None
             await self._transition(next_state)
-    
+
     async def _transition(self, next_state: str):
         exit_stack = []
         while self.state_stack:
@@ -99,7 +101,7 @@ class StateMachine[T: Context]:
             return
         self.state_stack.extend(reversed(exit_stack)) # restore stack
         raise RuntimeError(f"Invalid transition: {next_state}, stack: {self.stack_path}")
-    
+
     @property
     def stack_path(self) -> list[str]:
         path = []
@@ -111,17 +113,17 @@ class StateMachine[T: Context]:
                     path.append(key)
                     break
         return path
-    
+
     async def _run_entry(self, state: State[T]):
         if "entry" in state:
             for action in state["entry"]:
                 await action(self.context)
-    
+
     async def _run_exit(self, state: State[T]):
         if "exit" in state:
             for action in state["exit"]:
                 await action(self.context)
-    
+
     async def _run_invoke(self, state: State[T]):
         if "invoke" in state:
             invoke = state["invoke"]
@@ -139,7 +141,7 @@ class StateMachine[T: Context]:
                         await action(self.context, e)
                 else:
                     raise e
-    
+
     async def _run_always(self, state: State[T]):
         if "always" in state:
             branches = state["always"] if isinstance(state["always"], list) else [state["always"]]
@@ -149,7 +151,7 @@ class StateMachine[T: Context]:
                     for action in always.get("actions", []):
                         await action(self.context)
                     return
-    
+
     async def dump(self) -> MachineCheckpoint:
         stack, actors = [(self.root, [])], []
         while stack:
@@ -169,7 +171,7 @@ class StateMachine[T: Context]:
             "actors": actors,
         }
         return checkpoint
-    
+
     @classmethod
     async def load(cls, root: State[T], data: MachineCheckpoint, context_type: type[T]) -> Self:
         stack = [(root, [])]

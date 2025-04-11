@@ -9,6 +9,8 @@ on:
 
 env:
   CONTAINER_NAME: agent-apiserver-1
+  ANTHROPIC_API_KEY: ${{ vars.ANTHROPIC_API_KEY }}
+  GEMINI_API_KEY: ${{ vars.GEMINI_API_KEY }}
 
 jobs:
   build-and-test:
