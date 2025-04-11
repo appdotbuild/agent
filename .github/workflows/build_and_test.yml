@@ -46,9 +46,6 @@ jobs:
             echo "Tests passed successfully!"
           fi
 
-      - name: Wait longer for container to potentially start and stabilize
-        run: sleep 5s
-
       - name: Check Container Health
         run: |
           echo "Checking health of container: ${{ env.CONTAINER_NAME }}"
