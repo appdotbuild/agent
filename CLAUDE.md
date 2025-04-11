@@ -5,6 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Structure
 - agent - Contains the main codegen agent code
 - agent/api - IO layer for the agent
+- agent/api/agent_server - API of the agent server
+- agent/api/agent_server/models.py - Models for the agent server consistent with agent_api.tsp
+- agent/api/agent_server/agent_api.tsp - Server type specification for the agent server
+- agent/api/agent_server/async_server.py - Agent server implementation using models.py and consistent with agent_api.tsp
+- agent/api/cli - CLI entrypoint
 - agent/core - core framework logic (base classes, statemachine etc.)
 - agent/trpc_agent - agent for fullstack code generation. New agents may be added on the same pattern.
 - agent/llm - LLM wrappers
@@ -36,6 +41,13 @@ Typically run from `./agent` directory.
 - **Naming**: snake_case for variables/functions, PascalCase for classes, UPPER_SNAKE_CASE for constants
 - **Line Length**: 120 characters max
 - **Quotes**: Double quotes
+- use snake_case for variable names
+- use snake_case for function names
+- use PascalCase for class names and for json keys as well as for API payload fields that must be hidden behind the models.py with its own from_json/to_json methods
+- use UPPER_SNAKE_CASE for constant names
+- use triple double quotes (`"""`) for docstrings
+- use single quotes (`'`) for strings that don't contain any special characters or apostrophes
+- use double quotes (`"`) for strings that do contain special characters or apostrophes
 
 ### TypeScript
 - **Types**: Use explicit interfaces and Zod for schema validation
