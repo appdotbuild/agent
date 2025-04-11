@@ -17,7 +17,6 @@ ENV PYTHONPATH=/app
 ENTRYPOINT ["uv", "run", "api/agent_server/async_server.py"]
 
 FROM prod AS test
-WORKDIR /app
-
+ENTRYPOINT []
 RUN uv sync --dev --compile-bytecode
 CMD ["uv", "run", "pytest", ".", "--co"]
