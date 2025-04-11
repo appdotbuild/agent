@@ -8,6 +8,7 @@ import uuid
 import json
 import tempfile
 import os
+import shutil
 from pathlib import Path
 import ast # Use ast for safer literal evaluation
 
@@ -451,11 +452,19 @@ class FSMToolProcessor:
                     error_msg = "Application generation completed but didn't produce any artifacts"
                     logger.error(f"[FSMTools] {error_msg}")
                     raise RuntimeError(error_msg)
-                    
-                logger.info("[FSMTools] Application baking completed successfully")
+                
+                # Create a temporary directory to store the application files
+                temp_dir = tempfile.mkdtemp(prefix="fsm_baked_")
+                logger.info(f"[FSMTools] Created temporary directory: {temp_dir}")
+                
+                # Save files - this will first copy template files then apply the generated files on top
+                await _save_generated_files(server_files, frontend_files, temp_dir)
+                
+                logger.info(f"[FSMTools] Application baking completed successfully in {temp_dir}")
                 return {
                     "server_files": server_files,
-                    "frontend_files": frontend_files
+                    "frontend_files": frontend_files,
+                    "output_dir": temp_dir
                 }
                 
             except Exception as e:
@@ -597,9 +606,19 @@ async def _save_generated_files(server_files: Dict[str, str], frontend_files: Di
     logger.info(f"[SaveFiles] Saving generated files to temporary directory: {temp_dir}")
     
     temp_dir_path = Path(temp_dir)
-
+    template_dir_path = Path("trpc_agent/template")
+    
     try:
-        # Save server files
+        # First copy template files to temp directory
+        logger.info(f"[SaveFiles] Copying template files from {template_dir_path} to {temp_dir_path}")
+        if template_dir_path.exists():
+            shutil.copytree(template_dir_path, temp_dir_path, dirs_exist_ok=True)
+            logger.debug(f"[SaveFiles] Template files copied successfully")
+        else:
+            logger.error(f"[SaveFiles] Template directory {template_dir_path} not found")
+            raise FileNotFoundError(f"Template directory {template_dir_path} not found")
+            
+        # Now apply generated files on top of template
         server_base_path = temp_dir_path / "server"
         if server_files:
             server_base_path.mkdir(parents=True, exist_ok=True)
@@ -616,7 +635,7 @@ async def _save_generated_files(server_files: Dict[str, str], frontend_files: Di
                      logger.error(f"[SaveFiles] Error saving server file {full_path}: {e}")
 
         # Save frontend files
-        frontend_base_path = temp_dir_path / "frontend"
+        frontend_base_path = temp_dir_path / "client"
         if frontend_files:
             frontend_base_path.mkdir(parents=True, exist_ok=True)
             for file_path, content in frontend_files.items():

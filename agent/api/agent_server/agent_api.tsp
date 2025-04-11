@@ -49,8 +49,16 @@ model AgentMessage {
   @doc("Updated state of the Agent Server that should be presented in the next request to continue the conversation.")
   agentState: Record<string, unknown> | null;
 
-  @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
-  unifiedDiff: string | null;
+  model {
+    @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
+    unifiedDiff: string | null;
+
+    commitTitle: 
+
+    commitMessage:
+
+
+  } 
 }
 
 @doc("Structure of the data payload within each Server-Sent Event (SSE).")
