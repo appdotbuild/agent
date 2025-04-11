@@ -21,7 +21,7 @@ from application import Application
 from dag_compiler import Compiler
 from core.interpolator import Interpolator
 from fsm_core.llm_common import get_sync_client, CacheMode
-from common import get_logger
+from log import get_logger
 
 
 pytestmark = pytest.mark.anyio

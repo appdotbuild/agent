@@ -22,7 +22,7 @@ from api.agent_server.interface import AgentInterface
 from api.agent_server.async_agent_session import AsyncAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
 from api import config
-from common import get_logger, init_sentry
+from log import get_logger, init_sentry
 
 logger = get_logger(__name__)
 

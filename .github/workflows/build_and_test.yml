@@ -30,8 +30,22 @@ jobs:
         working-directory: ./agent/
         run: docker compose up -d --build
 
+      - name: Run tests
+        working-directory: ./agent/
+        run: |
+          echo "Running tests..."
+          docker build --target test -t agent-test:latest
+          docker run --rm agent-test:latest
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "Tests failed with exit code $exit_code"
+            exit $exit_code
+          else
+            echo "Tests passed successfully!"
+          fi
+
       - name: Wait for container to potentially start and stabilize
-        run: sleep 30s
+        run: sleep 20s
 
       - name: Check Container Health
         run: |

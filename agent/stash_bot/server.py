@@ -15,7 +15,7 @@ from application import Application, InteractionMode
 from dag_compiler import Compiler
 import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
-from common import get_logger, init_sentry
+from log import get_logger, init_sentry
 from fsm_core.llm_common import get_sync_client
 
 logger = get_logger(__name__)
