@@ -35,7 +35,7 @@ class FSMState(str, enum.Enum):
     REVIEW_FRONTEND = "review_frontend"
     COMPLETE = "complete"
     FAILURE = "failure"
-
+    _ROOT = "root"
 
 
 @dataclass(frozen=True) # Use dataclass for easier serialization, frozen=True makes it hashable by default if needed
@@ -65,12 +65,11 @@ class ApplicationContext(Context):
     user_prompt: str
     draft: Optional[str] = None
     draft_feedback: Optional[str] = None
-    # Using default_factory for mutable types like dict
     handlers_feedback: Optional[Dict[str, str]] = field(default_factory=dict)
     index_feedback: Optional[str] = None
     frontend_feedback: Optional[str] = None
-    server_files: Optional[Dict[str, str]] = field(default_factory=dict)
-    frontend_files: Optional[Dict[str, str]] = field(default_factory=dict)
+    server_files: Dict[str, str] = field(default_factory=dict)
+    frontend_files: Dict[str, str] = field(default_factory=dict)
     error: Optional[str] = None
 
     def dump(self) -> dict:
@@ -98,8 +97,8 @@ class ApplicationContext(Context):
 
 
 class FSMApplication:
-    llm: AsyncLLM
-    fsm: StateMachine[ApplicationContext, FSMEvent]
+    def __init__(self, fsm: StateMachine[ApplicationContext, FSMEvent]):
+        self.fsm = fsm
 
     @classmethod
     def base_execution_plan(cls) -> str:
@@ -110,28 +109,9 @@ class FSMApplication:
             "4. Build frontend",
         ])
 
-    async def initialize(self):
-        self.workspace = await Workspace.create(
-            base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
-            setup_cmd=[["bun", "install"]],
-        )
-        self.backend_workspace = self.workspace.clone().cwd("/app/server")
-        self.frontend_workspace = self.workspace.clone().cwd("/app/client")
-
-        # Set up LLM client
-        self.m_client = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
-
-        # Create actors
-        self.draft_actor = DraftActor(self.m_client, self.backend_workspace.clone(), self.model_params)
-        self.handlers_actor = HandlersActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
-        self.index_actor = IndexActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
-        self.front_actor = FrontendActor(self.m_client, self.frontend_workspace.clone(), self.model_params, beam_width=1, max_depth=20)
-
-    def create_fsm(self, user_prompt: str):
+    @classmethod
+    async def start_fsm(cls, user_prompt: str) -> Self:
         """Create the state machine for the application"""
-        # Create the initial context
-        self.context: ApplicationContext = ApplicationContext(user_prompt=user_prompt)
 
         def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
             files = {}
@@ -140,52 +120,52 @@ class FSMApplication:
             return files
 
         # Define actions to update context
-        async def update_handler_files(ctx: ApplicationContext, result: dict[str, Node[BaseData] | None]) -> None:
-            """Update server files in context from actor result"""
-            logger.info("Updating server files from result")
-            if not ctx.server_files:
-                ctx.server_files = {}
-            for node in result
-            if hasattr(result, "get_trajectory"):
-                for node in result.get_trajectory():
-                    if hasattr(node.data, "files") and node.data.files:
-                        ctx.server_files.update(node.data.files)
+        async def update_handler_files(ctx: ApplicationContext, result: dict[str, Node[BaseData]]) -> None:
+            logger.info("Updating handler files from result")
+            for handler_name, node in result.items():
+                ctx.server_files.update(agg_node_files(node))
 
-        async def update_frontend_files(ctx: ApplicationContext, result: Any) -> None:
-            """Update frontend files in context from actor result"""
+        async def update_frontend_files(ctx: ApplicationContext, result: Node[BaseData]) -> None:
             logger.info("Updating frontend files from result")
-            if hasattr(result, "get_trajectory"):
-                for node in result.get_trajectory():
-                    if hasattr(node.data, "files") and node.data.files:
-                        ctx.frontend_files = node.data.files
+            ctx.frontend_files.update(agg_node_files(result))
 
-        async def update_draft(ctx: ApplicationContext, result: Any) -> None:
-            """Update the draft in context"""
+        async def update_draft(ctx: ApplicationContext, result: Node[BaseData]) -> None:
             logger.info("Updating draft in context")
-            if hasattr(result, "get_trajectory"):
-                draft_content = ""
-                for node in result.get_trajectory():
-                    if hasattr(node.data, "files") and node.data.files:
-                        draft_content = "\n".join(node.data.files.values())
-                ctx.draft = draft_content
+            files = agg_node_files(result)
+            ctx.server_files.update(files)
+            ctx.draft = "\n".join(files.values())
+
+        async def update_index_files(ctx: ApplicationContext, result: Node[BaseData]) -> None:
+            logger.info("Updating index files from result.")
+            ctx.server_files.update(agg_node_files(result))
 
         async def set_error(ctx: ApplicationContext, error: Exception) -> None:
             """Set error in context"""
             logger.error(f"Setting error in context: {error}")
             ctx.error = str(error)
 
+        llm = cls.get_async_llm()
+        model_params = {
+            "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "max_tokens": 8192,
+        }
+        workspace = await Workspace.create(
+            base_image="oven/bun:1.2.5-alpine",
+            context=dagger.dag.host().directory("./trpc_agent/template"),
+            setup_cmd=[["bun", "install"]],
+        )
+        backend_workspace = workspace.clone().cwd("/app/server")
+        frontend_workspace = workspace.clone().cwd("/app/client")
 
-        llm = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
-
-        draft_actor = DraftActor(self.m_client, self.backend_workspace.clone(), self.model_params)
-        handlers_actor = HandlersActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
-        index_actor = IndexActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
-        front_actor = FrontendActor(self.m_client, self.frontend_workspace.clone(), self.model_params, beam_width=1, max_depth=20)
+        draft_actor = DraftActor(llm, backend_workspace.clone(), model_params)
+        handlers_actor = HandlersActor(llm, backend_workspace.clone(), model_params, beam_width=3)
+        index_actor = IndexActor(llm, backend_workspace.clone(), model_params, beam_width=3)
+        front_actor = FrontendActor(llm, frontend_workspace.clone(), model_params, beam_width=1, max_depth=20)
 
         # Define state machine states
         states = State[ApplicationContext, FSMEvent](
             on={
-                FSMEvent("PROMPT"): FSMState.DRAFT
+                FSMEvent("CONFIRM"): FSMState.DRAFT
             },
             states={
                 FSMState.DRAFT: State(
@@ -194,7 +174,7 @@ class FSMApplication:
                         "input_fn": lambda ctx: (ctx.draft_feedback or ctx.user_prompt,),
                         "on_done": {
                             "target": FSMState.REVIEW_DRAFT,
-                            "actions": [update_server_files, update_draft],
+                            "actions": [update_draft],
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
@@ -214,7 +194,7 @@ class FSMApplication:
                         "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
                             "target": FSMState.REVIEW_HANDLERS,
-                            "actions": [update_server_files],
+                            "actions": [update_handler_files],
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
@@ -234,7 +214,7 @@ class FSMApplication:
                         "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
                             "target": FSMState.REVIEW_INDEX,
-                            "actions": [update_server_files],
+                            "actions": [update_index_files],
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
@@ -270,160 +250,101 @@ class FSMApplication:
                 ),
                 FSMState.COMPLETE: State(),
                 FSMState.FAILURE: State(),
-            }
+            },
         )
 
-        return StateMachine[ApplicationContext, FSMEvent](states, self.context)
+        context = ApplicationContext(user_prompt=user_prompt)
+        fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
+        return cls(fsm)
 
-    async def start(self, client_callback: Callable | None):
-        if not self.workspace:
-            await self.initialize()
+    async def confirm_state(self):
+        raise NotImplementedError
 
-        try:
-            await self.send_event(FSMEvent("PROMPT"), client_callback=client_callback)
-        except Exception as e:
-            logger.exception(f"Error starting FSM: {e}")
-            self.current_state = FSMState.FAILURE
-            if self.context:
-                self.context.error = str(e)
+    async def provide_feedback(self, feedback: str, component_name: str | None):
+        raise NotImplementedError
 
-            error_checkpoint = self.as_checkpoint()
-            if client_callback:
-                client_callback(self.current_state, error_checkpoint)
+    async def complete_fsm(self):
+        raise NotImplementedError
 
-        return self.current_state
+    def maybe_error(self) -> str | None:
+        return self.fsm.context.error
 
-    async def send_event(self, event: FSMEvent, data: Optional[str] = None,
-                     client_callback : Callable | None = None):
-        if not self.fsm:
-            logger.error("FSM not initialized")
-            return False
+    @property
+    def current_state(self) -> str:
+        if (path := self.fsm.stack_path):
+            return path[-1]
+        return FSMState._ROOT
 
-        # Handle feedback events using match-case
-        match event:
-            case FSMEvent("FEEDBACK_DRAFT") if data:
-                self.context.draft_feedback = data
-            case FSMEvent("FEEDBACK_HANDLERS") if data:
-                if not self.context.handlers_feedback:
-                    self.context.handlers_feedback = {}
-                # In a real implementation, we would need to specify which handler
-                # gets the feedback, for now we'll just set a general feedback
-                self.context.handlers_feedback["general"] = data
-            case FSMEvent("FEEDBACK_INDEX") if data:
-                self.context.index_feedback = data
-            case FSMEvent("FEEDBACK_FRONTEND") if data:
-                self.context.frontend_feedback = data
+    @property
+    def state_output(self) -> dict:
+        match self.current_state:
+            case FSMState.REVIEW_DRAFT:
+                return {"draft": self.fsm.context.draft}
+            case FSMState.REVIEW_HANDLERS:
+                handler_files = {
+                    filename: content for filename, content in self.fsm.context.server_files.items()
+                    if "/handlers/" in filename
+                }
+                return {"handlers": handler_files}
+            case FSMState.REVIEW_INDEX:
+                return {"index": self.fsm.context.server_files["index.ts"]}
+            case FSMState.REVIEW_FRONTEND:
+                return {"frontend": self.fsm.context.frontend_files}
+            case FSMState.COMPLETE:
+                return {
+                    "server_files": self.fsm.context.server_files,
+                    "frontend_files": self.fsm.context.frontend_files,
+                }
+            case FSMState.FAILURE:
+                return {"error": self.fsm.context.error or "Unknown error"}
             case _:
-                pass   # not a feedback event
+                logger.debug(f"State {self.current_state} is a processing state, returning processing status")
+                return {"status": "processing"}
 
-        # Store the previous state for change detection
-        previous_state = self.current_state
-
-        # Send the event
-        logger.info(f"Sending event {event} to FSM")
-
-        async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-            try:
-                await self.fsm.send(event)
-                self.current_state = self.fsm.stack_path[-1] if self.fsm.stack_path else FSMState.FAILURE
-
-                # Dump context after transition if requested
-                if previous_state != self.current_state:
-                    checkpoint = self.as_checkpoint()
-                    if client_callback:
-                        client_callback(self.current_state, checkpoint)
-                return True
-            except Exception as e:
-                logger.exception(f"Error sending event to FSM: {e}")
-                return False
-
-    def get_state(self) -> FSMState:
-        return self.current_state
-
-    def get_context(self) -> ApplicationContext:
-        return self.context if self.context else ApplicationContext(user_prompt="")
-
-    def is_complete(self) -> bool:
-        if not self.fsm or not self.fsm.stack_path:
-            return False
-        return self.current_state in (FSMState.COMPLETE, FSMState.FAILURE)
-
-    def is_error(self) -> bool:
-        return self.current_state == FSMState.FAILURE
-
-    def is_review_state(self) -> bool:
-        return self.current_state in (
-            FSMState.REVIEW_DRAFT,
-            FSMState.REVIEW_HANDLERS,
-            FSMState.REVIEW_INDEX,
-            FSMState.REVIEW_FRONTEND
-        )
-
-    def get_available_events(self) -> List[FSMEvent]:
-        """Get the events available in the current state"""
-        if not self.fsm:
-            return []
-
-        # Find the current state definition in the FSM
-        for state in self.fsm.state_stack:
-            if "states" in state and self.current_state in state["states"]:
-                state_def = state["states"][self.current_state]
-                return list(state_def.get("on", {}).keys())
-
-        return []
-
-    def as_checkpoint(self) -> dict:
-        if not self.fsm:
-            raise RuntimeError("FSM not initialized")
-
-        checkpoint = self.get_context().dump()
-        checkpoint["current_state"] = self.current_state
-        return checkpoint
+    @property
+    def available_actions(self) -> dict[str, str]:
+        actions = {}
+        match self.current_state:
+            case FSMState.REVIEW_DRAFT | FSMState.REVIEW_HANDLERS | FSMState.REVIEW_INDEX | FSMState.REVIEW_FRONTEND:
+                actions = {
+                    "confirm": "Accept current output and continue",
+                    "revise": "Provide feedback and revise"
+                }
+                logger.debug(f"Review state detected: {self.current_state}, offering confirm/revise actions")
+            case FSMState.COMPLETE:
+                actions = {"complete": "Finalize and get all artifacts"}
+                logger.debug("FSM is in COMPLETE state, offering complete action")
+            case FSMState.FAILURE:
+                actions = {"get_error": "Get error details"}
+                logger.debug("FSM is in FAILURE state, offering get_error action")
+            case _:
+                actions = {"wait": "Wait for processing to complete"}
+                logger.debug(f"FSM is in processing state: {self.current_state}, offering wait action")
+        return actions
 
     @classmethod
-    async def from_checkpoint(cls, checkpoint: dict) -> "FSMApplication":
-        app = cls()
-        await app.initialize()
-        app.create_fsm("")  # Create with empty prompt - will be replaced
-        state = checkpoint.pop("current_state", FSMState.DRAFT)
-        app.context = ApplicationContext.load(checkpoint.get("context", {}))
-        app.current_state = state
-        logger.info(f"Restored FSM checkpoint to state: {app.current_state}")
-        return app
-
-    @classmethod
-    async def from_prompt(cls, user_prompt: str):
-        app = cls()
-        await app.initialize()
-        app.create_fsm(user_prompt)
-        initial_checkpoint = app.as_checkpoint()
-        return app
+    def get_async_llm(cls) -> AsyncLLM:
+        # TODO: use extensible llm provider injection
+        return AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
 
 
 async def main(user_prompt="Simple todo app"):
-    client_callback = None
-    fsm_app = await FSMApplication.from_prompt(user_prompt)
-    await fsm_app.start(client_callback)
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+        fsm_app = await FSMApplication.start_fsm(user_prompt)
 
-    while not fsm_app.is_complete():
-        if fsm_app.is_review_state():
-            logger.info(f"FSM is in review state {fsm_app.get_state()}, available events: {fsm_app.get_available_events()}")
-            # Auto-confirm in this example
-            await fsm_app.send_event(FSMEvent("CONFIRM"), client_callback=client_callback)
+        while (fsm_app.current_state not in (FSMState.COMPLETE, FSMState.FAILURE)):
+            await fsm_app.fsm.send(FSMEvent("CONFIRM"))
+
+        # Print the results
+        context = fsm_app.fsm.context
+        if fsm_app.maybe_error():
+            logger.error(f"Application run failed: {context.error or 'Unknown error'}")
         else:
-            # Wait for the FSM to complete the current state
-            await anyio.sleep(0.1)
-
-    # Print the results
-    context = fsm_app.get_context()
-    if fsm_app.is_error():
-        logger.error(f"Application run failed: {context.error or 'Unknown error'}")
-    else:
-        logger.info("Application run completed successfully")
-        # Count files generated
-        server_files = context.server_files or {}
-        frontend_files = context.frontend_files or {}
-        logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
+            logger.info("Application run completed successfully")
+            # Count files generated
+            server_files = context.server_files or {}
+            frontend_files = context.frontend_files or {}
+            logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
 
 
 if __name__ == "__main__":

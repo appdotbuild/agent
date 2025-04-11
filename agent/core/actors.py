@@ -31,14 +31,14 @@ class BaseActor(statemachine.Actor):
             "messages": [msg.to_dict() for msg in data.messages],
             "files": data.files,
         }
-    
+
     async def load_data(self, data: dict, workspace: Workspace) -> BaseData:
         for file, content in data["files"].items():
             workspace.write_file(file, content)
         messages = [Message.from_dict(msg) for msg in data["messages"]]
         return BaseData(workspace, messages, data["files"])
-    
-    async def dump_node(self, node: Node[BaseData]) -> dict:
+
+    async def dump_node(self, node: Node[BaseData]) -> list[dict]:
         stack, result = [node], []
         while stack:
             node = stack.pop()
@@ -49,15 +49,15 @@ class BaseActor(statemachine.Actor):
             })
             stack.extend(node.children)
         return result
-    
+
     async def load_node(self, data: list[dict]) -> Node[BaseData]:
         root = None
         id_to_node: dict[str, Node[BaseData]] = {}
         for item in data:
             parent = id_to_node[item["parent"]] if item["parent"] else None
             workspace = parent.data.workspace if parent else self.workspace
-            data = await self.load_data(item["data"], workspace.clone())
-            node = Node(data, parent, item["id"])
+            node_data = await self.load_data(item["data"], workspace.clone())
+            node = Node(node_data, parent, item["id"])
             if parent:
                 parent.children.append(node)
             else:
@@ -66,10 +66,10 @@ class BaseActor(statemachine.Actor):
         if root is None:
             raise ValueError("Root node not found")
         return root
-    
+
     async def dump(self) -> object:
         ...
-    
+
     async def load(self, data: object):
         ...
 
@@ -100,4 +100,3 @@ class LLMActor(Protocol):
                     new_node.parent.children.append(new_node) # pyright: ignore[reportOptionalMemberAccess]
                     result.append(new_node)
         return result
-        
