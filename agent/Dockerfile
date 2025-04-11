@@ -19,4 +19,4 @@ ENTRYPOINT ["uv", "run", "server"]
 FROM prod AS test
 ENTRYPOINT []
 RUN uv sync --dev --compile-bytecode
-CMD ["uv", "run", "pytest", ".", "--co"]
+CMD ["uv", "run", "pytest", "-vs", "."]
