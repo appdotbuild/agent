@@ -1,6 +1,6 @@
 FROM alpine:3.21.3 AS prod
 
-RUN apk add --update --no-cache curl python3
+RUN apk add --update --no-cache curl python3 docker
 RUN curl -fsSL https://astral.sh/uv/install.sh | XDG_BIN_HOME=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
 RUN curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
 
