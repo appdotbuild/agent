@@ -5,6 +5,11 @@ import sys
 import anyio
 from fire import Fire
 import uuid
+import json
+import tempfile
+import os
+from pathlib import Path
+import ast # Use ast for safer literal evaluation
 
 from llm.utils import get_llm_client, AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
@@ -379,6 +384,90 @@ class FSMToolProcessor:
             logger.exception(f"[FSMTools] Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
+    async def bake(self, app_description: str) -> Dict[str, Dict[str, str]]:
+        """
+        Generate application code in one go without interactive confirmation steps.
+        
+        Args:
+            app_description: Description of the application to generate
+            
+        Returns:
+            Dictionary containing server_files and frontend_files, or raises an error.
+        Raises:
+            RuntimeError: If the FSM process fails or produces no artifacts.
+        """
+        if self.work_in_progress.locked():
+             raise RuntimeError("Cannot start baking while another FSM operation is in progress.")
+             
+        async with self.work_in_progress:
+            try:
+                logger.info(f"[FSMTools] Baking application from description: {app_description}")
+                
+                # Reset any existing FSM app - bake is a standalone operation
+                self.fsm_app = None 
+                    
+                # Create a new FSM application
+                # Ensure FSMApplication is correctly imported or available in scope
+                self.fsm_app = await FSMApplication.from_prompt(user_prompt=app_description)
+                
+                # Start the FSM
+                current_state = await self.fsm_app.start(client_callback=None)
+                logger.info(f"[FSMTools] Initial state after start: {current_state}")
+
+                # Check for immediate failure after start
+                if self.fsm_app.is_error():
+                    context = self.fsm_app.get_context()
+                    error_msg = context.error or "Unknown error after start"
+                    logger.error(f"[FSMTools] Baking failed immediately after start: {error_msg}")
+                    raise RuntimeError(f"Application generation failed after start: {error_msg}")
+                
+                # Process all review states automatically by confirming
+                while self.fsm_app.is_review_state():
+                    logger.info(f"[FSMTools] Auto-confirming state: {self.fsm_app.get_state()}")
+                    await self.fsm_app.send_event(FSMEvent("CONFIRM"))
+                    current_state = self.fsm_app.get_state()
+                    logger.info(f"[FSMTools] State after auto-confirm: {current_state}")
+                    # Check for errors after each confirmation
+                    if self.fsm_app.is_error():
+                        context = self.fsm_app.get_context()
+                        error_msg = context.error or f"Unknown error during state {current_state}"
+                        logger.error(f"[FSMTools] Baking failed during auto-confirmation: {error_msg}")
+                        raise RuntimeError(f"Application generation failed during state {current_state}: {error_msg}")
+
+                # Final check for completion and errors
+                final_state = self.fsm_app.get_state()
+                if final_state != FSMState.COMPLETE:
+                     context = self.fsm_app.get_context()
+                     error_msg = context.error or f"Ended in unexpected state {final_state}"
+                     logger.error(f"[FSMTools] Baking finished unexpectedly in state {final_state}: {error_msg}")
+                     raise RuntimeError(f"Application generation finished in unexpected state {final_state}: {error_msg}")
+                    
+                # Get the generated artifacts
+                context = self.fsm_app.get_context()
+                server_files = context.server_files or {}
+                frontend_files = context.frontend_files or {}
+                
+                if not server_files and not frontend_files:
+                    error_msg = "Application generation completed but didn't produce any artifacts"
+                    logger.error(f"[FSMTools] {error_msg}")
+                    raise RuntimeError(error_msg)
+                    
+                logger.info("[FSMTools] Application baking completed successfully")
+                return {
+                    "server_files": server_files,
+                    "frontend_files": frontend_files
+                }
+                
+            except Exception as e:
+                # Catch potential exceptions during FSM operations or state transitions
+                logger.exception(f"[FSMTools] Unexpected error during baking process: {str(e)}")
+                # Re-raise as a runtime error to signal failure to the caller
+                raise RuntimeError(f"Error during application baking: {str(e)}") from e
+            finally:
+                 # Clean up the FSM instance after baking
+                 self.fsm_app = None
+                 logger.debug("[FSMTools] Cleaned up FSM instance after baking.")
+
     @property
     def system_prompt(self) -> str:
         return f"""You are a software engineering expert who can generate application code using a code generation framework. This framework uses a Finite State Machine (FSM) to guide the generation process.
@@ -503,6 +592,49 @@ async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
 
     return new_messages, is_complete, final_tool_result
 
+async def _save_generated_files(server_files: Dict[str, str], frontend_files: Dict[str, str], temp_dir: str):
+    """Saves the generated server and frontend files to the specified temporary directory."""
+    logger.info(f"[SaveFiles] Saving generated files to temporary directory: {temp_dir}")
+    
+    temp_dir_path = Path(temp_dir)
+
+    try:
+        # Save server files
+        server_base_path = temp_dir_path / "server"
+        if server_files:
+            server_base_path.mkdir(parents=True, exist_ok=True)
+            for file_path, content in server_files.items():
+                # Sanitize path: remove leading slashes/dots and ensure it's relative
+                relative_file_path = Path(file_path.lstrip('/\\.')) 
+                full_path = server_base_path / relative_file_path
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with open(full_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    logger.debug(f"[SaveFiles] Saved server file: {full_path}")
+                except IOError as e:
+                     logger.error(f"[SaveFiles] Error saving server file {full_path}: {e}")
+
+        # Save frontend files
+        frontend_base_path = temp_dir_path / "frontend"
+        if frontend_files:
+            frontend_base_path.mkdir(parents=True, exist_ok=True)
+            for file_path, content in frontend_files.items():
+                # Sanitize path
+                relative_file_path = Path(file_path.lstrip('/\\.'))
+                full_path = frontend_base_path / relative_file_path
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with open(full_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    logger.debug(f"[SaveFiles] Saved frontend file: {full_path}")
+                except IOError as e:
+                     logger.error(f"[SaveFiles] Error saving frontend file {full_path}: {e}")
+
+        logger.info(f"[SaveFiles] Successfully saved {len(server_files)} server files and {len(frontend_files)} frontend files to {temp_dir}")
+    except Exception as e:
+        logger.exception(f"[SaveFiles] Error during file saving process in {temp_dir}: {e}")
+
 async def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
     """
     Main entry point for the FSM tools module.
@@ -538,10 +670,44 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
         logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
 
     if final_tool_result and not final_tool_result.is_error:
-        # Parse the content to extract the structured data
-        logger.info(f"[Main] FSM completed with result: {final_tool_result.content}")
+        logger.info(f"[Main] FSM completed successfully. Processing final result...")
+        try:
+            # Safely evaluate the string representation of the dictionary
+            result_data = ast.literal_eval(final_tool_result.content)
 
-    logger.info("[Main] FSM interaction completed successfully")
+            if isinstance(result_data, dict) and result_data.get("status") == "complete":
+                final_outputs = result_data.get("final_outputs", {})
+                server_files = final_outputs.get("server_files", {})
+                frontend_files = final_outputs.get("frontend_files", {})
+
+                if not server_files and not frontend_files:
+                    logger.warning("[Main] FSM completed but no files were generated.")
+                else:
+                    # Create a temporary directory
+                    temp_dir = tempfile.mkdtemp(prefix="fsm_generated_")
+                    logger.info(f"[Main] Created temporary directory: {temp_dir}")
+                    # Call the dedicated save function
+                    await _save_generated_files(server_files, frontend_files, temp_dir)
+            else:
+                error_info = result_data.get('error', 'No error details provided') if isinstance(result_data, dict) else 'Result format not a dictionary'
+                status_info = result_data.get('status', 'unknown') if isinstance(result_data, dict) else 'unknown'
+                logger.error(f"[Main] FSM completed but status was not 'complete' or result format invalid. Status: {status_info}, Error: {error_info}")
+                logger.debug(f"[Main] Raw content for debugging: {final_tool_result.content}")
+
+        except (SyntaxError, ValueError, TypeError) as e:
+            logger.exception(f"[Main] Failed to parse final_tool_result.content: {e}")
+            logger.error(f"[Main] Raw content: {final_tool_result.content}")
+        except Exception as e:
+            logger.exception(f"[Main] An unexpected error occurred while processing the final result: {e}")
+            
+    elif final_tool_result and final_tool_result.is_error:
+        logger.error(f"[Main] FSM interaction failed with error: {final_tool_result.content}")
+    elif not final_tool_result:
+         logger.warning("[Main] FSM interaction finished without a final result object.")
+    else:
+        logger.warning("[Main] FSM interaction finished, but result indicates neither success nor explicit error in the expected format.")
+
+    logger.info("[Main] FSM interaction processing finished.")
 
 def run_main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
     anyio.run(main, initial_prompt)
