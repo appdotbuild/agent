@@ -1,0 +1,12 @@
+[project]
+name = "appdotbuild-server"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["fullstack-agent"]
+
+[tool.uv.sources]
+fullstack-agent = { path = "agent" }
+
+[tool.uv.workspace]
+members = ["agent/"]
