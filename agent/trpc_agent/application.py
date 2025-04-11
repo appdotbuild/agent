@@ -6,6 +6,8 @@ import enum
 from typing import Dict, Any, List, Self, TypedDict, NotRequired, Optional, Callable, Literal
 from dataclasses import dataclass, field, asdict
 import json
+from core.actors import BaseData
+from core.base_node import Node
 from core.statemachine import StateMachine, State, Actor, Context
 from llm.common import AsyncLLM
 from llm.anthropic_bedrock import AnthropicBedrockLLM
@@ -131,15 +133,22 @@ class FSMApplication:
         # Create the initial context
         self.context: ApplicationContext = ApplicationContext(user_prompt=user_prompt)
 
+        def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
+            files = {}
+            for node in solution.get_trajectory():
+                files.update(node.data.files)
+            return files
+
         # Define actions to update context
-        async def update_server_files(ctx: ApplicationContext, result: Any) -> None:
+        async def update_handler_files(ctx: ApplicationContext, result: dict[str, Node[BaseData] | None]) -> None:
             """Update server files in context from actor result"""
             logger.info("Updating server files from result")
+            if not ctx.server_files:
+                ctx.server_files = {}
+            for node in result
             if hasattr(result, "get_trajectory"):
                 for node in result.get_trajectory():
                     if hasattr(node.data, "files") and node.data.files:
-                        if not hasattr(ctx, "server_files"):
-                            ctx.server_files = {}
                         ctx.server_files.update(node.data.files)
 
         async def update_frontend_files(ctx: ApplicationContext, result: Any) -> None:
@@ -181,7 +190,7 @@ class FSMApplication:
             states={
                 FSMState.DRAFT: State(
                     invoke={
-                        "src": self.draft_actor,
+                        "src": draft_actor,
                         "input_fn": lambda ctx: (ctx.draft_feedback or ctx.user_prompt,),
                         "on_done": {
                             "target": FSMState.REVIEW_DRAFT,
@@ -201,7 +210,7 @@ class FSMApplication:
                 ),
                 FSMState.HANDLERS: State(
                     invoke={
-                        "src": self.handlers_actor,
+                        "src": handlers_actor,
                         "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
                             "target": FSMState.REVIEW_HANDLERS,
@@ -221,7 +230,7 @@ class FSMApplication:
                 ),
                 FSMState.INDEX: State(
                     invoke={
-                        "src": self.index_actor,
+                        "src": index_actor,
                         "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
                             "target": FSMState.REVIEW_INDEX,
@@ -241,7 +250,7 @@ class FSMApplication:
                 ),
                 FSMState.FRONTEND: State(
                     invoke={
-                        "src": self.front_actor,
+                        "src": front_actor,
                         "input_fn": lambda ctx: (ctx.user_prompt, ctx.server_files),
                         "on_done": {
                             "target": FSMState.REVIEW_FRONTEND,
