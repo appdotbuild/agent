@@ -3,10 +3,11 @@ import anyio
 import logging
 import uuid
 import enum
-from typing import Dict, Any, List, TypedDict, NotRequired, Optional, Callable, Literal
+from typing import Dict, Any, List, Self, TypedDict, NotRequired, Optional, Callable, Literal
 from dataclasses import dataclass, field, asdict
 import json
 from core.statemachine import StateMachine, State, Actor, Context
+from llm.common import AsyncLLM
 from llm.anthropic_bedrock import AnthropicBedrockLLM
 from anthropic import AsyncAnthropicBedrock
 from core.workspace import Workspace
@@ -87,38 +88,25 @@ class ApplicationContext(Context):
         return data
 
     @classmethod
-    def load(cls, data: object) -> "ApplicationContext":
+    def load(cls, data: object) -> Self:
         """Load context from a serializable dictionary"""
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid data type: {type(data)}")
         return cls(**data)
 
 
 class FSMApplication:
-    def __init__(self):
-        self.workspace = None
-        self.backend_workspace = None
-        self.frontend_workspace = None
-        self.m_client = None
-        self.model_params = {
-            "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "max_tokens": 8192,
-        }
-        self.context = None
-        self.draft_actor = None
-        self.handlers_actor = None
-        self.index_actor = None
-        self.front_actor = None
-        self.fsm = None
-        self.current_state = FSMState.DRAFT
+    llm: AsyncLLM
+    fsm: StateMachine[ApplicationContext, FSMEvent]
 
-
-    @property
     @classmethod
     def base_execution_plan(cls) -> str:
-        return """1. Draft app design
-2. Implement handlers
-3. Create index file
-4. Build frontend
-"""
+        return "\n".join([
+            "1. Draft app design",
+            "2. Implement handlers",
+            "3. Create index file",
+            "4. Build frontend",
+        ])
 
     async def initialize(self):
         self.workspace = await Workspace.create(
@@ -177,12 +165,22 @@ class FSMApplication:
             logger.error(f"Setting error in context: {error}")
             ctx.error = str(error)
 
+
+        llm = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
+
+        draft_actor = DraftActor(self.m_client, self.backend_workspace.clone(), self.model_params)
+        handlers_actor = HandlersActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
+        index_actor = IndexActor(self.m_client, self.backend_workspace.clone(), self.model_params, beam_width=3)
+        front_actor = FrontendActor(self.m_client, self.frontend_workspace.clone(), self.model_params, beam_width=1, max_depth=20)
+
         # Define state machine states
-        states: State[ApplicationContext] = {
-            "initial": FSMState.DRAFT, # Define the initial state
-            "states": {
-                FSMState.DRAFT: {
-                    "invoke": {
+        states = State[ApplicationContext, FSMEvent](
+            on={
+                FSMEvent("PROMPT"): FSMState.DRAFT
+            },
+            states={
+                FSMState.DRAFT: State(
+                    invoke={
                         "src": self.draft_actor,
                         "input_fn": lambda ctx: (ctx.draft_feedback or ctx.user_prompt,),
                         "on_done": {
@@ -193,16 +191,16 @@ class FSMApplication:
                             "target": FSMState.FAILURE,
                             "actions": [set_error],
                         },
-                    }
-                },
-                FSMState.REVIEW_DRAFT: {
-                    "on": {
+                    },
+                ),
+                FSMState.REVIEW_DRAFT: State(
+                    on={
                         FSMEvent("CONFIRM"): FSMState.HANDLERS,
                         FSMEvent("FEEDBACK_DRAFT"): FSMState.DRAFT,
-                    }
-                },
-                FSMState.HANDLERS: {
-                    "invoke": {
+                    },
+                ),
+                FSMState.HANDLERS: State(
+                    invoke={
                         "src": self.handlers_actor,
                         "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
@@ -213,16 +211,16 @@ class FSMApplication:
                             "target": FSMState.FAILURE,
                             "actions": [set_error],
                         },
-                    }
-                },
-                FSMState.REVIEW_HANDLERS: {
-                    "on": {
+                    },
+                ),
+                FSMState.REVIEW_HANDLERS: State(
+                    on={
                         FSMEvent("CONFIRM"): FSMState.INDEX,
                         FSMEvent("FEEDBACK_HANDLERS"): FSMState.HANDLERS,
-                    }
-                },
-                FSMState.INDEX: {
-                    "invoke": {
+                    },
+                ),
+                FSMState.INDEX: State(
+                    invoke={
                         "src": self.index_actor,
                         "input_fn": lambda ctx: (ctx.server_files,),
                         "on_done": {
@@ -234,15 +232,15 @@ class FSMApplication:
                             "actions": [set_error],
                         },
                     }
-                },
-                FSMState.REVIEW_INDEX: {
-                    "on": {
+                ),
+                FSMState.REVIEW_INDEX: State(
+                    on={
                         FSMEvent("CONFIRM"): FSMState.FRONTEND,
                         FSMEvent("FEEDBACK_INDEX"): FSMState.INDEX,
-                    }
-                },
-                FSMState.FRONTEND: {
-                    "invoke": {
+                    },
+                ),
+                FSMState.FRONTEND: State(
+                    invoke={
                         "src": self.front_actor,
                         "input_fn": lambda ctx: (ctx.user_prompt, ctx.server_files),
                         "on_done": {
@@ -253,29 +251,20 @@ class FSMApplication:
                             "target": FSMState.FAILURE,
                             "actions": [set_error],
                         },
-                    }
-                },
-                FSMState.REVIEW_FRONTEND: {
-                    "on": {
+                    },
+                ),
+                FSMState.REVIEW_FRONTEND: State(
+                    on={
                         FSMEvent("CONFIRM"): FSMState.COMPLETE,
                         FSMEvent("FEEDBACK_FRONTEND"): FSMState.FRONTEND,
-                    }
-                },
-                FSMState.COMPLETE: {
-                    "type": "final" # Mark as a final state
-                },
-                FSMState.FAILURE: {
-                    "type": "final" # Mark as a final state
-                }
-            },
-        }
+                    },
+                ),
+                FSMState.COMPLETE: State(),
+                FSMState.FAILURE: State(),
+            }
+        )
 
-        logger.info("Creating state machine")
-        self.fsm = StateMachine[ApplicationContext](states, self.context)
-        if "on" not in states:
-            states["on"] = {}
-        states["on"][FSMEvent("PROMPT")] = FSMState.DRAFT
-        self.current_state = FSMState.DRAFT
+        return StateMachine[ApplicationContext, FSMEvent](states, self.context)
 
     async def start(self, client_callback: Callable | None):
         if not self.workspace:

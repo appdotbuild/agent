@@ -1,4 +1,9 @@
 from typing import Any, Awaitable, Callable, NotRequired, Protocol, Self, TypedDict
+from dataclasses import dataclass
+
+
+class EventType(Protocol):
+    def __str__(self) -> str: ...
 
 
 class Actor(Protocol):
@@ -15,7 +20,7 @@ class Actor(Protocol):
 class Context(Protocol):
     def dump(self) -> object:
         ...
-    
+
     @classmethod
     def load(cls, data: object) -> Self:
         ...
@@ -50,46 +55,47 @@ class AlwaysRun[T](TypedDict):
     actions: NotRequired[list[Callable[[T], Awaitable[Any]]]]
 
 
-class State[T](TypedDict):
-    entry: NotRequired[list[Callable[[T], Awaitable[Any]]]]
-    invoke: NotRequired[Invoke[T]]
-    on: NotRequired[dict[str, str]]
-    exit: NotRequired[list[Callable[[T], Awaitable[Any]]]]
-    always: NotRequired[AlwaysRun[T] | list[AlwaysRun[T]]]
-    states: NotRequired[dict[str, "State[T]"]]
-    initial: NotRequired[str]
+@dataclass
+class State[T, E_T: EventType]:
+    entry: list[Callable[[T], Awaitable[Any]]] | None = None
+    invoke: Invoke[T] | None = None
+    on: dict[E_T, str] | None = None
+    exit: list[Callable[[T], Awaitable[Any]]] | None = None
+    always: AlwaysRun[T] | list[AlwaysRun[T]] | None = None
+    states: dict[str, "State[T, E_T]"] | None = None
+    initial: str | None = None
 
 
-class StateMachine[T: Context]:
-    def __init__(self, root: State[T], context: T):
+class StateMachine[T: Context, E_t: EventType]:
+    def __init__(self, root: State[T, E_t], context: T):
         self.root = root
         self.context = context
-        self.state_stack: list[State[T]] = [root]
+        self.state_stack: list[State[T, E_t]] = [root]
         self._queued_transition: str | None = None
-    
-    async def send(self, event: str):
+
+    async def send(self, event: E_t):
         for state in reversed(self.state_stack):
-            if "on" in state and event in state["on"]:
-                self._queued_transition = state["on"][event]
+            if state.on and event in state.on:
+                self._queued_transition = state.on[event]
                 await self._process_transitions()
                 return
         raise RuntimeError(f"Invalid event: {event}, stack: {self.stack_path}")
-    
+
     async def _process_transitions(self):
         while self._queued_transition:
             print("Processing transition:", self.stack_path, self._queued_transition)
             next_state = self._queued_transition
             self._queued_transition = None
             await self._transition(next_state)
-    
+
     async def _transition(self, next_state: str):
         exit_stack = []
         while self.state_stack:
             parent_state = self.state_stack.pop()
-            if "states" not in parent_state or next_state not in parent_state["states"]:
+            if not parent_state.states or next_state not in parent_state.states:
                 exit_stack.append(parent_state)
                 continue
-            target_state = parent_state["states"][next_state]
+            target_state = parent_state.states[next_state]
             for state in reversed(exit_stack):
                 await self._run_exit(state)
             await self._run_entry(target_state)
@@ -99,32 +105,32 @@ class StateMachine[T: Context]:
             return
         self.state_stack.extend(reversed(exit_stack)) # restore stack
         raise RuntimeError(f"Invalid transition: {next_state}, stack: {self.stack_path}")
-    
+
     @property
     def stack_path(self) -> list[str]:
         path = []
         for p, n in zip(self.state_stack, self.state_stack[1:]):
-            if "states" not in p:
+            if not p.states:
                 break
-            for key, value in p["states"].items():
+            for key, value in p.states.items():
                 if value == n:
                     path.append(key)
                     break
         return path
-    
-    async def _run_entry(self, state: State[T]):
-        if "entry" in state:
-            for action in state["entry"]:
+
+    async def _run_entry(self, state: State[T, E_t]):
+        if state.entry:
+            for action in state.entry:
                 await action(self.context)
-    
-    async def _run_exit(self, state: State[T]):
-        if "exit" in state:
-            for action in state["exit"]:
+
+    async def _run_exit(self, state: State[T, E_t]):
+        if state.exit:
+            for action in state.exit:
                 await action(self.context)
-    
-    async def _run_invoke(self, state: State[T]):
-        if "invoke" in state:
-            invoke = state["invoke"]
+
+    async def _run_invoke(self, state: State[T, E_t]):
+        if state.invoke:
+            invoke = state.invoke
             try:
                 args = invoke["input_fn"](self.context)
                 event = await invoke["src"].execute(*args)
@@ -139,29 +145,29 @@ class StateMachine[T: Context]:
                         await action(self.context, e)
                 else:
                     raise e
-    
-    async def _run_always(self, state: State[T]):
-        if "always" in state:
-            branches = state["always"] if isinstance(state["always"], list) else [state["always"]]
+
+    async def _run_always(self, state: State[T, E_t]):
+        if state.always:
+            branches = state.always if isinstance(state.always, list) else [state.always]
             for always in branches:
                 if "guard" not in always or await always["guard"](self.context):
                     self._queued_transition = always["target"]
                     for action in always.get("actions", []):
                         await action(self.context)
                     return
-    
+
     async def dump(self) -> MachineCheckpoint:
         stack, actors = [(self.root, [])], []
         while stack:
             current, path = stack.pop()
-            if "invoke" in current:
+            if current.invoke:
                 actors.append({
                     "path": path,
-                    "data": await current["invoke"]["src"].dump(),
+                    "data": await current.invoke["src"].dump(),
                 })
-            if "states" not in current:
+            if not current.states:
                 continue
-            for key, value in current["states"].items():
+            for key, value in current.states.items():
                 stack.append((value, path + [key]))
         checkpoint: MachineCheckpoint = {
             "stack_path": self.stack_path,
@@ -169,26 +175,26 @@ class StateMachine[T: Context]:
             "actors": actors,
         }
         return checkpoint
-    
+
     @classmethod
-    async def load(cls, root: State[T], data: MachineCheckpoint, context_type: type[T]) -> Self:
+    async def load(cls, root: State[T, E_t], data: MachineCheckpoint, context_type: type[T]) -> Self:
         stack = [(root, [])]
         while stack:
             current, path = stack.pop()
-            if "invoke" in current:
+            if current.invoke:
                 for actor in data["actors"]:
                     if actor["path"] == path:
-                        await current["invoke"]["src"].load(actor["data"])
-            if "states" not in current:
+                        await current.invoke["src"].load(actor["data"])
+            if not current.states:
                 continue
-            for key, value in current["states"].items():
+            for key, value in current.states.items():
                 stack.append((value, path + [key]))
         context = context_type.load(data["context"])
         machine = cls(root, context)
         for state_name in data["stack_path"]:
-            if not "states" in machine.state_stack[-1]:
+            if not machine.state_stack[-1].states:
                 raise RuntimeError(f"Invalid state stack: {machine.state_stack[-1]}")
-            if state_name not in machine.state_stack[-1]["states"]:
+            if state_name not in machine.state_stack[-1].states:
                 raise RuntimeError(f"Invalid state name: {state_name}, stack: {machine.state_stack[-1]}")
-            machine.state_stack.append(machine.state_stack[-1]["states"][state_name])
+            machine.state_stack.append(machine.state_stack[-1].states[state_name])
         return machine
