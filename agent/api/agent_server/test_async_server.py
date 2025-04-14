@@ -21,14 +21,23 @@ def anyio_backend():
 class AgentApiClient:
     """Reusable client for interacting with the Agent API server"""
 
-    def __init__(self, app_instance=None):
-        """Initialize the client with an optional app instance"""
+    def __init__(self, app_instance=None, base_url=None):
+        """Initialize the client with an optional app instance or base URL
+        
+        Args:
+            app_instance: FastAPI app instance for direct ASGI transport
+            base_url: External base URL to test against (e.g., "http://18.237.53.81")
+        """
         self.app = app_instance or app
-        self.transport = ASGITransport(app=self.app)
+        self.base_url = base_url
+        self.transport = ASGITransport(app=self.app) if base_url is None else None
         self.client = None
 
     async def __aenter__(self):
-        self.client = AsyncClient(transport=self.transport)
+        if self.base_url:
+            self.client = AsyncClient(base_url=self.base_url)
+        else:
+            self.client = AsyncClient(transport=self.transport)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -43,9 +52,11 @@ class AgentApiClient:
                           settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Send a message to the agent and return the parsed SSE events"""
         request = self.create_request(message, chatbot_id, trace_id, agent_state, settings)
-
+        
+        url = "/message" if self.base_url else "http://test/message"
+        
         response = await self.client.post(
-            "http://test/message",
+            url,
             json=request.model_dump(by_alias=True),
             headers={"Accept": "text/event-stream"},
             timeout=None
@@ -264,6 +275,38 @@ async def test_agent_reaches_idle_state():
         # Additional checks that may be useful
         assert final_event.message is not None, "Final event has no message"
         assert final_event.message.role == "agent", "Final message role is not 'agent'"
+
+
+@pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
+async def test_external_server_health():
+    """Test the health endpoint of an external server."""
+    external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://18.237.53.81")
+    
+    async with AsyncClient(base_url=external_server_url) as client:
+        response = await client.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "healthy"}
+
+@pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
+async def test_external_server_message():
+    """Test the message endpoint of an external server."""
+    external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://18.237.53.81")
+    
+    async with AgentApiClient(base_url=external_server_url) as client:
+        try:
+            # Use a simple prompt that should be processed quickly
+            (events, _), request = await client.send_message("Hello, world")
+            
+            # Check that we received some events
+            assert len(events) > 0, "No SSE events received"
+            
+            # Verify the final event has IDLE status
+            final_event = events[-1]
+            assert final_event.status == AgentStatus.IDLE, "Agent did not reach IDLE state"
+            
+            print(f"Successfully tested external server at {external_server_url}")
+        except Exception as e:
+            pytest.fail(f"Error testing external server: {e}")
 
 
 if __name__ == "__main__":
