@@ -35,12 +35,11 @@ class FSMState(str, enum.Enum):
     REVIEW_FRONTEND = "review_frontend"
     COMPLETE = "complete"
     FAILURE = "failure"
-    _ROOT = "root"
 
 
 @dataclass(frozen=True) # Use dataclass for easier serialization, frozen=True makes it hashable by default if needed
 class FSMEvent:
-    type_: Literal["PROMPT", "CONFIRM", "FEEDBACK_DRAFT", "FEEDBACK_HANDLERS", "FEEDBACK_INDEX", "FEEDBACK_FRONTEND"]
+    type_: Literal["CONFIRM", "FEEDBACK"]
     feedback: Optional[str] = None
 
     def __eq__(self, other):
@@ -64,10 +63,8 @@ class ApplicationContext(Context):
     """Context for the fullstack application state machine"""
     user_prompt: str
     draft: Optional[str] = None
-    draft_feedback: Optional[str] = None
-    handlers_feedback: Optional[Dict[str, str]] = field(default_factory=dict)
-    index_feedback: Optional[str] = None
-    frontend_feedback: Optional[str] = None
+    feedback_data: Optional[str] = None
+    feedback_component: Optional[str] = None
     server_files: Dict[str, str] = field(default_factory=dict)
     frontend_files: Dict[str, str] = field(default_factory=dict)
     error: Optional[str] = None
@@ -78,10 +75,8 @@ class ApplicationContext(Context):
         data = {
             "user_prompt": self.user_prompt,
             "draft": self.draft,
-            "draft_feedback": self.draft_feedback,
-            "handlers_feedback": self.handlers_feedback,
-            "index_feedback": self.index_feedback,
-            "frontend_feedback": self.frontend_feedback,
+            "feedback_data":self.feedback_data,
+            "feedback_component": self.feedback_component,
             "server_files": self.server_files,
             "frontend_files": self.frontend_files,
             "error": self.error
@@ -171,7 +166,7 @@ class FSMApplication:
                 FSMState.DRAFT: State(
                     invoke={
                         "src": draft_actor,
-                        "input_fn": lambda ctx: (ctx.draft_feedback or ctx.user_prompt,),
+                        "input_fn": lambda ctx: (ctx.feedback_data or ctx.user_prompt,),
                         "on_done": {
                             "target": FSMState.REVIEW_DRAFT,
                             "actions": [update_draft],
@@ -185,7 +180,7 @@ class FSMApplication:
                 FSMState.REVIEW_DRAFT: State(
                     on={
                         FSMEvent("CONFIRM"): FSMState.HANDLERS,
-                        FSMEvent("FEEDBACK_DRAFT"): FSMState.DRAFT,
+                        FSMEvent("FEEDBACK"): FSMState.DRAFT,
                     },
                 ),
                 FSMState.HANDLERS: State(
@@ -205,7 +200,7 @@ class FSMApplication:
                 FSMState.REVIEW_HANDLERS: State(
                     on={
                         FSMEvent("CONFIRM"): FSMState.INDEX,
-                        FSMEvent("FEEDBACK_HANDLERS"): FSMState.HANDLERS,
+                        FSMEvent("FEEDBACK"): FSMState.HANDLERS,
                     },
                 ),
                 FSMState.INDEX: State(
@@ -225,7 +220,7 @@ class FSMApplication:
                 FSMState.REVIEW_INDEX: State(
                     on={
                         FSMEvent("CONFIRM"): FSMState.FRONTEND,
-                        FSMEvent("FEEDBACK_INDEX"): FSMState.INDEX,
+                        FSMEvent("FEEDBACK"): FSMState.INDEX,
                     },
                 ),
                 FSMState.FRONTEND: State(
@@ -245,7 +240,7 @@ class FSMApplication:
                 FSMState.REVIEW_FRONTEND: State(
                     on={
                         FSMEvent("CONFIRM"): FSMState.COMPLETE,
-                        FSMEvent("FEEDBACK_FRONTEND"): FSMState.FRONTEND,
+                        FSMEvent("FEEDBACK"): FSMState.FRONTEND,
                     },
                 ),
                 FSMState.COMPLETE: State(),
@@ -255,25 +250,29 @@ class FSMApplication:
 
         context = ApplicationContext(user_prompt=user_prompt)
         fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
+        await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
         return cls(fsm)
 
     async def confirm_state(self):
-        raise NotImplementedError
+        await self.fsm.send(FSMEvent("CONFIRM"))
 
-    async def provide_feedback(self, feedback: str, component_name: str | None):
-        raise NotImplementedError
+    async def provide_feedback(self, feedback: str, component_name: str):
+        self.fsm.context.feedback_data = feedback
+        self.fsm.context.feedback_component = component_name
+        await self.fsm.send(FSMEvent("FEEDBACK"))
 
     async def complete_fsm(self):
-        raise NotImplementedError
+        while (self.current_state not in (FSMState.COMPLETE, FSMState.FAILURE)):
+            await self.fsm.send(FSMEvent("CONFIRM"))
 
     def maybe_error(self) -> str | None:
         return self.fsm.context.error
 
     @property
     def current_state(self) -> str:
-        if (path := self.fsm.stack_path):
-            return path[-1]
-        return FSMState._ROOT
+        if self.fsm.stack_path:
+            return self.fsm.stack_path[-1]
+        return ""
 
     @property
     def state_output(self) -> dict:

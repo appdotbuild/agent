@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Self, Tuple, Protocol, runtime_checkable
+from typing import Awaitable, Callable, List, Dict, Any, Optional, Self, Tuple, Protocol, runtime_checkable
 import logging
 import coloredlogs
 import sys
@@ -22,7 +22,7 @@ class FSMInterface(Protocol):
     @classmethod
     async def start_fsm(cls, user_prompt: str) -> Self: ...
     async def confirm_state(self): ...
-    async def provide_feedback(self, feedback: str, component_name: str | None): ...
+    async def provide_feedback(self, feedback: str, component_name: str): ...
     async def complete_fsm(self): ...
     @classmethod
     def base_execution_plan(cls) -> str: ...
@@ -55,6 +55,7 @@ class FSMToolProcessor[T: FSMInterface]:
             fsm_class: FSM application class to use
         """
         self.fsm_class = fsm_class
+        self.fsm_app = None
 
         # Define tool definitions for the AI agent using the common Tool structure
         self.tool_definitions: list[Tool] = [
@@ -111,7 +112,7 @@ class FSMToolProcessor[T: FSMInterface]:
         ]
 
         # Map tool names to their implementation methods
-        self.tool_mapping = {
+        self.tool_mapping: dict[str, Callable[..., Awaitable[CommonToolResult]]] = {
             "start_fsm": self.tool_start_fsm,
             "confirm_state": self.tool_confirm_state,
             "provide_feedback": self.tool_provide_feedback,
@@ -173,7 +174,7 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.exception(f"[FSMTools] Error confirming state: {str(e)}")
             return CommonToolResult(content=f"Failed to confirm state: {str(e)}", is_error=True)
 
-    async def tool_provide_feedback(self, feedback: str, component_name: str | None = None) -> CommonToolResult:
+    async def tool_provide_feedback(self, feedback: str, component_name: str) -> CommonToolResult:
         """Tool implementation for providing feedback"""
         try:
             if not self.fsm_app:
@@ -224,6 +225,47 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.exception(f"[FSMTools] Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
+    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> list[Message]:
+        model_args = {
+            "system_prompt": self.system_prompt,
+            "tools": self.tool_definitions,
+            **model_params,
+        }
+        response = await llm.completion(messages, **model_args)
+        tool_results = []
+        for block in response.content:
+            match block:
+                case TextRaw(text):
+                    logger.info(f"[Claude Response] Message: {text}")
+                case ToolUse(name):
+                    match self.tool_mapping.get(name):
+                        case None:
+                            tool_results.append(ToolUseResult.from_tool_use(
+                                tool_use=block,
+                                content=f"Unknow tool name: {name}",
+                                is_error=True,
+                            ))
+                        case tool_method if isinstance(block.input, dict):
+                            result = await tool_method(**block.input)
+                            logger.info(f"[Claude Response] Tool result: {result.content}")
+                            tool_results.append(ToolUseResult.from_tool_use(
+                                tool_use=block,
+                                content=result.content
+                            ))
+                        case _:
+                            raise RuntimeError(f"Invalid tool call: {block}")
+        thread = [Message(role="assistant", content=response.content)]
+        if tool_results:
+            tool_content = [
+                *tool_results,
+                TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
+            ]
+            thread.append(Message(role="user", content=[
+                *tool_results,
+                TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
+            ]))
+        return thread
+
     def fsm_as_result(self) -> dict:
         if self.fsm_app is None:
             raise RuntimeError("Attempt to get result with uninitialized fsm application.")
@@ -260,111 +302,23 @@ When providing feedback, be specific and actionable. If you're unsure about any 
 
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
 
-async def run_with_claude(processor: FSMToolProcessor, client: AsyncLLM,
-                   messages: List[Message]) -> Tuple[List[Message], bool, CommonToolResult | None]:
-    """
-    Send messages to Claude with FSM tool definitions and process tool use responses.
-
-    Args:
-        processor: FSMToolProcessor instance with tool implementation
-        client: LLM client instance
-        messages: List of messages to send to Claude
-
-    """
-    response = await client.completion(
-        messages=messages,
-        max_tokens=1024 * 16,
-        tools=processor.tool_definitions,
-        system_prompt=processor.system_prompt,
-    )
-
-    # Record if any tool was used (requiring further processing)
-    is_complete = False
-    final_tool_result = None
-    tool_results = []
-
-    # Process all content blocks in the response
-    for message in response.content:
-        match message:
-            case TextRaw():
-                logger.info(f"[Claude Response] Message: {message.text}")
-            case ToolUse():
-                await processor.work_in_progress.acquire()
-                tool_use_obj = message
-                tool_params = message.input
-                logger.info(f"[Claude Response] Tool use: {message.name}, params: {tool_params}")
-                tool_method = processor.tool_mapping.get(message.name)
-
-                if tool_method:
-                    # Call the async method and await the result
-                    result: CommonToolResult = await tool_method(**tool_params)
-                    logger.info(f"[Claude Response] Tool result: {result.content}")
-
-
-                    # Special cases for determining if the interaction is complete
-                    if message.name == "complete_fsm" and not result.is_error:
-                        is_complete = True
-                        final_tool_result = result
-
-                    # Add result to the tool results list
-                    tool_results.append({
-                        "tool": message.name,
-                        "result": result
-                    })
-                else:
-                    raise ValueError(f"Unexpected tool name: {message.name}")
-
-                processor.work_in_progress.release()
-            case _:
-                raise ValueError(f"Unexpected message type: {message.type}")
-
-    # Create new messages based on response
-    new_messages = []
-
-    # Handle tool results if any
-    for result_item in tool_results:
-        tool_name = result_item["tool"]
-        result = result_item["result"]
-
-        # Create a ToolUse object
-        tool_use = ToolUse(name=tool_name, input={}, id=uuid.uuid4().hex)
-
-        # Create a ToolUseResult object
-        tool_use_result = ToolUseResult.from_tool_use(
-            tool_use=tool_use,
-            content=result.content,
-            is_error=result.is_error
-        )
-        new_messages.append(Message(
-            role="assistant",
-            content=[tool_use]
-        ))
-        new_messages.append(Message(
-            role="user",
-            content=[
-                tool_use_result,
-                TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
-            ]
-        ))
-
-    if not tool_results:
-        text_responses = [msg for msg in response.content if isinstance(msg, TextRaw)]
-        if text_responses:
-            new_messages = [Message(
-                role="assistant",
-                content=text_responses
-            )]
-
-    return new_messages, is_complete, final_tool_result
 
 async def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
     """
     Main entry point for the FSM tools module.
     Initializes an FSM tool processor and interacts with Claude.
     """
+    import os
+    import dagger
+    from anthropic import AsyncAnthropicBedrock
     from trpc_agent.application import FSMApplication
+    from llm.anthropic_bedrock import AnthropicBedrockLLM
     logger.info("[Main] Initializing FSM tools...")
-    client = get_llm_client()
+    client = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
+    model_params = {
+        "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        "max_tokens": 8192,
+    }
 
     # Create processor without FSM instance - it will be created in start_fsm tool
     processor = FSMToolProcessor(FSMApplication)
@@ -375,26 +329,19 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     current_messages = [
         Message(role="user", content=[TextRaw(initial_prompt)]),
     ]
-    is_complete = False
-    final_tool_result = None
 
-    # Main interaction loop
-    while not is_complete:
-        new_messages, is_complete, final_tool_result = await run_with_claude(
-            processor,
-            client,
-            current_messages
-        )
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+        # Main interaction loop
+        while True:
+            new_messages = await processor.step(current_messages, client, model_params)
 
-        logger.info(f"[Main] New messages: {new_messages}")
-        if new_messages:
-            current_messages += new_messages
+            logger.info(f"[Main] New messages: {new_messages}")
+            if new_messages:
+                current_messages += new_messages
 
-        logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
+            logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
 
-    if final_tool_result and not final_tool_result.is_error:
-        # Parse the content to extract the structured data
-        logger.info(f"[Main] FSM completed with result: {final_tool_result.content}")
+            break # Early out until feedback is wired to component name
 
     logger.info("[Main] FSM interaction completed successfully")
 
