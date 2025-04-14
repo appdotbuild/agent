@@ -4,6 +4,8 @@ import hashlib
 import logging
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool, TextRaw
+import os
+import anyio
 
 from log import get_logger
 logger = get_logger(__name__)
@@ -25,6 +27,7 @@ class CachedLLM(AsyncLLM):
         cache_path: str = "llm_cache.json",
     ):
         self.client = client
+        self.lock = anyio.Lock()
         self.cache_mode = cache_mode
         self.cache_path = cache_path
         self._cache = self._load_cache() if cache_mode != "off" else {}
@@ -92,7 +95,7 @@ class CachedLLM(AsyncLLM):
         }
 
         match self.cache_mode:
-            case "off" | "record":
+            case "off":
                 response = await self.client.completion(
                     model=model,
                     messages=messages,
@@ -103,11 +106,29 @@ class CachedLLM(AsyncLLM):
                     *args,
                     **kwargs
                 )
-                if self.cache_mode == "record":
-                    cache_key = self._get_cache_key(**request_params)
-                    logger.info(f"caching response with key: {cache_key}")
+                return response
+            case "record":
+                await self.lock.acquire()
+                cache_key = self._get_cache_key(**request_params)
+                logger.info(f"Caching response with key: {cache_key}")
+                if cache_key in self._cache:
+                    logger.info(f"Fetching from cache")
+                    self.lock.release()
+                    return self._cache[cache_key]
+                else:
+                    response = await self.client.completion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        *args,
+                        **kwargs
+                    )
                     self._cache[cache_key] = response.to_dict()
                     self._save_cache()
+                self.lock.release()
                 return response
             case "replay":
                 cache_key = self._get_cache_key(**request_params)
