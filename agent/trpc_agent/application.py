@@ -265,6 +265,10 @@ class FSMApplication:
         while (self.current_state not in (FSMState.COMPLETE, FSMState.FAILURE)):
             await self.fsm.send(FSMEvent("CONFIRM"))
 
+    @property
+    def is_completed(self) -> bool:
+        return self.current_state == FSMState.COMPLETE
+
     def maybe_error(self) -> str | None:
         return self.fsm.context.error
 

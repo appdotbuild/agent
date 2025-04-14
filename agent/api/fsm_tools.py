@@ -6,6 +6,7 @@ import anyio
 from fire import Fire
 import uuid
 
+from core.application import ApplicationBase
 from llm.utils import get_llm_client, AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
@@ -18,7 +19,7 @@ logger = get_logger(__name__)
 
 
 @runtime_checkable
-class FSMInterface(Protocol):
+class FSMInterface(ApplicationBase, Protocol):
     @classmethod
     async def start_fsm(cls, user_prompt: str) -> Self: ...
     async def confirm_state(self): ...
@@ -27,12 +28,7 @@ class FSMInterface(Protocol):
     @classmethod
     def base_execution_plan(cls) -> str: ...
     @property
-    def current_state(self) -> str: ...
-    @property
-    def state_output(self) -> dict: ...
-    @property
-    def available_actions(self) -> dict[str, str]: ...
-    def maybe_error(self) -> str | None: ...
+    def available_actions(self) -> dict[str, str]: ...# FSMTools Specific
 
 
 class FSMToolProcessor[T: FSMInterface]:
@@ -256,10 +252,6 @@ class FSMToolProcessor[T: FSMInterface]:
                             raise RuntimeError(f"Invalid tool call: {block}")
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
-            tool_content = [
-                *tool_results,
-                TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
-            ]
             thread.append(Message(role="user", content=[
                 *tool_results,
                 TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
@@ -315,6 +307,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     from llm.anthropic_bedrock import AnthropicBedrockLLM
     logger.info("[Main] Initializing FSM tools...")
     client = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
+    #client = get_llm_client()
     model_params = {
         "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
         "max_tokens": 8192,
