@@ -52,11 +52,11 @@ class SessionManager:
         **kwargs
     ) -> T:
         session_id = f"{request.chatbot_id}:{request.trace_id}"
-        
+
         if session_id in self.sessions:
             logger.info(f"Reusing existing session for {session_id}")
             return self.sessions[session_id]
-        
+
         logger.info(f"Creating new agent session for {session_id}")
         agent = agent_class(
             chatbot_id=request.chatbot_id,
@@ -67,7 +67,7 @@ class SessionManager:
         )
         self.sessions[session_id] = agent
         return agent
-    
+
     def cleanup_session(self, chatbot_id: str, trace_id: str) -> None:
         session_id = f"{chatbot_id}:{trace_id}"
         if session_id in self.sessions:
@@ -84,10 +84,10 @@ async def run_agent[T: AgentInterface](
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.chatbot_id}:{request.trace_id}")
     agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
-    
+
     event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
     final_state = None
-    
+
     try:
         async with anyio.create_task_group() as tg:
             tg.start_soon(agent.process, request, event_tx)
@@ -96,16 +96,16 @@ async def run_agent[T: AgentInterface](
                     # Keep track of the last state in events with non-null state
                     if event.message and event.message.agent_state:
                         final_state = event.message.agent_state
-                        
+
                     # Format SSE event properly with data: prefix and double newline at the end
                     # This ensures compatibility with SSE standard
                     yield f"data: {event.to_json()}\n\n"
-                    
+
                     # If this event indicates the agent is idle, check if we need to remove the session
                     if event.status == AgentStatus.IDLE and request.agent_state is None:
                         # Only remove session completely if this was not a continuation with state
                         logger.info(f"Agent idle, will clean up session for {request.chatbot_id}:{request.trace_id}")
-                    
+
     except* Exception as excgroup:
         for e in excgroup.exceptions:
             logger.error(f"Error in SSE generator: {str(e)}")
@@ -116,13 +116,13 @@ async def run_agent[T: AgentInterface](
                     role="agent",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing request: {str(e)}",
-                    agent_state=None,
-                    unified_diff=""
+                    agentState=None,
+                    unifiedDiff=""
                 )
             )
-            # Format error SSE event properly 
+            # Format error SSE event properly
             yield f"data: {error_event.to_json()}\n\n"
-            
+
             # On error, remove the session entirely
             session_manager.cleanup_session(request.chatbot_id, request.trace_id)
     finally:

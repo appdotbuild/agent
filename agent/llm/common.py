@@ -101,7 +101,7 @@ class Message:
 @dataclass
 class Completion:
     role: Literal["assistant"]
-    content: Iterable[TextRaw | ToolUse | ThinkingBlock]
+    content: Iterable[ContentBlock]
     input_tokens: int
     output_tokens: int
     stop_reason: Literal["end_turn", "max_tokens", "stop_sequence", "tool_use"]

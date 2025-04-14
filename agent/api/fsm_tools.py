@@ -43,7 +43,7 @@ class FSMToolProcessor[T: FSMInterface]:
     fsm_class: type[T]
     fsm_app: T | None
 
-    def __init__(self, fsm_class: type[T]):
+    def __init__(self, fsm_class: type[T], fsm_app: T | None = None):
         """
         Initialize the FSM Tool Processor
 
@@ -51,7 +51,7 @@ class FSMToolProcessor[T: FSMInterface]:
             fsm_class: FSM application class to use
         """
         self.fsm_class = fsm_class
-        self.fsm_app = None
+        self.fsm_app = fsm_app
 
         # Define tool definitions for the AI agent using the common Tool structure
         self.tool_definitions: list[Tool] = [
@@ -314,6 +314,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     }
 
     # Create processor without FSM instance - it will be created in start_fsm tool
+    #fsm_app = await FSMApplication.start
     processor = FSMToolProcessor(FSMApplication)
     logger.info("[Main] FSM tools initialized successfully")
 

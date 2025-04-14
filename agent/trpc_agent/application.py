@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, asdict
 import json
 from core.actors import BaseData
 from core.base_node import Node
-from core.statemachine import StateMachine, State, Actor, Context
+from core.statemachine import StateMachine, State, Actor, Context, MachineCheckpoint
 from llm.common import AsyncLLM
 from llm.anthropic_bedrock import AnthropicBedrockLLM
 from anthropic import AsyncAnthropicBedrock
@@ -96,6 +96,12 @@ class FSMApplication:
         self.fsm = fsm
 
     @classmethod
+    async def load(cls, data: MachineCheckpoint) -> Self:
+        root = await cls.make_states()
+        fsm = await StateMachine.load(root, data, ApplicationContext)
+        return cls(fsm)
+
+    @classmethod
     def base_execution_plan(cls) -> str:
         return "\n".join([
             "1. Draft app design",
@@ -107,7 +113,14 @@ class FSMApplication:
     @classmethod
     async def start_fsm(cls, user_prompt: str) -> Self:
         """Create the state machine for the application"""
+        states = await cls.make_states()
+        context = ApplicationContext(user_prompt=user_prompt)
+        fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
+        await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
+        return cls(fsm)
 
+    @classmethod
+    async def make_states(cls) -> State[ApplicationContext, FSMEvent]:
         def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
             files = {}
             for node in solution.get_trajectory():
@@ -248,10 +261,7 @@ class FSMApplication:
             },
         )
 
-        context = ApplicationContext(user_prompt=user_prompt)
-        fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
-        await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
-        return cls(fsm)
+        return states
 
     async def confirm_state(self):
         await self.fsm.send(FSMEvent("CONFIRM"))
