@@ -26,13 +26,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: debug
-        if: $(git log -2 --pretty=oneline | tail -n 1 | grep "Update")
-        run: export RELEASE_BUILD="true"
-
-      - name: debug 2
-        run: echo ${RELEASE_BUILD}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -76,24 +69,17 @@ jobs:
             exit 1
           fi
 
-      - name: Determine if release build is needed
+      - name: Determine if Release Build is Needed
         id: check_release
         run: |
           is_release="false"
-          # FIX ME LATER
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          # we check two commits because the first commit is the merge commit
+          if git log -2 --pretty=%s | tail -n 1 | grep -q "release"; then
             is_release="true"
-          elif [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" && "${{ github.base_ref }}" == "main" ]]; then
-            # This condition is technically covered by the push to main after merge,
-            # but kept for clarity if needed for specific PR merged actions.
-            # Usually the push to main is the definitive trigger.
-            is_release="true"
-            # Check if the push event contains a commit message with 'release'
-            elif [[ "${{ github.event_name }}" == "push" && $(echo '${{ toJson(github.event.commits) }}' | jq -r '.[].message // ""' | grep -i -c "release") -gt 0 ]]; then
-             # currently broken - not getting commit message
-             # Check if any commit message in the push contains 'release' (case-insensitive)
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             is_release="true"
           fi
+
           echo "is_release=${is_release}" >> $GITHUB_OUTPUT
 
       - name: Calculate Build Tag
@@ -104,7 +90,7 @@ jobs:
           BRANCH_NAME_RAW="${{ github.head_ref || github.ref_name }}"
           BRANCH_NAME=$(echo "$BRANCH_NAME_RAW" | sed -e 's#^refs/heads/##' -e 's#^refs/tags/##' -e 's#/#-#g' -e 's/[^a-zA-Z0-9.-]/-/g')
           SHORT_SHA=$(git rev-parse --short ${{ github.sha }})
-          echo "COMMIT_SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+          echo "commit_short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT" # Set commit_short_sha as an output
           TAG=${BRANCH_NAME}-${SHORT_SHA}
           echo "Calculated Tag: $TAG"
           echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
