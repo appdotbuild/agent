@@ -52,7 +52,7 @@ class SessionManager:
         *args,
         **kwargs
     ) -> T:
-        session_id = f"{request.chatbot_id}:{request.trace_id}"
+        session_id = f"{request.application_id}:{request.trace_id}"
 
         if session_id in self.sessions:
             logger.info(f"Reusing existing session for {session_id}")
@@ -60,7 +60,7 @@ class SessionManager:
 
         logger.info(f"Creating new agent session for {session_id}")
         agent = agent_class(
-            chatbot_id=request.chatbot_id,
+            application_id=request.application_id,
             trace_id=request.trace_id,
             settings=request.settings,
             *args,
@@ -69,8 +69,8 @@ class SessionManager:
         self.sessions[session_id] = agent
         return agent
 
-    def cleanup_session(self, chatbot_id: str, trace_id: str) -> None:
-        session_id = f"{chatbot_id}:{trace_id}"
+    def cleanup_session(self, application_id: str, trace_id: str) -> None:
+        session_id = f"{application_id}:{trace_id}"
         if session_id in self.sessions:
             logger.info(f"Removing session for {session_id}")
             del self.sessions[session_id]
@@ -83,7 +83,7 @@ async def run_agent[T: AgentInterface](
     *args,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
-    logger.info(f"Running agent for session {request.chatbot_id}:{request.trace_id}")
+    logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
     agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
 
     event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
@@ -105,7 +105,7 @@ async def run_agent[T: AgentInterface](
                     # If this event indicates the agent is idle, check if we need to remove the session
                     if event.status == AgentStatus.IDLE and request.agent_state is None:
                         # Only remove session completely if this was not a continuation with state
-                        logger.info(f"Agent idle, will clean up session for {request.chatbot_id}:{request.trace_id}")
+                        logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id}")
 
     except* Exception as excgroup:
         for e in excgroup.exceptions:
@@ -125,12 +125,12 @@ async def run_agent[T: AgentInterface](
             yield f"data: {error_event.to_json()}\n\n"
 
             # On error, remove the session entirely
-            session_manager.cleanup_session(request.chatbot_id, request.trace_id)
+            session_manager.cleanup_session(request.application_id, request.trace_id)
     finally:
         # For requests without agent state or where the session completed, clean up
         if request.agent_state is None and (final_state is None or final_state == {}):
-            logger.info(f"Cleaning up completed agent session for {request.chatbot_id}:{request.trace_id}")
-            session_manager.cleanup_session(request.chatbot_id, request.trace_id)
+            logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
+            session_manager.cleanup_session(request.application_id, request.trace_id)
 
 
 @app.post("/message", response_model=None)
@@ -158,10 +158,10 @@ async def message(request: AgentRequest) -> StreamingResponse:
         Streaming response with SSE events according to the API spec
     """
     try:
-        logger.info(f"Received message request for chatbot {request.chatbot_id}, trace {request.trace_id}")
+        logger.info(f"Received message request for application {request.application_id}, trace {request.trace_id}")
 
         # Start the SSE stream
-        logger.info(f"Starting SSE stream for chatbot {request.chatbot_id}, trace {request.trace_id}")
+        logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
         agent_type = {
             "empty_diff": EmptyDiffAgentImplementation,
             "trpc_agent": AsyncAgentSession,

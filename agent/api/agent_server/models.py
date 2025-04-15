@@ -94,7 +94,7 @@ class AgentSseEvent(BaseModel):
 class AgentRequest(BaseModel):
     """Request body for initiating or continuing interaction with the Agent Server."""
     all_messages: List[ConversationMessage] = Field(..., alias="allMessages", description="History of all messages in the current conversation thread.")
-    chatbot_id: str = Field(..., alias="chatbotId", description="Unique identifier for the chatbot instance.")
+    application_id: str = Field(..., alias="applicationId", description="Unique identifier for the application instance.")
     trace_id: str = Field(..., alias="traceId", description="Unique identifier for this request/response cycle.")
     agent_state: Optional[Dict[str, Any]] = Field(
         None, 

@@ -85,8 +85,8 @@ model AgentRequest {
   @doc("History of all user messages in the current conversation thread.")
   allMessages: ConversationMessage[];
 
-  @doc("Unique identifier for the chatbot instance. Used for tracing and context.")
-  chatbotId: string;
+  @doc("Unique identifier for the application instance. Used for tracing and context.")
+  applicationId: string;
 
   @doc("Unique identifier for this specific request/response cycle. Used to correlate SSE events back to the originating POST request.")
   traceId: string;

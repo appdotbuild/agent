@@ -46,12 +46,12 @@ class AgentApiClient:
 
     async def send_message(self,
                           message: str,
-                          chatbot_id: Optional[str] = None,
+                          application_id: Optional[str] = None,
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
                           settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Send a message to the agent and return the parsed SSE events"""
-        request = self.create_request(message, chatbot_id, trace_id, agent_state, settings)
+        request = self.create_request(message, application_id, trace_id, agent_state, settings)
         
         url = "/message" if self.base_url else "http://test/message"
         
@@ -87,11 +87,11 @@ class AgentApiClient:
 
         # Use the same trace ID for continuity
         trace_id = previous_request.trace_id
-        chatbot_id = previous_request.chatbot_id
+        application_id = previous_request.application_id
 
         events, request = await self.send_message(
             message=message,
-            chatbot_id=chatbot_id,
+            application_id=application_id,
             trace_id=trace_id,
             agent_state=agent_state,
             settings=settings
@@ -101,7 +101,7 @@ class AgentApiClient:
 
     @staticmethod
     def create_request(message: str,
-                     chatbot_id: Optional[str] = None,
+                     application_id: Optional[str] = None,
                      trace_id: Optional[str] = None,
                      agent_state: Optional[Dict[str, Any]] = None,
                      settings: Optional[Dict[str, Any]] = None) -> AgentRequest:
@@ -113,7 +113,7 @@ class AgentApiClient:
                     content=message
                 )
             ],
-            chatbotId=chatbot_id or f"test-bot-{uuid.uuid4().hex[:8]}",
+            applicationId=application_id or f"test-bot-{uuid.uuid4().hex[:8]}",
             traceId=trace_id or uuid.uuid4().hex,
             agentState=agent_state,
             settings=settings or {"max-iterations": 3}
@@ -234,12 +234,12 @@ async def test_session_with_no_state():
     async with AgentApiClient() as client:
         # Generate a fixed trace/chatbot ID to use for all requests
         fixed_trace_id = uuid.uuid4().hex
-        fixed_chatbot_id = f"test-bot-{uuid.uuid4().hex[:8]}"
+        fixed_application_id = f"test-bot-{uuid.uuid4().hex[:8]}"
 
         # First request
         (first_events, _), _ = await client.send_message(
             "Create a counter app",
-            chatbot_id=fixed_chatbot_id,
+            application_id=fixed_application_id,
             trace_id=fixed_trace_id
         )
         assert len(first_events) > 0, "No events received from first request"
@@ -247,7 +247,7 @@ async def test_session_with_no_state():
         # Second request - same session, explicitly pass None for agent_state
         (second_events, _), _ = await client.send_message(
             "Add a reset button",
-            chatbot_id=fixed_chatbot_id,
+            application_id=fixed_application_id,
             trace_id=fixed_trace_id,
             agent_state=None
         )
