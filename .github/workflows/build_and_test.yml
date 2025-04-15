@@ -27,7 +27,7 @@ jobs:
       - name: debug
         run: |
           echo $JSON
-          echo $(git log -1 | tail -n 1)
+          echo "$(git log -1 | tail -n 1)"
         env:
           JSON: ${{ toJSON(github) }}
 
