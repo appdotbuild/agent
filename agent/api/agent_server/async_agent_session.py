@@ -7,7 +7,7 @@ from anyio.streams.memory import MemoryObjectSendStream
 
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw, ToolUse, ToolResult, ToolUseResult
-from api.fsm_tools import FSMToolProcessor, run_with_claude
+from api.fsm_tools import FSMToolProcessor
 from uuid import uuid4
 
 from api.agent_server.models import (
@@ -24,15 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncAgentSession(AgentInterface):
-    def __init__(self, chatbot_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
+    def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
-        self.chatbot_id = chatbot_id or uuid4().hex
+        self.application_id = application_id or uuid4().hex
         self.trace_id = trace_id or uuid4().hex
         self.settings = settings or {}
         self.is_running = False
         self.is_complete = False
         self.fsm_instance = None
-        self.processor_instance: FSMToolProcessor = FSMToolProcessor()
+        self.processor_instance: FSMToolProcessor | None = None
         self.messages = []
         self.llm_client: AsyncLLM = get_llm_client()
 
@@ -122,8 +122,8 @@ class AsyncAgentSession(AgentInterface):
                         role="agent",
                         kind=MessageKind.STAGE_RESULT,
                         content=content,
-                        agent_state=self.get_state(),
-                        unified_diff=app_diff
+                        agentState=self.get_state(),
+                        unifiedDiff=app_diff
                     )
                 )
 
@@ -141,8 +141,8 @@ class AsyncAgentSession(AgentInterface):
                     role="agent",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing step: {str(e)}",
-                    agent_state=None,
-                    unified_diff=None
+                    agentState=None,
+                    unifiedDiff=None
                 )
             )
 
@@ -187,14 +187,14 @@ class AsyncAgentSession(AgentInterface):
             event_tx: Event transmission stream
         """
         try:
-            logger.info(f"Processing request for {self.chatbot_id}:{self.trace_id}")
+            logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
             # Check if we need to initialize or if this is a continuation with an existing state
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
-                
+
             # Initialize the FSM with the request data
             await self.initialize_fsm(request.all_messages, request.agent_state)
 
@@ -233,8 +233,8 @@ class AsyncAgentSession(AgentInterface):
                     role="agent",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing request: {str(e)}",
-                    agent_state=None,
-                    unified_diff=None
+                    agentState=None,
+                    unifiedDiff=None
                 )
             )
             await event_tx.send(error_event)

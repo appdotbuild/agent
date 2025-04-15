@@ -48,18 +48,18 @@ class Workspace:
         for cmd in setup_cmd:
             ctr = ctr.with_exec(cmd)
         return cls(ctr=ctr, start=context, protected=set(protected), allowed=set(allowed))
-    
+
     @function
     def permissions(self, protected: list[str] = [], allowed: list[str] = []) -> Self:
         self.protected = set(protected)
         self.allowed = set(allowed)
         return self
-    
+
     @function
     def cwd(self, path: str) -> Self:
         self.ctr = self.ctr.with_workdir(path)
         return self
-    
+
     @function
     def rm(self, path: str) -> Self:
         protected = self.protected - self.allowed # allowed take precedence
@@ -67,21 +67,21 @@ class Workspace:
             raise PermissionError(f"Attempted to remove {path} which is in protected paths: {protected}")
         self.ctr = self.ctr.without_file(path)
         return self
-    
+
     @function
     async def ls(self, path: str) -> list[str]:
         try:
             return await self.ctr.directory(path).entries()
         except dagger.QueryError as e:
             raise FileNotFoundError(f"Directory not found: {path}")
-    
+
     @function
     async def read_file(self, path: str) -> str:
         try:
             return await self.ctr.file(path).contents()
         except dagger.QueryError as e:
             raise FileNotFoundError(f"File not found: {path}")
-    
+
     @function
     def write_file(self, path: str, contents: str, force: bool = False) -> Self:
         if not force:
@@ -100,20 +100,30 @@ class Workspace:
             .with_exec(["sed", "-n", f"{start},{end}p", path])
             .stdout()
         )
-    
+
     @function
     async def diff(self) -> str:
         start = dag.container().from_("alpine/git").with_workdir("/app").with_directory("/app", self.start)
-        if ".git" not in self.start.entries():
-            start = start.with_exec(["git", "init"]).with_exec(["git", "add", "."]).with_exec(["git", "commit", "-m", "'initial'"])
-        return await start.with_directory(".", self.ctr.directory(".")).with_exec(["git", "diff"]).stdout()
-    
+        if ".git" not in await self.start.entries():
+            start = (
+                start.with_exec(["git", "init"])
+                .with_exec(["git", "config", "--global", "user.email", "agent@appbuild.com"])
+                .with_exec(["git", "add", "."])
+                .with_exec(["git", "commit", "-m", "'initial'"])
+            )
+        return (
+            await start.with_directory(".", self.ctr.directory("."))
+            .with_exec(["git", "add", "."])
+            .with_exec(["git", "diff", "HEAD"])
+            .stdout()
+        )
+
     @function
     async def exec(self, command: list[str]) -> ExecResult:
         return await ExecResult.from_ctr(
             self.ctr.with_exec(command, expect=ReturnType.ANY)
         )
-    
+
     @function
     async def exec_with_pg(self, command: list[str]) -> ExecResult:
         postgresdb = (
@@ -133,7 +143,7 @@ class Workspace:
             .with_exec(["sh", "-c", "while ! pg_isready -h postgres -U postgres; do sleep 1; done"])
             .with_exec(command, expect=ReturnType.ANY)
         )
-    
+
     @function
     async def exec_mut(self, command: list[str]) -> Self:
         ctr = self.ctr.with_exec(command, expect=ReturnType.ANY)
@@ -141,16 +151,16 @@ class Workspace:
             raise Exception(f"Command failed: {command}\nError: {await ctr.stderr()}")
         self.ctr = ctr
         return self
-    
+
     @function
     def reset(self) -> Self:
         self.ctr = self.ctr.with_directory(".", self.start)
         return self
-    
+
     @function
     def container(self) -> Container:
         return self.ctr
-    
+
     @function
     def clone(self) -> Self:
         return Workspace(

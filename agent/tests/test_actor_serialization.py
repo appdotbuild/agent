@@ -19,15 +19,15 @@ class SimpleActor(BaseActor):
     def __init__(self, workspace: Workspace, root: Node[BaseData] | None = None):
         self.workspace = workspace
         self.root = root
-    
-    def execute(self, *args, **kwargs):
+
+    async def execute(self, *args, **kwargs):
         pass
 
     async def dump(self) -> object:
         if self.root is None:
             return []
         return await self.dump_node(self.root)
-    
+
     async def load(self, data: object):
         if not isinstance(data, list):
             raise ValueError(f"Expected list got {type(data)}")
@@ -57,6 +57,7 @@ async def test_actor_recovery():
         loaded = SimpleActor(await Workspace.create())
         await loaded.load(dumped)
 
+        assert loaded.root is not None
         assert loaded.root.data.files == root.data.files
         assert loaded.root.data.messages == root.data.messages
 

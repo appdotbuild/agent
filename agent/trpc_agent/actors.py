@@ -13,7 +13,7 @@ import core.statemachine
 from core.base_node import Node
 from core.workspace import Workspace, ExecResult
 from core.actors import BaseData, BaseActor, LLMActor
-from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
+from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,9 @@ class BaseTRPCActor(BaseActor, LLMActor):
         self.max_depth = max_depth
         logger.info(f"Initialized {self.__class__.__name__} with beam_width={beam_width}, max_depth={max_depth}")
 
-    async def search(self, node: Node[BaseData]) -> Node[BaseData] | None:
+    async def search(self, node: Node[BaseData] | None) -> Node[BaseData] | None:
+        if node is None:
+            raise RuntimeError("Node cannot be None")
         logger.info(f"Starting search from node at depth {node.depth}")
         solution: Node[BaseData] | None = None
         iteration = 0
@@ -236,7 +238,7 @@ class HandlersActor(BaseTRPCActor):
         super().__init__(llm, workspace, model_params, beam_width=beam_width, max_depth=max_depth)
         self.handlers = {}
 
-    async def execute(self, files: dict[str, str]) -> dict[str, Node[BaseData] | None]:
+    async def execute(self, files: dict[str, str]) -> dict[str, Node[BaseData]]:
         logger.info(f"Executing HandlersActor with {len(files)} input files")
 
         async def task_fn(node: Node[BaseData], key: str, tx: MemoryObjectSendStream[tuple[str, Node[BaseData] | None]]):
@@ -260,12 +262,10 @@ class HandlersActor(BaseTRPCActor):
 
             async with rx:
                 async for (key, node) in rx:
+                    if not node:
+                        raise ValueError(f"No solution found for handler: {key}")
                     solution[key] = node
                     logger.info(f"Received solution for handler: {key}")
-
-        if not solution:
-            logger.error("No solutions found for any handlers")
-            raise ValueError("No solution found")
 
         logger.info(f"HandlersActor completed with {len(solution)} solutions")
         return solution
@@ -374,8 +374,8 @@ class IndexActor(BaseTRPCActor):
         super().__init__(llm, workspace, model_params, beam_width=beam_width, max_depth=max_depth)
         self.root = None
 
-    async def execute(self, user_prompt: str) -> Node[BaseData]:
-        await self.cmd_create(user_prompt)
+    async def execute(self, files: dict[str, str]) -> Node[BaseData]:
+        await self.cmd_create(files)
         solution = await self.search(self.root)
         if solution is None:
             raise ValueError("No solution found")
@@ -467,7 +467,8 @@ class FrontendActor(BaseTRPCActor):
         self.root = Node(BaseData(workspace, [message], {}))
 
     async def eval_node(self, node: Node[BaseData]) -> bool:
-        content = await self.run_tools(node)
+        content: list[ContentBlock] = []
+        content.extend(await self.run_tools(node))
         files_err = await run_write_files(node)
         if files_err:
             content.append(files_err)

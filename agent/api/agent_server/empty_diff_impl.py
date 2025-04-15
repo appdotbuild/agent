@@ -21,16 +21,16 @@ class EmptyDiffAgentImplementation(AgentInterface):
     Used for testing the SSE stream functionality.
     """
     
-    def __init__(self, chatbot_id: str = None, trace_id: str = None, settings: Optional[Dict[str, Any]] = None):
+    def __init__(self, application_id: str = None, trace_id: str = None, settings: Optional[Dict[str, Any]] = None):
         """
         Initialize with session information
         
         Args:
-            chatbot_id: ID of the chatbot
+            application_id: ID of the application
             trace_id: Trace ID for tracking
             settings: Optional settings
         """
-        self.chatbot_id = chatbot_id or "default-bot"
+        self.application_id = application_id or "default-bot"
         self.trace_id = trace_id or "default-trace"
         self.settings = settings or {}
         self.has_initialized = False
@@ -43,13 +43,13 @@ class EmptyDiffAgentImplementation(AgentInterface):
             request: Incoming agent request
             event_tx: Event transmission stream
         """
-        logger.info(f"Processing request for {self.chatbot_id}:{self.trace_id}")
+        logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
         async with event_tx:
             # Create a test state that includes the input request info
             agent_state = {
                 "test_state": True,
                 "last_message": request.all_messages[-1].content if request.all_messages else "",
-                "chatbot_id": self.chatbot_id,
+                "application_id": self.application_id,
                 "trace_id": self.trace_id,
                 "timestamp": str(asyncio.get_event_loop().time())
             }
@@ -64,7 +64,7 @@ class EmptyDiffAgentImplementation(AgentInterface):
                 agent_state = {
                     "test_state": True,
                     "timestamp": str(asyncio.get_event_loop().time()),
-                    "chatbot_id": self.chatbot_id,
+                    "application_id": self.application_id,
                     "trace_id": self.trace_id
                 }
                 
