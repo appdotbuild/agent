@@ -5,7 +5,8 @@ import logging
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool, TextRaw
 
-logger = logging.getLogger(__name__)
+from log import get_logger
+logger = get_logger(__name__)
 
 CacheMode = Literal["off", "record", "replay"]
 

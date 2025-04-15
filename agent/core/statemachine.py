@@ -1,6 +1,8 @@
 from typing import Any, Awaitable, Callable, NotRequired, Protocol, Self, TypedDict
+from log import get_logger
 from dataclasses import dataclass
 
+logger = get_logger(__name__)
 
 class EventType(Protocol):
     def __str__(self) -> str: ...
@@ -83,7 +85,7 @@ class StateMachine[T: Context, E_t: EventType]:
 
     async def _process_transitions(self):
         while self._queued_transition:
-            print("Processing transition:", self.stack_path, self._queued_transition)
+            logger.info(f"Processing transition: {self.stack_path} {self._queued_transition}")
             next_state = self._queued_transition
             self._queued_transition = None
             await self._transition(next_state)

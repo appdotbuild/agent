@@ -2,7 +2,7 @@ import pytest
 import tempfile
 import anthropic
 from llm.cached import CachedLLM
-from llm.anthropic_client import AnthropicLLM
+from llm.utils import get_llm_client
 from llm.common import Message, TextRaw
 
 pytestmark = pytest.mark.anyio
@@ -15,7 +15,7 @@ def anyio_backend():
 
 async def test_cached_llm():
     with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp_file:
-        base_llm = AnthropicLLM(anthropic.AsyncAnthropic())
+        base_llm = get_llm_client(cache_mode="off")
         record_llm = CachedLLM(
             client=base_llm,
             cache_mode="record",

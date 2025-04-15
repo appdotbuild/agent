@@ -79,7 +79,8 @@ def get_llm_client(
     params_key = frozenset(client_params.items())
 
     if backend == "auto":
-        backend = _guess_llm_backend(backend)
+        backend = _guess_llm_backend(model_name)
+        logger.info(f"Auto-detected backend: {backend}")
 
     # Create a unique key for this client configuration
     cache_key = (backend, model_name, cache_mode, cache_path, params_key)

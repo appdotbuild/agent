@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 import os
 import uvicorn
 from fire import Fire
+import dagger
 
 from api.agent_server.models import (
     AgentRequest,
@@ -187,6 +188,20 @@ async def healthcheck():
     """Health check endpoint"""
     logger.debug("Health check requested")
     return {"status": "healthy"}
+
+
+@app.get("/health/dagger")
+async def dagger_healthcheck():
+    """Dagger connection health check endpoint"""
+    async with dagger.Connection() as client:
+        # Try a simple Dagger operation to verify connectivity
+        container = client.container().from_("alpine:latest")
+        version = await container.with_exec(["cat", "/etc/alpine-release"]).stdout()
+        return {
+            "status": "healthy",
+            "dagger_connection": "successful",
+            "alpine_version": version.strip()
+        }
 
 
 def main(

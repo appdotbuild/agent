@@ -3,12 +3,13 @@ name: Build and Test
 on:
   push:
     branches:
-      - mock/sdk
-      - feat/dagger-docker
+      - main
   pull_request:
 
 env:
   CONTAINER_NAME: agent-apiserver-1
+  ANTHROPIC_API_KEY: ${{ vars.ANTHROPIC_API_KEY }}
+  GEMINI_API_KEY: ${{ vars.GEMINI_API_KEY }}
 
 jobs:
   build-and-test:
@@ -35,7 +36,11 @@ jobs:
         run: |
           echo "Running tests..."
           docker build --target test -t agent-test:latest .
-          docker run --rm agent-test:latest
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -e ANTHROPIC_API_KEY=${{ env.ANTHROPIC_API_KEY }} \
+            -e GEMINI_API_KEY=${{ env.GEMINI_API_KEY }} \
+            agent-test:latest
           exit_code=$?
           if [ $exit_code -ne 0 ]; then
             echo "Tests failed with exit code $exit_code"
@@ -43,9 +48,6 @@ jobs:
           else
             echo "Tests passed successfully!"
           fi
-
-      - name: Wait longer for container to potentially start and stabilize
-        run: sleep 5s
 
       - name: Check Container Health
         run: |
