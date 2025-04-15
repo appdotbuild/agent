@@ -101,6 +101,15 @@ class FSMApplication:
         fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
         return cls(fsm)
 
+     @classmethod
+    def base_execution_plan(cls) -> str:
+         return "\n".join([
+             "1. Draft app design",
+             "2. Implement handlers",
+             "3. Create index file",
+             "4. Build frontend",
+         ])
+
     @classmethod
     async def start_fsm(cls, user_prompt: str) -> Self:
         """Create the state machine for the application"""
