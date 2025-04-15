@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 import os
 import uvicorn
 from fire import Fire
+import dagger
 
 from api.agent_server.models import (
     AgentRequest,
