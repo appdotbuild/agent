@@ -121,6 +121,7 @@ class CachedLLM(AsyncLLM):
                     *args,
                     **kwargs
                 )
+                return response
 
             case "record":
                 async with anyio.Lock():
