@@ -27,7 +27,7 @@ jobs:
       - name: debug
         run: |
           echo $JSON
-          echo contains($(git log -1 | tail -n 1), "Update")
+          echo $(git log -1 | tail -n 1)
         env:
           JSON: ${{ toJSON(github) }}
 
