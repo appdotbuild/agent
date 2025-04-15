@@ -79,7 +79,8 @@ jobs:
             # but kept for clarity if needed for specific PR merged actions.
             # Usually the push to main is the definitive trigger.
             is_release="true"
-          elif [[ "${{ github.event_name }}" == "push" && $(echo ${{ github.event.head_commit.message }} | grep -i -c "release") -gt 0 ]]; then
+            # Check if the push event contains a commit message with 'release'
+            elif [[ "${{ github.event_name }}" == "push" && $(echo '${{ toJson(github.event.commits) }}' | jq -r '.[].message // ""' | grep -i -c "release") -gt 0 ]]; then
              # currently broken - not getting commit message
              # Check if any commit message in the push contains 'release' (case-insensitive)
             is_release="true"
