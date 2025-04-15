@@ -31,12 +31,17 @@ jobs:
         working-directory: ./agent/
         run: docker compose up -d --build
 
-      - name: Login to Amazon ECR
-        env:
-          AWS_REGION: us-west-2
-          AWS_ACCESS_KEY_ID: ${{ secrets.ECR_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ECR_SECRET_KEY }}
-        run: aws ecr get-login-password | docker login --username AWS --password-stdin 361769577597.dkr.ecr.us-west-2.amazonaws.com
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.ECR_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.ECR_SECRET_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to ECR
+        uses: docker/login-action@v3
+        with:
+          registry: 361769577597.dkr.ecr.us-west-2.amazonaws.com
 
       - name: Build and push Docker image
         working-directory: ./agent/
