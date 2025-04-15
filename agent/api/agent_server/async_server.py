@@ -141,7 +141,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
     Platform (Backend) -> Agent Server API Spec:
     POST Request:
     - allMessages: [str] - history of all user messages
-    - chatbotId: str - required for Agent Server for tracing
+    - applicationId: str - required for Agent Server for tracing
     - traceId: str - required - a string used in SSE events
     - agentState: {..} or null - the full state of the Agent to restore from
     - settings: {...} - json with settings with number of iterations etc
