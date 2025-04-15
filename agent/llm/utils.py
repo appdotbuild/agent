@@ -4,7 +4,7 @@ import logging
 from typing import Literal, Dict, Tuple, Any
 import anthropic
 from anthropic import AnthropicBedrock, Anthropic, AsyncAnthropic, AsyncAnthropicBedrock
-from llm.common import AsyncLLM, Message, TextRaw, ToolUse, ThinkingBlock
+from llm.common import AsyncLLM, Message, TextRaw, ToolUse, ThinkingBlock, ContentBlock
 from llm.anthropic_client import AnthropicLLM
 from llm.anthropic_bedrock import AnthropicBedrockLLM
 from llm.cached import CachedLLM, CacheMode
@@ -18,10 +18,10 @@ _llm_clients: Dict[Tuple[str, str, CacheMode, str, frozenset], AsyncLLM] = {}
 LLMBackend = Literal["bedrock", "anthropic"]
 
 
-def merge_text(content: list[TextRaw | ToolUse | ThinkingBlock]) -> list[TextRaw | ToolUse | ThinkingBlock]:
+def merge_text(content: list[ContentBlock]) -> list[ContentBlock]:
     merged = []
     for k, g in itertools.groupby(content, lambda x: isinstance(x, TextRaw)):
-        if k and (text := "".join([x.text for x in g])) != "":
+        if k and (text := "".join([x.text for x in g if isinstance(x, TextRaw)])) != "":
             merged.append(TextRaw(text))
         else:
             merged.extend(g)
@@ -29,7 +29,7 @@ def merge_text(content: list[TextRaw | ToolUse | ThinkingBlock]) -> list[TextRaw
 
 
 async def loop_completion(m_client: AsyncLLM, messages: list[Message], **kwargs) -> Message:
-    content: list[TextRaw | ToolUse | ThinkingBlock] = []
+    content: list[ContentBlock] = []
     while True:
         payload = messages + [Message(role="assistant", content=content)] if content else messages
         completion = await m_client.completion(messages=payload, **kwargs)

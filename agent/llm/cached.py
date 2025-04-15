@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool, TextRaw
 import os
+import anyio
 
 from log import get_logger
 logger = get_logger(__name__)
@@ -120,28 +121,28 @@ class CachedLLM(AsyncLLM):
                     *args,
                     **kwargs
                 )
-                return response
-            case "record"
-                cache_key = self._get_cache_key(**request_params)
-                logger.info(f"caching response with key: {cache_key}")
 
-                if cache_key in self._cache:
-                    logger.info(f"Fetching from cache")
-                    return self._cache[cache_key]
-                else:
-                    response = await self.client.completion(
-                        model=model,
-                        messages=messages,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                        tools=tools,
-                        tool_choice=tool_choice,
-                        *args,
-                        **kwargs
-                    )
-                    self._cache[cache_key] = response.to_dict()
-                    self._save_cache()
-                return response
+            case "record":
+                async with anyio.Lock():
+                    cache_key = self._get_cache_key(**request_params)
+                    logger.info(f"Caching response with key: {cache_key}")
+                    if cache_key in self._cache:
+                        logger.info(f"Fetching from cache")
+                        return self._cache[cache_key]
+                    else:
+                        response = await self.client.completion(
+                            model=model,
+                            messages=messages,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            tools=tools,
+                            tool_choice=tool_choice,
+                            *args,
+                            **kwargs
+                        )
+                        self._cache[cache_key] = response.to_dict()
+                        self._save_cache()
+                    return response
             case "replay":
                 cache_key = self._get_cache_key(**request_params)
                 if cache_key in self._cache:

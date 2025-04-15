@@ -1,12 +1,24 @@
-# CLAUDE.md
+# Instructions
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file provides guidance to you (Cursor AI) when working with code in this repository.
+Refer to this file when assisting with code generation, refactoring, or answering questions about the codebase.
 
-## Project Overview
+When you make mistakes or receive corrections, note them in the Lessons section.
+Use the Scratchpad to organize your thoughts when tackling complex tasks.
+
+## Task Planning Structure
+When planning complex tasks, use the following format in the Scratchpad:
+[X] Completed task
+[ ] Task in progress
+[ ] Future task
+
+Always refer back to the Scratchpad when determining next steps and update it as you make progress.
+
+# Project Overview
 
 This project implements an AI codegen agent system with various components for handling API interactions, core logic, and specific agent implementations. The system is built primarily in Python with some TypeScript components.
 
-## Project Structure
+# Project Structure
 
 - `agent` - Contains the main codegen agent code
   - `api` - IO layer for the agent
@@ -21,13 +33,7 @@ This project implements an AI codegen agent system with various components for h
   - `stash_bot` - Deprecated!
   - `log.py` - Global logging and tracing
 
-## Development Workflow
-
-### Setup and Installation
-
-*[Add any specific setup instructions here]*
-
-### Build/Test/Lint Commands
+# Development Workflow
 
 Commands should typically be run from the `./agent` directory:
 
@@ -36,26 +42,22 @@ Commands should typically be run from the `./agent` directory:
 - **Format code**: `uv run ruff format`
 - **Run tests in isolated env**: `docker build --target test -t agent-test:latest . && docker run --rm agent-test:latest`
 
-### CI and Tests
+# Code Style Guidelines
 
-We use GitHub Actions, triggered on PRs and pushes to main. The workflow configuration is in `.github/workflows/build_and_test.yml`.
+## Python
 
-## Code Style Guidelines
-
-### Python
-
-#### Formatting and Structure
+### Formatting and Structure
 - **Line Length**: 120 characters max
 - **Imports**: Standard library → third-party → local modules
 - **Docstrings**: Use triple double quotes (`"""`)
 
-#### Naming Conventions
+### Naming Conventions
 - **Variables/Functions**: `snake_case`
 - **Classes**: `PascalCase`
 - **Constants**: `UPPER_SNAKE_CASE`
 - **JSON Keys/API Payload Fields**: `PascalCase` (must be hidden behind models.py with from_json/to_json methods)
 
-#### Language Features
+### Language Features
 - **Types**: Use modern typing: `def func(param: str | None = None)` not `param: str = None`
 - **Async Code**: Use `anyio` over `asyncio`
 - **Pattern Matching**: Prefer `match/case` over lengthy if/elif chains
@@ -63,15 +65,15 @@ We use GitHub Actions, triggered on PRs and pushes to main. The workflow configu
   - Single quotes (`'`) for strings without special characters/apostrophes
   - Double quotes (`"`) for strings with special characters/apostrophes
 
-#### Error Handling and Logging
+### Error Handling and Logging
 - **Logging**: Use `logger = get_logger(__name__)` 
 - **Error Handling**: Prefer `logger.exception("message")` over `logger.error(str(e))`
 
-#### Testing
+### Testing
 - **Framework**: Use `pytest` for unit tests
 - **Mocks**: Avoid mocks unless explicitly required
 
-### TypeScript
+## TypeScript
 
 - **Types**: Use explicit interfaces and Zod for schema validation
 - **Variables**: Prefer `const` over `let`
@@ -80,14 +82,30 @@ We use GitHub Actions, triggered on PRs and pushes to main. The workflow configu
   - Types/Interfaces: `PascalCase`
 - **Imports**: No renamed imports
 
-## Common Tasks and Examples
+# Common Patterns
 
-*[Add examples of common development tasks, like adding a new agent, extending the API, etc.]*
+## Agent Implementation
+When implementing a new agent:
+- Follow the pattern in `trpc_agent`
+- Use the base classes from `core`
+- Implement the required interfaces
 
-## Known Issues and Workarounds
+## API Extension
+When extending the API:
+- Update `agent_api.tsp` with new types
+- Implement corresponding models in `models.py`
+- Update the server implementation in `async_server.py`
 
-*[Document any known issues or quirks in the codebase that Claude should be aware of]*
+# Lessons
 
-## Contributing Guidelines
+## User Specified Lessons
+- Using `anyio` instead of `asyncio` for async operations is preferred in this codebase
+- Always activate the Python virtual environment before installing packages
+- Never use mocks in tests unless explicitly required
 
-*[Add any specific guidelines for contributing to the project]*
+## Cursor Learned
+- The state machine pattern in `core` requires explicit state transitions
+- The logger setup requires using the `get_logger` function from `agent.log`
+- Always check for existing patterns before implementing new functionality
+
+# Scratchpad 

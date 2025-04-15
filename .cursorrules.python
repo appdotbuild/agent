@@ -1,0 +1,165 @@
+# Python Development Rules
+
+This file provides specific guidance for Python development in this codebase. Use these guidelines when writing or modifying Python code.
+
+# Key Libraries and Dependencies
+
+- `anyio` - Preferred async library
+- `pytest` - Testing framework
+- `ruff` - Linting and formatting
+- `uv` - Package management tool
+
+# Code Organization
+
+## File Structure
+- Keep modules focused on a single responsibility
+- Group related functions/classes within a module
+- Use `__init__.py` to expose public interfaces
+
+## Import Order
+1. Standard library imports
+2. Third-party library imports
+3. Local/project imports
+
+Example:
+```python
+import json
+import os
+from typing import Dict, List, Optional
+
+import anyio
+import pytest
+
+from agent.core import BaseClass
+from agent.log import get_logger
+```
+
+# Error Handling
+
+## Exception Patterns
+- Use specific exception types rather than generic `Exception`
+- Create custom exceptions for domain-specific errors
+- Always log exceptions with context
+
+Example:
+```python
+try:
+    result = await process_data(input_data)
+except ValueError as e:
+    logger.exception("Invalid data format")
+    raise InvalidDataError("Could not process input data") from e
+```
+
+# Async Code
+
+## Preferred Patterns
+- Use `anyio` rather than `asyncio`
+- Use async context managers for resource management
+- Group related async operations when possible
+
+Example:
+```python
+async with anyio.create_task_group() as tg:
+    tg.start_soon(task_1)
+    tg.start_soon(task_2)
+```
+
+# Type Annotations
+
+## Best Practices
+- Use type annotations for all function parameters and return values
+- Use `Optional[Type]` for parameters that can be None
+- Use union types with the pipe operator: `str | None`
+- Use TypedDict for dictionary structures
+
+Example:
+```python
+def process_request(data: Dict[str, Any], timeout: float | None = None) -> Result:
+    """
+    Process the incoming request data.
+    
+    Args:
+        data: The request data to process
+        timeout: Optional timeout in seconds
+        
+    Returns:
+        Result object containing processed data
+    """
+    pass
+```
+
+# Testing
+
+## Test Structure
+- Use descriptive test names starting with `test_`
+- Group tests by functionality
+- Use fixtures for common test setups
+- Avoid mocks unless absolutely necessary
+
+Example:
+```python
+@pytest.fixture
+def sample_data():
+    return {"key": "value"}
+
+def test_process_request_with_valid_data(sample_data):
+    result = process_request(sample_data)
+    assert result.status == "success"
+```
+
+# Common Pitfalls
+
+- Avoid global state - use dependency injection instead
+- Be careful with default mutable arguments (`def func(arg=[]): ...`)
+- Always close resources explicitly or use context managers
+- Don't use `except:` without specifying exception types
+
+# Common Patterns in this Codebase
+
+## Logging
+```python
+from agent.log import get_logger
+
+logger = get_logger(__name__)
+
+def my_function():
+    logger.info("Starting operation")
+    try:
+        # operation
+        logger.debug("Operation details")
+    except Exception:
+        logger.exception("Failed to complete operation")
+```
+
+## State Machine Implementation
+```python
+from agent.core import State, StateMachine
+
+class MyState(State):
+    async def run(self) -> State:
+        # Do state-specific logic
+        if condition:
+            return NextState()
+        return self
+```
+
+## Model Serialization
+```python
+class MyModel:
+    def __init__(self, field1: str, field2: int):
+        self.field1 = field1
+        self.field2 = field2
+    
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]) -> "MyModel":
+        return cls(
+            field1=data["Field1"],
+            field2=data["Field2"]
+        )
+    
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "Field1": self.field1,
+            "Field2": self.field2
+        }
+``` 
