@@ -280,7 +280,7 @@ async def test_agent_reaches_idle_state():
 @pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
 async def test_external_server_health():
     """Test the health endpoint of an external server."""
-    external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://18.237.53.81")
+    external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://localhost")
     
     async with AsyncClient(base_url=external_server_url) as client:
         response = await client.get("/health")
@@ -290,7 +290,7 @@ async def test_external_server_health():
 @pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
 async def test_external_server_message():
     """Test the message endpoint of an external server."""
-    external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://18.237.53.81")
+    external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://localhost")
     
     async with AgentApiClient(base_url=external_server_url) as client:
         try:
