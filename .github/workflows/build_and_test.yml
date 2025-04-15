@@ -41,8 +41,6 @@ jobs:
       - name: Login to AWS ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-        with:
-          region: us-west-2
 
       - name: Build and push Docker image
         working-directory: ./agent/
