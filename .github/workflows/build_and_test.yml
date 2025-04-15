@@ -31,6 +31,28 @@ jobs:
         working-directory: ./agent/
         run: docker compose up -d --build
 
+      - name: Login to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        working-directory: ./agent/
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: appdotbuild/agent-fullstack
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo "Building and pushing Docker image..."
+          docker buildx build \
+          --platform linux/arm64 \
+          --target prod \
+          -t $REGISTRY/$REPOSITORY:$IMAGE_TAG \
+          --push \
+          .
+          echo "Docker image built and pushed successfully!"
+
       - name: Run tests
         working-directory: ./agent/
         run: |
