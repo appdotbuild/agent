@@ -27,6 +27,68 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
 
+      - name: Determine if release build is needed
+        id: check_release
+        run: |
+          is_release="false"
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            is_release="true"
+          elif [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" && "${{ github.base_ref }}" == "main" ]]; then
+            # This condition is technically covered by the push to main after merge,
+            # but kept for clarity if needed for specific PR merged actions.
+            # Usually the push to main is the definitive trigger.
+            is_release="true"
+          elif [[ "${{ github.event_name }}" == "push" && $(echo "${{ join(github.event.commits.*.message, ' ') }}" | grep -i -c "release") -gt 0 ]]; then
+             # Check if any commit message in the push contains 'release' (case-insensitive)
+            is_release="true"
+          fi
+          echo "is_release=${is_release}" >> $GITHUB_OUTPUT
+
+      - name: Calculate Build Tag
+        # Only run if we determined it's a release build
+        if: steps.check_release.outputs.is_release == 'true'
+        id: build_tag
+        run: |
+          # Get branch name: Use head_ref for PRs, ref_name for pushes. Fallback just in case.
+          BRANCH_NAME_RAW="${{ github.head_ref || github.ref_name }}"
+          # Sanitize branch name: remove refs/heads/, refs/tags/, replace / and non-alphanumeric with -
+          BRANCH_NAME=$(echo "$BRANCH_NAME_RAW" | sed -e 's#^refs/heads/##' -e 's#^refs/tags/##' -e 's#/#-#g' -e 's/[^a-zA-Z0-9.-]/-/g')
+          # Count commits reachable from the current commit
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          TAG="${BRANCH_NAME}-${COMMIT_COUNT}"
+          echo "Calculated Tag: $TAG"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS Credentials
+        if: steps.check_release.outputs.is_release == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.ECR_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.ECR_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: steps.check_release.outputs.is_release == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ECR_REGISTRY }}
+
+      - name: Build and push Docker image to ECR
+        if: steps.check_release.outputs.is_release == 'true'
+        working-directory: ./agent/
+        env:
+          IMAGE_TAG: ${{ steps.build_tag.outputs.image_tag }}
+        run: |
+          echo "Building and pushing Docker image with tag: $IMAGE_TAG ..."
+          docker buildx build \
+            --platform linux/arm64 \
+            --target prod \
+            -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} \
+            -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest \
+            --push \
+            .
+          echo "Docker image built and pushed successfully!"
+
       - name: Start Docker Compose services
         working-directory: ./agent/
         run: docker compose up -d --build
