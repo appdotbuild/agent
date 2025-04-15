@@ -104,10 +104,10 @@ class FSMApplication:
      @classmethod
     def base_execution_plan(cls) -> str:
          return "\n".join([
-             "1. Draft app design",
-             "2. Implement handlers",
-             "3. Create index file",
-             "4. Build frontend",
+            "1. Draft app design",
+            "2. Implement handlers",
+            "3. Create index file",
+            "4. Build frontend",
          ])
 
     @classmethod
@@ -152,11 +152,8 @@ class FSMApplication:
             logger.error(f"Setting error in context: {error}")
             ctx.error = str(error)
 
-        llm = cls.get_async_llm()
-        model_params = {
-            "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "max_tokens": 8192,
-        }
+        llm = get_llm_client()
+        model_params = {}
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
             context=dagger.dag.host().directory("./trpc_agent/template"),
@@ -334,11 +331,6 @@ class FSMApplication:
                 actions = {"wait": "Wait for processing to complete"}
                 logger.debug(f"FSM is in processing state: {self.current_state}, offering wait action")
         return actions
-
-    @classmethod
-    def get_async_llm(cls) -> AsyncLLM:
-        # TODO: use extensible llm provider injection
-        return AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
 
     @classmethod
     def get_files_at_root(cls, context: ApplicationContext) -> dict[str, str]:

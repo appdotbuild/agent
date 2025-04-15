@@ -15,7 +15,7 @@ def anyio_backend():
 
 async def test_cached_llm():
     with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp_file:
-        base_llm = get_llm_client(cache_mode="off")
+        base_llm = get_llm_client(cache_mode="off", model_name="haiku")
         record_llm = CachedLLM(
             client=base_llm,
             cache_mode="record",
@@ -23,7 +23,6 @@ async def test_cached_llm():
         )
 
         call_args = {
-            "model": "claude-3-5-haiku-20241022",
             "messages": [Message(role="user", content=[TextRaw("Hello, world!")])],
             "max_tokens": 100,
         }

@@ -27,7 +27,7 @@ class AnthropicParams(TypedDict):
 
 
 class AnthropicLLM(common.AsyncLLM):
-    def __init__(self, client: anthropic.AsyncAnthropic, default_model: str = "claude-3-7-sonnet-20250219"):
+    def __init__(self, client: anthropic.AsyncAnthropic | anthropic.AsyncAnthropicBedrock, default_model: str = "claude-3-7-sonnet-20250219"):
         self.client = client
         self.default_model = default_model
 
@@ -43,10 +43,11 @@ class AnthropicLLM(common.AsyncLLM):
     ) -> common.Completion:
         call_args: AnthropicParams = {
             "model": model or self.default_model,
-            "max_tokens": max_tokens,
+            "max_tokens": max_tokens or 8192,
             "temperature": temperature,
             "messages": self._messages_into(messages),
         }
+
         if system_prompt is not None:
             call_args["system"] = system_prompt
         if tools is not None:

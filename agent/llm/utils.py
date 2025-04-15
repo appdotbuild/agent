@@ -6,7 +6,6 @@ import anthropic
 from anthropic import AnthropicBedrock, Anthropic, AsyncAnthropic, AsyncAnthropicBedrock
 from llm.common import AsyncLLM, Message, TextRaw, ToolUse, ThinkingBlock, ContentBlock
 from llm.anthropic_client import AnthropicLLM
-from llm.anthropic_bedrock import AnthropicBedrockLLM
 from llm.cached import CachedLLM, CacheMode
 from log import get_logger
 
@@ -107,13 +106,12 @@ def get_llm_client(
     match backend:
         case "bedrock":
             base_client = AsyncAnthropicBedrock(**client_params)
-            client = AnthropicBedrockLLM(base_client, default_model=chosen_model)
         case "anthropic":
             base_client = AsyncAnthropic(**client_params)
-            client = AnthropicLLM(base_client, default_model=chosen_model)
         case _:
             raise ValueError(f"Unknown backend: {backend}")
 
+    client = AnthropicLLM(base_client, default_model=chosen_model)
     if cache_mode != "off":
         client = CachedLLM(client, cache_mode, cache_path)
 
