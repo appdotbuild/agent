@@ -30,7 +30,8 @@ jobs:
       - name: Determine if release build is needed
         id: check_release
         run: |
-          is_release="false"
+          is_release="true"
+          # FIX ME LATER
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             is_release="true"
           elif [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" && "${{ github.base_ref }}" == "main" ]]; then
