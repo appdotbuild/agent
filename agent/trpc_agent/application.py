@@ -98,7 +98,7 @@ class FSMApplication:
     @classmethod
     async def load(cls, data: MachineCheckpoint) -> Self:
         root = await cls.make_states()
-        fsm = await StateMachine.load(root, data, ApplicationContext)
+        fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
         return cls(fsm)
 
     @classmethod
