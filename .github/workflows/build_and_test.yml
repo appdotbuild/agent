@@ -24,13 +24,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 3
+          fetch-depth: 2
 
       - name: debug
-        run: |
-          echo "$(git log -2 --pretty=oneline)"
-        env:
-          JSON: ${{ toJSON(github) }}
+        if: $(git log -2 --pretty=oneline | tail -n 1 | grep "release")
+        run: export RELEASE_BUILD="true"
+
+      - name: debug 2
+        run: echo ${RELEASE_BUILD}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
