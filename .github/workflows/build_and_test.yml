@@ -10,6 +10,8 @@ env:
   CONTAINER_NAME: agent-apiserver-1
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  ECR_REGISTRY: 361769577597.dkr.ecr.us-west-2.amazonaws.com
+  ECR_REPOSITORY: appdotbuild/agent-fullstack
 
 jobs:
   build-and-test:
@@ -40,6 +42,7 @@ jobs:
             # Usually the push to main is the definitive trigger.
             is_release="true"
           elif [[ "${{ github.event_name }}" == "push" && $(echo "${{ join(github.event.commits.*.message, ' ') }}" | grep -i -c "release") -gt 0 ]]; then
+             # currently broken - not getting commit message
              # Check if any commit message in the push contains 'release' (case-insensitive)
             is_release="true"
           fi
@@ -93,36 +96,6 @@ jobs:
       - name: Start Docker Compose services
         working-directory: ./agent/
         run: docker compose up -d --build
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.ECR_ACCESS_KEY }}
-          aws-secret-access-key: ${{ secrets.ECR_SECRET_KEY }}
-          aws-region: us-west-2
-
-      - name: Login to ECR
-        uses: docker/login-action@v3
-        with:
-          registry: 361769577597.dkr.ecr.us-west-2.amazonaws.com
-
-      - name: Build and push Docker image
-        working-directory: ./agent/
-        env:
-          REGISTRY: 361769577597.dkr.ecr.us-west-2.amazonaws.com
-          REPOSITORY: appdotbuild/agent-fullstack
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
-          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
-          echo "Building and pushing Docker image..."
-          docker buildx build \
-          --platform linux/arm64 \
-          --target prod \
-          -t $REGISTRY/$REPOSITORY:$IMAGE_TAG \
-          --push \
-          .
-          echo "Docker image built and pushed successfully!"
 
       - name: Run tests
         working-directory: ./agent/
