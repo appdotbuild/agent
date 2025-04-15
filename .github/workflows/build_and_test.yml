@@ -12,6 +12,7 @@ env:
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   ECR_REGISTRY: 361769577597.dkr.ecr.us-west-2.amazonaws.com
   ECR_REPOSITORY: appdotbuild/agent-fullstack
+  AWS_REGION: us-west-2
 
 jobs:
   build-and-test:
