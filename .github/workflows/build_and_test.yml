@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 2
 
       - name: debug
-        if: $(git log -2 --pretty=oneline | tail -n 1 | grep "release")
+        if: $(git log -2 --pretty=oneline | tail -n 1 | grep "Update")
         run: export RELEASE_BUILD="true"
 
       - name: debug 2
