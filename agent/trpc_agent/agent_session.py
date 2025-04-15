@@ -30,9 +30,9 @@ class AgentState(TypedDict):
 
 
 class AsyncAgentSession(AgentInterface):
-    def __init__(self, chatbot_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
+    def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
-        self.chatbot_id = chatbot_id or uuid4().hex
+        self.application_id = application_id or uuid4().hex
         self.trace_id = trace_id or uuid4().hex
         self.settings = settings or {}
         self.processor_instance = FSMToolProcessor(FSMApplication)
@@ -55,7 +55,7 @@ class AsyncAgentSession(AgentInterface):
             event_tx: Event transmission stream
         """
         try:
-            logger.info(f"Processing request for {self.chatbot_id}:{self.trace_id}")
+            logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
             # Check if we need to initialize or if this is a continuation with an existing state
             if request.agent_state:
