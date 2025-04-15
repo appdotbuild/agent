@@ -12,7 +12,8 @@ def anyio_backend():
 
 
 async def test_diff_generation():
-    async with dagger.connection():
+    import os
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         workspace = await Workspace.create(context=dag.directory().with_new_file("__init__.py", ""))
         workspace.write_file('__init__.py', 'import requests\n')
         diff = await workspace.diff()

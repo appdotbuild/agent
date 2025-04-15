@@ -340,6 +340,24 @@ class FSMApplication:
         # TODO: use extensible llm provider injection
         return AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
 
+    @classmethod
+    def get_files_at_root(cls, context: ApplicationContext) -> dict[str, str]:
+        merged = {}
+        for key, value in context.server_files.items():
+            merged[f"server/{key}"] = value
+        for key, value in context.frontend_files.items():
+            merged[f"client/{key}"] = value
+        return merged
+
+    async def get_diff_with(self, snapshot: dict[str, str]) -> str:
+        context = dagger.dag.host().directory("./trpc_agent/template")
+        for key, value in snapshot.items():
+            context = context.with_new_file(key, value)
+        workspace = await Workspace.create(base_image="alpine/git", context=context)
+        for key, value in self.get_files_at_root(self.fsm.context).items():
+            workspace.write_file(key, value)
+        return await workspace.diff()
+
 
 async def main(user_prompt="Simple todo app"):
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
