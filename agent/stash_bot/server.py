@@ -18,6 +18,8 @@ from log import get_logger, init_sentry
 from fsm_core.llm_common import get_sync_client
 from datetime import datetime
 
+sdasdasd = 1
+
 logger = get_logger(__name__)
 init_sentry()
 
