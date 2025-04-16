@@ -1,14 +1,9 @@
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
-import time
-import os
-import sys
-import traceback
 
 import anyio
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from fire import Fire
 import dagger
@@ -142,7 +137,7 @@ async def run_agent[T: AgentInterface](
 
 
 @app.post("/message", response_model=None)
-async def message(request: AgentRequest, req: Request) -> StreamingResponse:
+async def message(request: AgentRequest) -> StreamingResponse:
     """
     Send a message to the agent and stream responses via SSE.
 
@@ -161,25 +156,12 @@ async def message(request: AgentRequest, req: Request) -> StreamingResponse:
 
     Args:
         request: The agent request containing all necessary fields
-        req: FastAPI Request object for additional request information
 
     Returns:
         Streaming response with SSE events according to the API spec
     """
-    start_time = time.time()
-    client_ip = req.client.host if req.client else "unknown"
-    
     try:
-        logger.info(f"Received message request from {client_ip} for application {request.application_id}, trace {request.trace_id}")
-        logger.debug(f"Request settings: {request.settings}")
-        logger.debug(f"Request has agent state: {request.agent_state is not None}")
-        logger.debug(f"Request message count: {len(request.allMessages)}")
-        
-        # Log the first few characters of the latest message for debugging
-        if request.allMessages and len(request.allMessages) > 0:
-            latest_msg = request.allMessages[-1].content
-            preview = latest_msg[:50] + "..." if len(latest_msg) > 50 else latest_msg
-            logger.debug(f"Latest message preview: {preview}")
+        logger.info(f"Received message request for application {request.application_id}, trace {request.trace_id}")
 
         # Start the SSE stream
         logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
@@ -187,28 +169,13 @@ async def message(request: AgentRequest, req: Request) -> StreamingResponse:
             "empty_diff": EmptyDiffAgentImplementation,
             "trpc_agent": AsyncAgentSession,
         }
-        
-        logger.info(f"Using agent type: {config.AGENT_TYPE}")
-        
         return StreamingResponse(
             run_agent(request, agent_type[config.AGENT_TYPE]),
             media_type="text/event-stream"
         )
 
-    except KeyError as e:
-        logger.error(f"Invalid agent type: {config.AGENT_TYPE}. Error: {str(e)}")
-        error_response = ErrorResponse(
-            error="Configuration Error",
-            details=f"Invalid agent type: {config.AGENT_TYPE}"
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=error_response.to_json()
-        )
     except Exception as e:
         logger.error(f"Error processing message request: {str(e)}")
-        logger.error(f"Exception details: {traceback.format_exc()}")
-        
         # Return an HTTP error response for non-SSE errors
         error_response = ErrorResponse(
             error="Internal Server Error",
@@ -218,9 +185,6 @@ async def message(request: AgentRequest, req: Request) -> StreamingResponse:
             status_code=500,
             detail=error_response.to_json()
         )
-    finally:
-        processing_time = time.time() - start_time
-        logger.info(f"Request processing initiated in {processing_time:.2f}s for trace {request.trace_id}")
 
 @app.get("/health")
 async def healthcheck():
