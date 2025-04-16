@@ -154,8 +154,6 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
                 upload_result.raise_for_status()
                 logger.info(f"Uploaded bot successfully to {write_url}")
     except Exception:
-        sdasdasd = 1
-
         logger.exception(f"Failed to update bot (trace_id: {trace_id}, bot_id: {bot_id}, read_url {read_url}, write_url {write_url})")
         raise
 
