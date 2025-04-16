@@ -53,10 +53,10 @@ class AsyncAgentSession(AgentInterface):
         if agent_state:
             logger.info(f"Loading FSM state for trace {self.trace_id}")
             fsm = await FSMApplication.load(agent_state["fsm_state"])
-            self.processor_instance = FSMToolProcessor(FSMApplication, fsm)
+            self.processor_instance = FSMToolProcessor(FSMApplication, fsm, settings=self.settings)
         else:
             logger.info(f"Creating new FSM instance for trace {self.trace_id}")
-            self.processor_instance = FSMToolProcessor(FSMApplication)
+            self.processor_instance = FSMToolProcessor(FSMApplication, settings=self.settings)
         
         return
 
