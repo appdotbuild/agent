@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 import uvicorn
 from fire import Fire
 import dagger
+import sys
 
 from api.agent_server.models import (
     AgentRequest,
@@ -81,53 +82,58 @@ async def run_agent[T: AgentInterface](
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
-    agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
+    
+    # Establish Dagger connection for the agent's execution context
+    async with dagger.connection(dagger.Config(log_output=sys.stderr)):
+        agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
 
-    event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
-    final_state = None
+        event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
+        final_state = None
 
-    try:
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(agent.process, request, event_tx)
-            async with event_rx:
-                async for event in event_rx:
-                    # Keep track of the last state in events with non-null state
-                    if event.message and event.message.agent_state:
-                        final_state = event.message.agent_state
+        try:
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(agent.process, request, event_tx)
+                async with event_rx:
+                    async for event in event_rx:
+                        # Keep track of the last state in events with non-null state
+                        if event.message and event.message.agent_state:
+                            final_state = event.message.agent_state
 
-                    # Format SSE event properly with data: prefix and double newline at the end
-                    # This ensures compatibility with SSE standard
-                    yield f"data: {event.to_json()}\n\n"
+                        # Format SSE event properly with data: prefix and double newline at the end
+                        # This ensures compatibility with SSE standard
+                        yield f"data: {event.to_json()}\n\n"
 
-                    # If this event indicates the agent is idle, check if we need to remove the session
-                    if event.status == AgentStatus.IDLE and request.agent_state is None:
-                        # Only remove session completely if this was not a continuation with state
-                        logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id}")
+                        # If this event indicates the agent is idle, check if we need to remove the session
+                        if event.status == AgentStatus.IDLE and request.agent_state is None:
+                            # Only remove session completely if this was not a continuation with state
+                            logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id}")
 
-    except* Exception as excgroup:
-        for e in excgroup.exceptions:
-            logger.error(f"Error in SSE generator: {str(e)}")
-            error_event = AgentSseEvent(
-                status=AgentStatus.IDLE,
-                traceId=request.trace_id,
-                message=AgentMessage(
-                    role="agent",
-                    kind=MessageKind.RUNTIME_ERROR,
-                    content=f"Error processing request: {str(e)}",
-                    agentState=None,
-                    unifiedDiff=""
+        except* Exception as excgroup:
+            for e in excgroup.exceptions:
+                # Log the specific exception from the group with traceback
+                logger.exception(f"Error in SSE generator TaskGroup for trace {request.trace_id}:", exc_info=e)
+                error_event = AgentSseEvent(
+                    status=AgentStatus.IDLE,
+                    traceId=request.trace_id,
+                    message=AgentMessage(
+                        role="agent",
+                        kind=MessageKind.RUNTIME_ERROR,
+                        content=f"Error processing request: {str(e)}", # Keep simple message for client
+                        agentState=None,
+                        unifiedDiff=""
+                    )
                 )
-            )
-            # Format error SSE event properly
-            yield f"data: {error_event.to_json()}\n\n"
+                # Format error SSE event properly
+                yield f"data: {error_event.to_json()}\n\n"
 
-            # On error, remove the session entirely
-            session_manager.cleanup_session(request.application_id, request.trace_id)
-    finally:
-        # For requests without agent state or where the session completed, clean up
-        if request.agent_state is None and (final_state is None or final_state == {}):
-            logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
-            session_manager.cleanup_session(request.application_id, request.trace_id)
+                # On error, remove the session entirely
+                session_manager.cleanup_session(request.application_id, request.trace_id)
+        finally:
+            # For requests without agent state or where the session completed, clean up
+            # Ensure cleanup happens outside the dagger connection if needed, though session removal should be fine
+            if request.agent_state is None and (final_state is None or final_state == {}):
+                logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
+                session_manager.cleanup_session(request.application_id, request.trace_id)
 
 
 @app.post("/message", response_model=None)
