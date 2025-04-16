@@ -26,6 +26,12 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Install linters
+        uses: astral-sh/ruff-action@v3
+
+      - name: Run linters
+        run: ruff check
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
