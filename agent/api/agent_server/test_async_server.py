@@ -5,8 +5,11 @@ from httpx import AsyncClient, ASGITransport
 import os
 from typing import List, Dict, Any, Tuple, Optional
 
-from api.agent_server.async_server import app
+from api.agent_server.async_server import app, CONFIG
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
+
+if os.getenv("BUILDER_TOKEN") is None:
+    os.environ["BUILDER_TOKEN"] = "dummy_token"
 
 pytestmark = pytest.mark.anyio
 
@@ -16,13 +19,16 @@ def anyio_backend():
 
 @pytest.fixture(params=["empty_diff", "trpc_agent"])
 def agent_type(request, monkeypatch):
-    previous_value = os.environ.get("CODEGEN_AGENT")
-    monkeypatch.setenv("CODEGEN_AGENT", request.param)
-    yield request.param
-    if previous_value is not None:
-        monkeypatch.setenv("CODEGEN_AGENT", previous_value)
-    else:
-        monkeypatch.delenv("CODEGEN_AGENT", raising=False)
+    agent_value = request.param
+    monkeypatch.setenv("CODEGEN_AGENT", agent_value)
+    yield agent_value
+
+
+@pytest.fixture
+def empty_token(monkeypatch):
+    monkeypatch.delenv("BUILDER_TOKEN")
+    yield
+
 
 class AgentApiClient:
     """Reusable client for interacting with the Agent API server"""
@@ -55,17 +61,22 @@ class AgentApiClient:
                           application_id: Optional[str] = None,
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
-                          settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                          settings: Optional[Dict[str, Any]] = None,
+                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
+
         """Send a message to the agent and return the parsed SSE events"""
         request = self.create_request(message, application_id, trace_id, agent_state, settings)
 
         # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
         url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
+        headers={"Accept": "text/event-stream"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         response = await self.client.post(
             url,
             json=request.model_dump(by_alias=True),
-            headers={"Accept": "text/event-stream"},
+            headers=headers,
             timeout=None
         )
 
@@ -152,6 +163,29 @@ class AgentApiClient:
                 buffer = ""
 
         return event_objects
+
+
+async def test_health():
+    async with AgentApiClient() as client:
+        resp = await client.client.get("http://test/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "healthy"}
+
+
+async def test_invalid_token():
+    async with AgentApiClient() as client:
+        with pytest.raises(ValueError, match="Request failed with status code 403"):
+            await client.send_message("Hello", auth_token="invalid_token")
+
+async def test_auth_disabled(empty_token):
+    async with AgentApiClient() as client:
+        events = await client.send_message("Hello", auth_token=None)
+        assert len(events) > 0, "No events received with empty token"
+
+async def test_empty_token():
+    async with AgentApiClient() as client:
+        with pytest.raises(ValueError, match="Request failed with status code 401"):
+            await client.send_message("Hello", auth_token=None)
 
 
 async def test_async_agent_message_endpoint(agent_type):

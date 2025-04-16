@@ -13,4 +13,8 @@ class Config:
     def agent_type(self):
         return os.getenv("CODEGEN_AGENT", "trpc_agent")
 
+    @property
+    def builder_token(self):
+        return os.getenv("BUILDER_TOKEN")
+
 CONFIG = Config()
