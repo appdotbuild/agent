@@ -157,8 +157,15 @@ class AgentApiClient:
         """Parse the SSE events from a response stream"""
         event_objects = []
         buffer = ""
+        errors = []
 
         async for line in response.aiter_lines():
+            # Check for error strings in the line directly (case-insensitive)
+            if "error" in line.lower():
+                error_msg = f"Error in SSE stream: {line.strip()}"
+                print(error_msg)
+                errors.append(error_msg)
+                
             buffer += line
             if line.strip() == "":  # End of SSE event marked by empty line
                 if buffer.startswith("data:"):
@@ -170,11 +177,20 @@ class AgentApiClient:
                             event_obj = AgentSseEvent.from_json(data_str)
                             event_objects.append(event_obj)
                         except json.JSONDecodeError as e:
-                            print(f"JSON decode error: {e}, data: {data_str[:100]}...")
+                            error_msg = f"JSON decode error: {e}, data: {data_str[:100]}..."
+                            print(error_msg)
+                            errors.append(error_msg)
                         except Exception as e:
-                            print(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
+                            error_msg = f"Error parsing SSE event: {e}, data: {data_str[:100]}..."
+                            print(error_msg)
+                            errors.append(error_msg)
                 # Reset buffer for next event
                 buffer = ""
+
+        # Fail the test if any parsing errors occurred
+        if errors:
+            error_summary = "\n".join(errors)
+            pytest.fail(f"Errors while parsing SSE events:\n{error_summary}")
 
         return event_objects
 
