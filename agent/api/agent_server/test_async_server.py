@@ -1,7 +1,6 @@
 import json
 import uuid
 import pytest
-import anyio
 from httpx import AsyncClient, ASGITransport
 import os
 from typing import List, Dict, Any, Tuple, Optional
@@ -143,7 +142,6 @@ class AgentApiClient:
                         data_str = data_parts[1].strip()
                         try:
                             # Parse as both raw JSON and model objects
-                            event_json = json.loads(data_str)
                             event_obj = AgentSseEvent.from_json(data_str)
                             event_objects.append(event_obj)
                         except json.JSONDecodeError as e:

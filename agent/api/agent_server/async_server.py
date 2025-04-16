@@ -28,7 +28,6 @@ from api.agent_server.models import (
     ErrorResponse
 )
 from api.agent_server.interface import AgentInterface
-from api.agent_server.async_agent_session import AsyncAgentSession
 from trpc_agent.agent_session import AsyncAgentSession as TrpcAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
 from api.config import CONFIG
