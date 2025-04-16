@@ -46,6 +46,17 @@ class AsyncAgentSession(AgentInterface):
         logger.debug(f"App description length: {len(app_description)}")
         # Create a proper Message object for the llm client
         self.messages = [Message(role="user", content=[TextRaw(app_description)])]
+        
+        # Initialize processor_instance if not already initialized
+        from trpc_agent.application import FSMApplication
+        if agent_state:
+            logger.info(f"Loading FSM state for trace {self.trace_id}")
+            fsm = await FSMApplication.load(agent_state["fsm_state"])
+            self.processor_instance = FSMToolProcessor(FSMApplication, fsm)
+        else:
+            logger.info(f"Creating new FSM instance for trace {self.trace_id}")
+            self.processor_instance = FSMToolProcessor(FSMApplication)
+        
         return
 
     def get_state(self) -> Dict[str, Any]:
