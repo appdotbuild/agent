@@ -173,11 +173,11 @@ async def message(request: AgentRequest, req: Request) -> StreamingResponse:
         logger.info(f"Received message request from {client_ip} for application {request.application_id}, trace {request.trace_id}")
         logger.debug(f"Request settings: {request.settings}")
         logger.debug(f"Request has agent state: {request.agent_state is not None}")
-        logger.debug(f"Request message count: {len(request.all_messages)}")
+        logger.debug(f"Request message count: {len(request.allMessages)}")
         
         # Log the first few characters of the latest message for debugging
-        if request.all_messages and len(request.all_messages) > 0:
-            latest_msg = request.all_messages[-1].content
+        if request.allMessages and len(request.allMessages) > 0:
+            latest_msg = request.allMessages[-1].content
             preview = latest_msg[:50] + "..." if len(latest_msg) > 50 else latest_msg
             logger.debug(f"Latest message preview: {preview}")
 
