@@ -109,7 +109,7 @@ class AsyncAgentSession(AgentInterface):
 
         try:
             logger.info(f"Processing step for trace {self.trace_id}")
-            new_messages = await self.processor_instance.step(self.messages, self.llm_client, {})
+            new_messages = await self.processor_instance.step(self.messages, self.llm_client, self.settings)
             is_complete = self.processor_instance.fsm_app and self.processor_instance.fsm_app.is_completed
             final_tool_result = None
             self.is_complete = is_complete
