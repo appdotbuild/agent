@@ -3,6 +3,7 @@ import uuid
 import pytest
 from httpx import AsyncClient, ASGITransport
 import os
+import boto3
 from typing import List, Dict, Any, Tuple, Optional
 
 from api.agent_server.async_server import app, CONFIG
@@ -10,6 +11,19 @@ from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, Ag
 
 if os.getenv("BUILDER_TOKEN") is None:
     os.environ["BUILDER_TOKEN"] = "dummy_token"
+
+# Set AWS test environment variables for Bedrock if not already set
+if os.getenv("AWS_PROFILE") is None:
+    os.environ["AWS_PROFILE"] = "dev"
+if os.getenv("AWS_REGION") is None:
+    os.environ["AWS_REGION"] = "us-west-2"
+
+# Verify Bedrock access for tests
+try:
+    session = boto3.Session(profile_name=os.getenv("AWS_PROFILE"), region_name=os.getenv("AWS_REGION"))
+    bedrock_client = session.client("bedrock-runtime")
+except Exception as e:
+    print(f"Warning: Unable to create Bedrock client for tests: {e}")
 
 pytestmark = pytest.mark.anyio
 

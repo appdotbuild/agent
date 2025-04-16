@@ -101,11 +101,19 @@ def get_llm_client(
 
     chosen_model = models_map[model_name][backend]
 
+    # Prepare client params
+    params = client_params.copy() if client_params else {}
+    
     match backend:
         case "bedrock":
-            base_client = AsyncAnthropicBedrock(**client_params)
+            # The AnthropicBedrock client uses boto3 internally, which will pick up
+            # AWS_PROFILE and AWS_REGION environment variables automatically
+            aws_region = os.environ.get("AWS_REGION")
+            if aws_region:
+                logger.info(f"Using AWS region from environment: {aws_region}")
+            base_client = AsyncAnthropicBedrock(**params)
         case "anthropic":
-            base_client = AsyncAnthropic(**client_params)
+            base_client = AsyncAnthropic(**params)
         case _:
             raise ValueError(f"Unknown backend: {backend}")
 
