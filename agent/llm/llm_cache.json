@@ -1,0 +1,36 @@
+{
+  "75cdc139196da97f6882d20e63e49483": {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll help you create a simple greeting app that says hello in five languages. Let's start by setting up the FSM (Finite State Machine) code generation process."
+      },
+      {
+        "type": "tool_use",
+        "name": "start_fsm",
+        "input": {
+          "app_description": "A simple greeting app that displays \"hello\" in five different languages (English, Spanish, French, Japanese, and German). The app should have a clean interface with buttons for each language. When a button is clicked, the corresponding greeting should be displayed prominently on screen."
+        },
+        "id": "toolu_01YCSFNDkxorMtHgQZnKxRJF"
+      }
+    ],
+    "input_tokens": 915,
+    "output_tokens": 145,
+    "stop_reason": "tool_use",
+    "thinking_tokens": null
+  },
+  "e0732b04ccce586033334936411d2088": {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll generate the necessary schema, database schema, and handler declarations for this greeting app.\n\n<file path=\"src/schema.ts\">\nimport { z } from 'zod';\n\n// Schema for getting all greetings\nexport const getAllGreetingsInputSchema = z.object({});\nexport type GetAllGreetingsInput = z.infer<typeof getAllGreetingsInputSchema>;\n\n// Schema for getting a specific greeting by language\nexport const getGreetingByLanguageInputSchema = z.object({\n  language: z.enum(['english', 'spanish', 'french', 'japanese', 'german'])\n});\nexport type GetGreetingByLanguageInput = z.infer<typeof getGreetingByLanguageInputSchema>;\n\n// Schema for adding a new greeting\nexport const addGreetingInputSchema = z.object({\n  language: z.enum(['english', 'spanish', 'french', 'japanese', 'german']),\n  text: z.string().min(1)\n});\nexport type AddGreetingInput = z.infer<typeof addGreetingInputSchema>;\n\n// Schema for greeting response\nexport const greetingSchema = z.object({\n  id: z.number(),\n  language: z.string(),\n  text: z.string(),\n  created_at: z.date()\n});\nexport type Greeting = z.infer<typeof greetingSchema>;\n</file>\n\n<file path=\"src/db/schema.ts\">\nimport { serial, text, pgTable, timestamp } from \"drizzle-orm/pg-core\";\n\nexport const greetingsTable = pgTable(\"greetings\", {\n  id: serial(\"id\").primaryKey(),\n  language: text(\"language\").notNull(),\n  text: text(\"text\").notNull(),\n  created_at: timestamp(\"created_at\").defaultNow().notNull()\n});\n</file>\n\n<file path=\"src/handlers/get_all_greetings.ts\">\nimport { type GetAllGreetingsInput, type Greeting } from \"../schema\";\n\nexport declare function getAllGreetings(input: GetAllGreetingsInput): Promise<Greeting[]>;\n</file>\n\n<file path=\"src/handlers/get_greeting_by_language.ts\">\nimport { type GetGreetingByLanguageInput, type Greeting } from \"../schema\";\n\nexport declare function getGreetingByLanguage(input: GetGreetingByLanguageInput): Promise<Greeting | null>;\n</file>\n\n<file path=\"src/handlers/add_greeting.ts\">\nimport { type AddGreetingInput, type Greeting } from \"../schema\";\n\nexport declare function addGreeting(input: AddGreetingInput): Promise<Greeting>;\n</file>\n\n<file path=\"src/handlers/init_default_greetings.ts\">\nimport { type GetAllGreetingsInput, type Greeting } from \"../schema\";\n\nexport declare function initDefaultGreetings(input: GetAllGreetingsInput): Promise<Greeting[]>;\n</file>"
+      }
+    ],
+    "input_tokens": 888,
+    "output_tokens": 709,
+    "stop_reason": "end_turn",
+    "thinking_tokens": null
+  }
+}

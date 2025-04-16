@@ -34,12 +34,16 @@ class CachedLLM(AsyncLLM):
                 effective_cache_mode = cache_mode
         self.cache_mode = effective_cache_mode
         self.cache_path = cache_path
-        self._cache = self._load_cache() if self.cache_mode != "off" else {}
+        self._cache: Dict[str, Any] = {}
 
         match (self.cache_mode, Path(self.cache_path)):
             case ("replay", file) if not file.exists():
                 raise ValueError(f"cache file missing: {file}")
+            case ("replay", file):
+                logger.info(f"cache file found: {file}")
+                self._cache = self._load_cache()
             case ("record", file) if file.exists():
+                logger.info(f"cache file already exists: {file}; wiping")
                 file.unlink()
 
     @staticmethod
@@ -88,7 +92,7 @@ class CachedLLM(AsyncLLM):
     async def completion(
         self,
         messages: List[Message],
-        max_tokens: int,
+        max_tokens: int = 8192,
         model: str | None = None,
         temperature: float = 1.0,
         tools: List[Tool] | None = None,
@@ -128,7 +132,7 @@ class CachedLLM(AsyncLLM):
                     logger.info(f"Caching response with key: {cache_key}")
                     if cache_key in self._cache:
                         logger.info("Fetching from cache")
-                        return self._cache[cache_key]
+                        return Completion.from_dict(self._cache[cache_key])
                     else:
                         response = await self.client.completion(
                             model=model,

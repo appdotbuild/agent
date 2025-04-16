@@ -22,7 +22,7 @@ class AgentApiClient:
 
     def __init__(self, app_instance=None, base_url=None):
         """Initialize the client with an optional app instance or base URL
-        
+
         Args:
             app_instance: FastAPI app instance for direct ASGI transport
             base_url: External base URL to test against (e.g., "http://18.237.53.81")
@@ -51,9 +51,9 @@ class AgentApiClient:
                           settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Send a message to the agent and return the parsed SSE events"""
         request = self.create_request(message, application_id, trace_id, agent_state, settings)
-        
+
         url = "/message" if self.base_url else "http://test/message"
-        
+
         response = await self.client.post(
             url,
             json=request.model_dump(by_alias=True),
@@ -148,7 +148,6 @@ class AgentApiClient:
         return event_objects, event_dicts
 
 
-@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
 async def test_async_agent_message_endpoint():
     async with AgentApiClient() as client:
         (event_objects, event_dicts), request = await client.send_message("Implement a calculator app")
@@ -168,7 +167,6 @@ async def test_async_agent_message_endpoint():
             assert event["traceId"] == request.trace_id, "Trace IDs do not match"
 
 
-@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
 async def test_async_agent_state_continuation():
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
@@ -194,7 +192,6 @@ async def test_async_agent_state_continuation():
             assert event["traceId"] == initial_request.trace_id, "Trace IDs don't match in continuation (raw)"
 
 
-@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
 async def test_sequential_sse_responses():
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
@@ -227,7 +224,6 @@ async def test_sequential_sse_responses():
         assert all(tid == initial_request.trace_id for tid in all_trace_ids), "Trace IDs inconsistent across sequential SSE responses"
 
 
-@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
 async def test_session_with_no_state():
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
@@ -257,7 +253,6 @@ async def test_session_with_no_state():
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
 
 
-@pytest.mark.skipif(os.getenv("TEST_ASYNC_AGENT_SERVER") != "true", reason="Set TEST_ASYNC_AGENT_SERVER=true to run async agent server tests")
 async def test_agent_reaches_idle_state():
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
@@ -280,7 +275,7 @@ async def test_agent_reaches_idle_state():
 async def test_external_server_health():
     """Test the health endpoint of an external server."""
     external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://localhost")
-    
+
     async with AsyncClient(base_url=external_server_url) as client:
         response = await client.get("/health")
         assert response.status_code == 200
@@ -290,19 +285,19 @@ async def test_external_server_health():
 async def test_external_server_message():
     """Test the message endpoint of an external server."""
     external_server_url = os.getenv("EXTERNAL_SERVER_URL", "http://localhost")
-    
+
     async with AgentApiClient(base_url=external_server_url) as client:
         try:
             # Use a simple prompt that should be processed quickly
             (events, _), request = await client.send_message("Hello, world")
-            
+
             # Check that we received some events
             assert len(events) > 0, "No SSE events received"
-            
+
             # Verify the final event has IDLE status
             final_event = events[-1]
             assert final_event.status == AgentStatus.IDLE, "Agent did not reach IDLE state"
-            
+
             print(f"Successfully tested external server at {external_server_url}")
         except Exception as e:
             pytest.fail(f"Error testing external server: {e}")

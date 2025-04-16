@@ -300,16 +300,11 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     """
     import os
     import dagger
-    from anthropic import AsyncAnthropicBedrock
     from trpc_agent.application import FSMApplication
-    from llm.anthropic_bedrock import AnthropicBedrockLLM
+    from llm.utils import get_llm_client
     logger.info("[Main] Initializing FSM tools...")
-    client = AnthropicBedrockLLM(AsyncAnthropicBedrock(aws_profile="dev", aws_region="us-west-2"))
-    #client = get_llm_client()
-    model_params = {
-        "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-        "max_tokens": 8192,
-    }
+    client = get_llm_client()
+    model_params = {"max_tokens": 8192 }
 
     # Create processor without FSM instance - it will be created in start_fsm tool
     #fsm_app = await FSMApplication.start
