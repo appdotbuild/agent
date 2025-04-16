@@ -6,16 +6,24 @@ from httpx import AsyncClient, ASGITransport
 import os
 from typing import List, Dict, Any, Tuple, Optional
 
-os.environ["CODEGEN_AGENT"] = "empty_diff"
-
 from api.agent_server.async_server import app
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus
+from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
 
 pytestmark = pytest.mark.anyio
 
 @pytest.fixture
 def anyio_backend():
     return 'asyncio'
+
+@pytest.fixture(params=["empty_diff", "trpc_agent"])
+def agent_type(request, monkeypatch):
+    previous_value = os.environ.get("CODEGEN_AGENT")
+    monkeypatch.setenv("CODEGEN_AGENT", request.param)
+    yield request.param
+    if previous_value is not None:
+        monkeypatch.setenv("CODEGEN_AGENT", previous_value)
+    else:
+        monkeypatch.delenv("CODEGEN_AGENT", raising=False)
 
 class AgentApiClient:
     """Reusable client for interacting with the Agent API server"""
@@ -51,10 +59,10 @@ class AgentApiClient:
                           settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Send a message to the agent and return the parsed SSE events"""
         request = self.create_request(message, application_id, trace_id, agent_state, settings)
-        
+
         # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
         url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
-        
+
         response = await self.client.post(
             url,
             json=request.model_dump(by_alias=True),
@@ -65,7 +73,8 @@ class AgentApiClient:
         if response.status_code != 200:
             raise ValueError(f"Request failed with status code {response.status_code}")
 
-        return await self.parse_sse_events(response), request
+        events = await self.parse_sse_events(response)
+        return events, request
 
     async def continue_conversation(self,
                                   previous_events: List[AgentSseEvent],
@@ -120,10 +129,9 @@ class AgentApiClient:
         )
 
     @staticmethod
-    async def parse_sse_events(response) -> Tuple[List[AgentSseEvent], List[Dict[str, Any]]]:
+    async def parse_sse_events(response) -> List[AgentSseEvent]:
         """Parse the SSE events from a response stream"""
         event_objects = []
-        event_dicts = []
         buffer = ""
 
         async for line in response.aiter_lines():
@@ -136,7 +144,6 @@ class AgentApiClient:
                         try:
                             # Parse as both raw JSON and model objects
                             event_json = json.loads(data_str)
-                            event_dicts.append(event_json)
                             event_obj = AgentSseEvent.from_json(data_str)
                             event_objects.append(event_obj)
                         except json.JSONDecodeError as e:
@@ -146,37 +153,37 @@ class AgentApiClient:
                 # Reset buffer for next event
                 buffer = ""
 
-        return event_objects, event_dicts
+        return event_objects
 
 
-async def test_async_agent_message_endpoint():
+async def test_async_agent_message_endpoint(agent_type):
+    """Test the message endpoint with different agent types."""
     async with AgentApiClient() as client:
-        (event_objects, event_dicts), request = await client.send_message("Implement a calculator app")
+        events, request = await client.send_message("Implement a calculator app")
 
-        # Check that we received some events
-        assert len(event_objects) > 0, "No SSE events received"
-        assert len(event_dicts) > 0, "No raw SSE events received"
+        assert len(events) > 0, f"No SSE events received with agent_type={agent_type}"
 
         # Verify model objects
-        for event in event_objects:
-            assert event.trace_id == request.trace_id, "Trace IDs do not match in model objects"
-            assert event.message is not None, "Event message is missing in model objects"
+        for event in events:
+            match event:
+                case None:
+                    raise ValueError(f"Received None event for {agent_type}")
+                case AgentSseEvent():
+                    assert event.trace_id == request.trace_id, f"Trace IDs do not match in model objects with agent_type={agent_type}"
+                    assert event.status == AgentStatus.IDLE
+                    assert event.message.kind == MessageKind.STAGE_RESULT
 
-        # Verify raw dictionaries
-        for event in event_dicts:
-            assert "traceId" in event, "Missing traceId in SSE payload"
-            assert event["traceId"] == request.trace_id, "Trace IDs do not match"
 
 
 async def test_async_agent_state_continuation():
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
         # Initial request
-        (initial_events, initial_raw_events), initial_request = await client.send_message("Create a todo app")
+        initial_events, initial_request = await client.send_message("Create a todo app")
         assert len(initial_events) > 0, "No initial events received"
 
         # Continue conversation with new message
-        (continuation_events, continuation_raw_events), continuation_request = await client.continue_conversation(
+        continuation_events, continuation_request = await client.continue_conversation(
             previous_events=initial_events,
             previous_request=initial_request,
             message="Add authentication to the app"
@@ -188,20 +195,17 @@ async def test_async_agent_state_continuation():
         for event in continuation_events:
             assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in continuation (model)"
 
-        for event in continuation_raw_events:
-            assert "traceId" in event, "Missing traceId in continuation events"
-            assert event["traceId"] == initial_request.trace_id, "Trace IDs don't match in continuation (raw)"
 
 
 async def test_sequential_sse_responses():
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
         # Initial request
-        (initial_events, _), initial_request = await client.send_message("Create a hello world app")
+        initial_events, initial_request = await client.send_message("Create a hello world app")
         assert len(initial_events) > 0, "No initial events received"
 
         # First continuation
-        (first_continuation_events, _), first_continuation_request = await client.continue_conversation(
+        first_continuation_events, first_continuation_request = await client.continue_conversation(
             previous_events=initial_events,
             previous_request=initial_request,
             message="Add a welcome message"
@@ -209,7 +213,7 @@ async def test_sequential_sse_responses():
         assert len(first_continuation_events) > 0, "No first continuation events received"
 
         # Second continuation
-        (second_continuation_events, _), second_continuation_request = await client.continue_conversation(
+        second_continuation_events, second_continuation_request = await client.continue_conversation(
             previous_events=first_continuation_events,
             previous_request=first_continuation_request,
             message="Add a goodbye message"
@@ -233,7 +237,7 @@ async def test_session_with_no_state():
         fixed_application_id = f"test-bot-{uuid.uuid4().hex[:8]}"
 
         # First request
-        (first_events, _), _ = await client.send_message(
+        first_events, _ = await client.send_message(
             "Create a counter app",
             application_id=fixed_application_id,
             trace_id=fixed_trace_id
@@ -241,7 +245,7 @@ async def test_session_with_no_state():
         assert len(first_events) > 0, "No events received from first request"
 
         # Second request - same session, explicitly pass None for agent_state
-        (second_events, _), _ = await client.send_message(
+        second_events, _ = await client.send_message(
             "Add a reset button",
             application_id=fixed_application_id,
             trace_id=fixed_trace_id,
@@ -258,7 +262,7 @@ async def test_agent_reaches_idle_state():
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
         # Send a simple "Hello" prompt
-        (events, _), _ = await client.send_message("Hello")
+        events, _ = await client.send_message("Hello")
 
         # Check that we received some events
         assert len(events) > 0, "No events received"
@@ -290,7 +294,7 @@ async def test_external_server_message():
     async with AgentApiClient(base_url=external_server_url) as client:
         try:
             # Use a simple prompt that should be processed quickly
-            (events, _), request = await client.send_message("Hello, world")
+            events, request = await client.send_message("Hello, world")
 
             # Check that we received some events
             assert len(events) > 0, "No SSE events received"
@@ -302,7 +306,3 @@ async def test_external_server_message():
             print(f"Successfully tested external server at {external_server_url}")
         except Exception as e:
             pytest.fail(f"Error testing external server: {e}")
-
-
-if __name__ == "__main__":
-    anyio.run(test_async_agent_message_endpoint, backend="asyncio")

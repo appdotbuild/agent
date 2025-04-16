@@ -331,9 +331,10 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
             break # Early out until feedback is wired to component name
 
     logger.info("[Main] FSM interaction completed successfully")
+    return new_messages
 
 def run_main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
-    anyio.run(main, initial_prompt)
+    return anyio.run(main, initial_prompt)
 
 if __name__ == "__main__":
     Fire(run_main)

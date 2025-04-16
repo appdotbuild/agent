@@ -1,3 +1,16 @@
 import os
 
-AGENT_TYPE = os.getenv("CODEGEN_AGENT", "trpc_agent")
+
+class Config:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(Config, cls).__new__(cls)
+        return cls._instance
+
+    @property
+    def agent_type(self):
+        return os.getenv("CODEGEN_AGENT", "trpc_agent")
+
+CONFIG = Config()
