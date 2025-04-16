@@ -154,6 +154,10 @@ class AsyncAgentSession(AgentInterface):
             logger.info(f"FSM is already complete for trace {self.trace_id}")
             return False
 
+        if not self.processor_instance:
+            logger.warning(f"No processor instance found for trace {self.trace_id}")
+            return False
+
         if self.processor_instance.work_in_progress.locked():
             logger.info(f"FSM is locked for trace {self.trace_id}, work in progress")
             return False
