@@ -38,8 +38,17 @@ class AsyncAgentSession(AgentInterface):
             "max_tokens": 8192,
         }
 
-    async def bake_app_diff(self) -> None:
-        logger.warning("No baking at the moment 🥖")
+    async def bake_app_diff(self) -> str:
+        """Generate unified diff for the application state"""
+        if self.processor_instance.fsm_app is None:
+            return ""
+        
+        # Use an empty snapshot to generate a diff showing all changes
+        try:
+            return await self.processor_instance.fsm_app.get_diff_with({})
+        except Exception as e:
+            logger.error(f"Error generating diff: {str(e)}")
+            return ""
 
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """

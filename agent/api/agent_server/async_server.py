@@ -31,6 +31,7 @@ from api.agent_server.models import (
 from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import AsyncAgentSession as TrpcAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
+from api.agent_server.async_agent_session import AsyncAgentSession as LegacyAgentSession
 from api.config import CONFIG
 
 from log import get_logger, init_sentry
@@ -203,6 +204,7 @@ async def message(
         agent_type = {
             "empty_diff": EmptyDiffAgentImplementation,
             "trpc_agent": TrpcAgentSession,
+            "legacy": LegacyAgentSession,
         }
         return StreamingResponse(
             run_agent(request, agent_type[CONFIG.agent_type]),
