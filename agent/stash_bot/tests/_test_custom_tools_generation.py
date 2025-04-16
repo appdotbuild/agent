@@ -2,9 +2,7 @@ import os
 import tempfile
 import shutil
 import unittest
-from unittest.mock import MagicMock
-from application import Application
-from core.interpolator import Interpolator, CUSTOM_TOOL_TEMPLATE
+from core.interpolator import CUSTOM_TOOL_TEMPLATE
 
 class CustomToolsGenerationTest(unittest.TestCase):
     def setUp(self):

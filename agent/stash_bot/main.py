@@ -1,9 +1,5 @@
 import os
 import uvicorn
-import sys
-from datetime import datetime
-import logging
-import logging.handlers
 from log import get_logger
 
 logger = get_logger(__name__)

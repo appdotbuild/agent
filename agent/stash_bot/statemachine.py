@@ -138,7 +138,7 @@ class StateMachine[T]:
 
     async def _run_entry(self, state: State[T]):
         if "entry" in state:
-            logger.info(f"Running entry actions")
+            logger.info("Running entry actions")
             for action in state["entry"]:
                 action_name = action.__name__ if hasattr(action, "__name__") else "unknown"
                 logger.info(f"Running entry action: {action_name}")
@@ -146,7 +146,7 @@ class StateMachine[T]:
 
     async def _run_exit(self, state: State[T]):
         if "exit" in state:
-            logger.info(f"Running exit actions")
+            logger.info("Running exit actions")
             for action in state["exit"]:
                 action_name = action.__name__ if hasattr(action, "__name__") else "unknown"
                 logger.info(f"Running exit action: {action_name}")

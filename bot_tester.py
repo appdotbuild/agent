@@ -65,7 +65,7 @@ class BotTester:
 
         logger.info(f"Generating bot with prompt: {prompt}")
         my_bot = self.application.create_bot(prompt)
-        logger.info(f"Bot created successfully")
+        logger.info("Bot created successfully")
         
         current_dir = os.path.dirname(os.path.abspath(__file__))        
         interpolator = Interpolator(os.path.join(current_dir, "agent"))
@@ -107,8 +107,8 @@ class BotTester:
             app_container = client.containers.get(self.env["APP_CONTAINER_NAME"])
             db_container = client.containers.get(self.env["POSTGRES_CONTAINER_NAME"])
             
-            assert app_container.status == "running", f"App container is not running"
-            assert db_container.status == "running", f"Database container is not running"
+            assert app_container.status == "running", "App container is not running"
+            assert db_container.status == "running", "Database container is not running"
             
             os.chdir("..")
             logger.info("Bot is running")

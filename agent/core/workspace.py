@@ -72,14 +72,14 @@ class Workspace:
     async def ls(self, path: str) -> list[str]:
         try:
             return await self.ctr.directory(path).entries()
-        except dagger.QueryError as e:
+        except dagger.QueryError:
             raise FileNotFoundError(f"Directory not found: {path}")
 
     @function
     async def read_file(self, path: str) -> str:
         try:
             return await self.ctr.file(path).contents()
-        except dagger.QueryError as e:
+        except dagger.QueryError:
             raise FileNotFoundError(f"File not found: {path}")
 
     @function

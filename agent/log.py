@@ -6,7 +6,7 @@ import sentry_sdk
 import os
 import boto3
 from datetime import datetime
-from botocore.exceptions import NoCredentialsError, ClientError
+from botocore.exceptions import NoCredentialsError
 
 # Configure root logger to avoid duplicate handlers
 root_logger = logging.getLogger()
@@ -44,7 +44,7 @@ def _init_logging():
             handlers['cloudwatch'] = cloudwatch
         except NoCredentialsError:
             logging.warning("CloudWatch credentials not found")
-        except Exception as e:
+        except Exception:
             logging.exception("CloudWatch logging disabled")
 
     # File handler

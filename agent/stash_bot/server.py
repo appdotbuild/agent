@@ -1,5 +1,4 @@
 from typing import Optional
-from typing_extensions import Self
 import os
 import uuid
 import shutil
@@ -17,6 +16,7 @@ import capabilities as cap_module
 from iteration import get_typespec_metadata, get_scenarios_message
 from log import get_logger, init_sentry
 from fsm_core.llm_common import get_sync_client
+from datetime import datetime
 
 logger = get_logger(__name__)
 init_sentry()
@@ -34,9 +34,6 @@ async def check_bearer(request: Request, call_next):
     response = await call_next(request)
     return response
 
-from dataclasses import dataclass
-from typing import Optional
-from datetime import datetime
 
 class Prompt(BaseModel):
     prompt: str
@@ -110,7 +107,7 @@ def generate_bot(write_url: str, read_url: str, prompts: list[str], trace_id: st
 
 def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: str, bot_id: str | None, capabilities: list[str] | None = None):
     try:
-        logger.info(f"Staring background job to update bot")
+        logger.info("Staring background job to update bot")
         application = Application(client, compiler, interaction_mode=InteractionMode.NON_INTERACTIVE)
         interpolator = Interpolator(".")
         logger.info(f"Updating bot with typespec: {typespec}")
@@ -136,7 +133,7 @@ def generate_update_bot(write_url: str, read_url: str, typespec: str, trace_id: 
                     logger.info(f"Baked bot successfully to {tmpdir}")
                 except Exception:
                     logger.exception(f"Failed to read or process existing bot from {read_url}")
-                    logger.info(f"Falling back to fresh bot build")
+                    logger.info("Falling back to fresh bot build")
                     interpolator.bake(bot, tmpdir)
                     logger.info(f"Baked fresh bot successfully to {tmpdir}")
             else:
@@ -185,7 +182,7 @@ Please let me know if these use cases match what you're looking for, and if you 
 def compile(request: ReBuildRequest, background_tasks: BackgroundTasks):
     trace_id = uuid.uuid4().hex
     background_tasks.add_task(generate_update_bot, request.writeUrl, request.readUrl, request.typespecSchema, trace_id, request.botId, request.capabilities)
-    message = f"Your bot's implementation is being updated in the background"
+    message = "Your bot's implementation is being updated in the background"
     return BuildResponse(status="success", message=message, trace_id=trace_id)
 
 

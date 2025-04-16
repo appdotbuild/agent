@@ -32,15 +32,15 @@ def evaluate_drizzle_generation() -> float:
     successful_compilations = 0
     total_attempts = 10
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory():
         application = Application(client, compiler)
 
         for i in range(total_attempts):
             try:
                 test_case = list(data_mapping.values())[i % len(data_mapping)]
-                
+
                 print(f"\nTest case {i + 1}/{total_attempts}:")
-         
+
                 # Generate drizzle schema
                 jinja_env = application.jinja_env
                 content = jinja_env.from_string(drizzle.PROMPT).render(typespec_definitions=test_case["typespec_definitions"])
@@ -77,13 +77,13 @@ def evaluate_drizzle_generation() -> float:
     success_rate = (successful_compilations / total_attempts) * 100
     print(f"\nDrizzle Generation Success Rate: {success_rate:.2f}%")
     print(f"Successful compilations: {successful_compilations}/{total_attempts}")
-    
+
     return success_rate
 
 def load_test_data() -> Dict:
     """Load test schemas from dataset directory"""
     data_mapping = {}
-    
+
     for filename in os.listdir(DATASET_DIR):
         for suffix, schema_key in SCHEMA_SUFFIXES.items():
             if filename.endswith(suffix):
@@ -95,8 +95,8 @@ def load_test_data() -> Dict:
 
     # Filter out incomplete test cases
     return {
-        prefix: schemas 
-        for prefix, schemas in data_mapping.items() 
+        prefix: schemas
+        for prefix, schemas in data_mapping.items()
         if all(key in schemas for key in SCHEMA_SUFFIXES.values())
     }
 

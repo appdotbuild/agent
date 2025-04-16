@@ -2,7 +2,7 @@ import os
 import tempfile
 import shutil
 import unittest
-from core.interpolator import Interpolator, TOOL_TEMPLATE, CUSTOM_TOOL_TEMPLATE
+from core.interpolator import Interpolator
 from core.datatypes import ApplicationOut, DrizzleOut, CapabilitiesOut, TypescriptOut, TypespecOut, HandlerOut, HandlerTestsOut, RefineOut, GherkinOut
 
 class InterpolatorTest(unittest.TestCase):

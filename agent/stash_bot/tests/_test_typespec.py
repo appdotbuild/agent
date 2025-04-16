@@ -1,5 +1,4 @@
 import pytest
-import re
 from fsm_core.typespec import TypespecMachine
 
 class TestTypespecParser:

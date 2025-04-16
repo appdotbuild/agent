@@ -5,7 +5,6 @@ from anthropic.types import (
     TextBlock,
     ToolUseBlock,
     ThinkingBlock,
-    ToolResultBlockParam,
     Message,
     MessageParam,
     TextBlockParam,

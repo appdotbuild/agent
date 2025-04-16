@@ -1,6 +1,4 @@
-import os
 import tempfile
-from typing import Dict, Tuple
 from anthropic import AnthropicBedrock
 from tracing_client import TracingClient
 from compiler.core import Compiler

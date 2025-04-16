@@ -6,13 +6,13 @@ import anyio
 import logging
 from dag_compiler import Compiler
 from langfuse import Langfuse
-from fsm_core.llm_common import LLMClient, get_sync_client
+from fsm_core.llm_common import LLMClient
 from fsm_core.helpers import agent_dfs, span_claude_bedrock
 from fsm_core import typespec, drizzle, typescript, handler_tests, handlers
 from fsm_core.common import AgentMachine
 import statemachine
-from core.datatypes import ApplicationPrepareOut, CapabilitiesOut, DrizzleOut, TypespecOut, ApplicationOut
-from core.datatypes import RefineOut, GherkinOut, TypescriptOut, HandlerTestsOut, HandlerOut
+from core.datatypes import ApplicationPrepareOut, CapabilitiesOut, TypespecOut, ApplicationOut
+from core.datatypes import RefineOut
 from typing import TypedDict, NotRequired
 
 logger = logging.getLogger(__name__)

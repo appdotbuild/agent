@@ -1,13 +1,11 @@
 import logging
-import time
-from typing import Dict, List, Any, Optional, TypedDict
+from typing import Dict, Any, Optional, TypedDict
 
-import anyio
 from anyio.streams.memory import MemoryObjectSendStream
 
 from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
-from llm.common import Message, TextRaw, ToolUse, ToolResult, ToolUseResult
+from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
@@ -16,7 +14,6 @@ from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,
-    ConversationMessage,
     AgentStatus,
     MessageKind,
 )
@@ -43,7 +40,7 @@ class AsyncAgentSession(AgentInterface):
         }
 
     async def bake_app_diff(self) -> None:
-        logger.warning(f"No baking at the moment 🥖")
+        logger.warning("No baking at the moment 🥖")
 
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
@@ -87,6 +84,7 @@ class AsyncAgentSession(AgentInterface):
                     unifiedDiff=app_diff,
                 )
             )
+            await event_tx.send(event_out)
 
         except Exception as e:
             logger.exception(f"Error in process: {str(e)}")

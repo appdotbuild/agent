@@ -1,11 +1,9 @@
 from anthropic import AnthropicBedrock
 from application import Application
 from compiler.core import Compiler
-import tempfile
 import coloredlogs
 import logging
 from fire import Fire
-import shutil
 import os
 from core.interpolator import Interpolator
 

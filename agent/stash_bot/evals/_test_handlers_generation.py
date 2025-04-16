@@ -4,7 +4,6 @@ import re
 from typing import Dict
 from anthropic import AnthropicBedrock
 from compiler.core import Compiler
-from fsm_core import handlers
 from application import Application
 
 DATASET_DIR = "evals/dataset.min"

@@ -1,9 +1,7 @@
 import pytest
-import uuid
 import json
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-import asyncio
 import sys
 import os
 

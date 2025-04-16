@@ -1,13 +1,11 @@
-from typing import Awaitable, Callable, List, Dict, Any, Optional, Self, Tuple, Protocol, runtime_checkable
-import logging
+from typing import Awaitable, Callable, Self, Protocol, runtime_checkable
 import coloredlogs
 import sys
 import anyio
 from fire import Fire
-import uuid
 
 from core.application import ApplicationBase
-from llm.utils import get_llm_client, AsyncLLM
+from llm.utils import AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
 from log import get_logger
@@ -134,7 +132,7 @@ class FSMToolProcessor[T: FSMInterface]:
 
             # Prepare the result
             result = self.fsm_as_result()
-            logger.info(f"[FSMTools] Started FSM session")
+            logger.info("[FSMTools] Started FSM session")
             return CommonToolResult(content=str(result))
 
         except Exception as e:
@@ -182,7 +180,7 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.info(f"[FSMTools] Current state: {current_state}")
 
             # Handle feedback
-            logger.info(f"[FSMTools] Providing feedback")
+            logger.info("[FSMTools] Providing feedback")
             await self.fsm_app.provide_feedback(feedback, component_name)
             new_state = self.fsm_app.current_state
 

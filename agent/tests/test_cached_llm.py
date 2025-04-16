@@ -1,6 +1,5 @@
 import pytest
 import tempfile
-import anthropic
 from llm.cached import CachedLLM
 from llm.utils import get_llm_client
 from llm.common import Message, TextRaw

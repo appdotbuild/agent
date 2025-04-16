@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from anthropic.types import Message
 from fsm_core.llm_common import get_sync_client

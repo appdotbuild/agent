@@ -1,8 +1,6 @@
 from mcp.server.fastmcp import FastMCP
 
 from api.fsm_tools import FSMToolProcessor
-from tracing_client import TracingClient
-from compiler.core import Compiler
 from langfuse.decorators import langfuse_context
 from fsm_core.llm_common import get_sync_client
 import logging

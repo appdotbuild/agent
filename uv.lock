@@ -63,8 +63,16 @@ dependencies = [
     { name = "fullstack-agent" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [{ name = "fullstack-agent", editable = "agent" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.11.5" }]
 
 [[package]]
 name = "attrs"

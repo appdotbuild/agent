@@ -1,12 +1,11 @@
 import logging
-import time
 from typing import Dict, List, Any, Optional
 
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
 
 from llm.utils import AsyncLLM, get_llm_client
-from llm.common import Message, TextRaw, ToolUse, ToolResult, ToolUseResult
+from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor
 from uuid import uuid4
 
@@ -79,7 +78,7 @@ class AsyncAgentSession(AgentInterface):
         return self.messages[-1].role == "user"
 
     def bake_app_diff(self, app_out: Dict[str, Any]) -> None:
-        logger.warning(f"No baking at the moment 🥖")
+        logger.warning("No baking at the moment 🥖")
 
     async def process_step(self) -> Optional[AgentSseEvent]:
         """Process a single step and return an SSE event"""
@@ -89,7 +88,7 @@ class AsyncAgentSession(AgentInterface):
 
         try:
             logger.info(f"Processing step for trace {self.trace_id}")
-            new_messages, is_complete, final_tool_result = await run_with_claude(self.processor_instance, self.llm_client, self.messages)
+            new_messages, is_complete, final_tool_result = await run_with_claude(self.processor_instance, self.llm_client, self.messages)   # noqa: F821
             self.is_complete = is_complete
             if final_tool_result or new_messages:
                 if new_messages:

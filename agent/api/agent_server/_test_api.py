@@ -85,7 +85,7 @@ async def test_message_endpoint(
                             if event_data:
                                 try:
                                     event_json = json.loads(event_data)
-                                    print(f"Event received:")
+                                    print("Event received:")
                                     
                                     if verbose:
                                         print(json.dumps(event_json, indent=2))

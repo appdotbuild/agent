@@ -8,7 +8,6 @@ from copy import deepcopy
 import re
 from anthropic import AnthropicBedrock
 from fire import Fire
-from functools import reduce
 from dataclasses import dataclass
 
 langfuse = Langfuse()
@@ -398,7 +397,7 @@ def generate_error_analysis(df: pd.DataFrame):
 
     with open("/tmp/error_analysis.md", "w") as f:
         f.write(msg)
-    print(f"Error analysis saved to /tmp/error_analysis.md")
+    print("Error analysis saved to /tmp/error_analysis.md")
 
 
 @memory.cache
@@ -459,7 +458,7 @@ def main(
         start_date=start_date, end_date=end_date, bot_name_pattern=bot_name_pattern, user_id=user_id
     )
     df.to_csv("/tmp/classified_errors.csv", index=False)
-    print(f"Classified errors saved to /tmp/classified_errors.csv")
+    print("Classified errors saved to /tmp/classified_errors.csv")
     generate_error_analysis(df)
     convert_md_to_pdf()
 

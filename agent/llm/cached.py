@@ -1,9 +1,8 @@
 from typing import Literal, Dict, Any, List
 import json
 import hashlib
-import logging
 from pathlib import Path
-from llm.common import AsyncLLM, Completion, Message, Tool, TextRaw
+from llm.common import AsyncLLM, Completion, Message, Tool
 import os
 import anyio
 
@@ -128,7 +127,7 @@ class CachedLLM(AsyncLLM):
                     cache_key = self._get_cache_key(**request_params)
                     logger.info(f"Caching response with key: {cache_key}")
                     if cache_key in self._cache:
-                        logger.info(f"Fetching from cache")
+                        logger.info("Fetching from cache")
                         return self._cache[cache_key]
                     else:
                         response = await self.client.completion(

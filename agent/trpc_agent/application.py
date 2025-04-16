@@ -1,16 +1,14 @@
 import os
 import anyio
 import logging
-import uuid
 import enum
-from typing import Dict, Any, List, Self, TypedDict, NotRequired, Optional, Callable, Literal
-from dataclasses import dataclass, field, asdict
-import json
-from core.statemachine import StateMachine, State, Actor, Context
-from llm.utils import get_llm_client, AsyncLLM
+from typing import Dict, Self, Optional, Literal
+from dataclasses import dataclass, field
+from core.statemachine import StateMachine, State, Context
+from llm.utils import get_llm_client
 from core.actors import BaseData
 from core.base_node import Node
-from core.statemachine import StateMachine, State, Actor, Context, MachineCheckpoint
+from core.statemachine import MachineCheckpoint
 from core.workspace import Workspace
 from trpc_agent.actors import DraftActor, HandlersActor, IndexActor, FrontendActor
 import dagger
@@ -101,7 +99,7 @@ class FSMApplication:
         fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
         return cls(fsm)
 
-     @classmethod
+    @classmethod
     def base_execution_plan(cls) -> str:
          return "\n".join([
             "1. Draft app design",
