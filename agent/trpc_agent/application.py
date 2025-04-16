@@ -147,7 +147,8 @@ class FSMApplication:
 
         async def set_error(ctx: ApplicationContext, error: Exception) -> None:
             """Set error in context"""
-            logger.error(f"Setting error in context: {error}")
+            # Use logger.exception to include traceback
+            logger.exception(f"Setting error in context:", exc_info=error)
             ctx.error = str(error)
 
         llm = get_llm_client()

@@ -109,7 +109,15 @@ class AsyncAgentSession(AgentInterface):
 
         try:
             logger.info(f"Processing step for trace {self.trace_id}")
-            new_messages = await self.processor_instance.step(self.messages, self.llm_client, self.settings)
+            try:
+                if "max_tokens" not in self.settings:
+                    logger.debug(f"Setting default max_tokens for trace {self.trace_id}")
+                    self.settings["max_tokens"] = 4096
+                new_messages = await self.processor_instance.step(self.messages, self.llm_client, self.settings)
+            except Exception as step_exc:
+                logger.exception(f"Exception during processor_instance.step for trace {self.trace_id}")
+                raise
+                
             is_complete = self.processor_instance.fsm_app and self.processor_instance.fsm_app.is_completed
             final_tool_result = None
             self.is_complete = is_complete
@@ -153,7 +161,7 @@ class AsyncAgentSession(AgentInterface):
             return None
 
         except Exception as e:
-            logger.exception(f"Error in process_step: {str(e)}")
+            logger.exception(f"Error in process_step (outer handler) for trace {self.trace_id}: {str(e)}")
 
             self.is_complete = True
             return AgentSseEvent(
