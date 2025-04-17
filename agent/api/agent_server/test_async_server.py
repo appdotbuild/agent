@@ -9,12 +9,13 @@ from typing import List, Dict, Any, Tuple, Optional
 from log import get_logger
 from api.agent_server.async_server import app, CONFIG
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
+from api.agent_server.agent_client import AgentApiClient
 
 
 logger = get_logger(__name__)
 
-if os.getenv("BUILDER_TOKEN") is None:
-    os.environ["BUILDER_TOKEN"] = "dummy_token"
+# Set dummy token for tests
+os.environ["BUILDER_TOKEN"] = "dummy_token_for_tests"
 
 pytestmark = pytest.mark.anyio
 
@@ -31,148 +32,8 @@ def agent_type(request, monkeypatch):
 
 @pytest.fixture
 def empty_token(monkeypatch):
-    monkeypatch.delenv("BUILDER_TOKEN")
+    monkeypatch.delenv("BUILDER_TOKEN", raising=False)
     yield
-
-
-class AgentApiClient:
-    """Reusable client for interacting with the Agent API server"""
-
-    def __init__(self, app_instance=None, base_url=None):
-        """Initialize the client with an optional app instance or base URL
-
-        Args:
-            app_instance: FastAPI app instance for direct ASGI transport
-            base_url: External base URL to test against (e.g., "http://18.237.53.81")
-        """
-        self.app = app_instance or app
-        self.base_url = base_url
-        self.transport = ASGITransport(app=self.app) if base_url is None else None
-        self.client = None
-
-    async def __aenter__(self):
-        if self.base_url:
-            self.client = AsyncClient(base_url=self.base_url)
-        else:
-            self.client = AsyncClient(transport=self.transport)
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.client:
-            await self.client.aclose()
-
-    async def send_message(self,
-                          message: str,
-                          request: Optional[AgentRequest] = None,
-                          application_id: Optional[str] = None,
-                          trace_id: Optional[str] = None,
-                          agent_state: Optional[Dict[str, Any]] = None,
-                          settings: Optional[Dict[str, Any]] = None,
-                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
-
-        """Send a message to the agent and return the parsed SSE events"""
-
-        if request is None:
-            request = self.create_request(message, application_id, trace_id, agent_state, settings)
-        else:
-            logger.info(f"Using existing request with trace ID: {request.trace_id}, ignoring the message parameter")
-
-        # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
-        url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
-        headers={"Accept": "text/event-stream"}
-        if auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
-
-        response = await self.client.post(
-            url,
-            json=request.model_dump(by_alias=True),
-            headers=headers,
-            timeout=None
-        )
-
-        if response.status_code != 200:
-            raise ValueError(f"Request failed with status code {response.status_code}")
-
-        events = await self.parse_sse_events(response)
-        return events, request
-
-    async def continue_conversation(self,
-                                  previous_events: List[AgentSseEvent],
-                                  previous_request: AgentRequest,
-                                  message: str,
-                                  settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
-        """Continue a conversation using the agent state from previous events"""
-        agent_state = None
-
-        # Extract agent state from the last event
-        for event in reversed(previous_events):
-            if event.message and event.message.agent_state:
-                agent_state = event.message.agent_state
-                break
-
-        # If no state was found, use a dummy state
-        if agent_state is None:
-            agent_state = {"test_state": True, "generated_in_test": True}
-
-        # Use the same trace ID for continuity
-        trace_id = previous_request.trace_id
-        application_id = previous_request.application_id
-
-        events, request = await self.send_message(
-            message=message,
-            application_id=application_id,
-            trace_id=trace_id,
-            agent_state=agent_state,
-            settings=settings
-        )
-
-        return events, request
-
-    @staticmethod
-    def create_request(message: str,
-                     application_id: Optional[str] = None,
-                     trace_id: Optional[str] = None,
-                     agent_state: Optional[Dict[str, Any]] = None,
-                     settings: Optional[Dict[str, Any]] = None) -> AgentRequest:
-        """Create a request object for the agent API"""
-        return AgentRequest(
-            allMessages=[
-                UserMessage(
-                    role="user",
-                    content=message
-                )
-            ],
-            applicationId=application_id or f"test-bot-{uuid.uuid4().hex[:8]}",
-            traceId=trace_id or uuid.uuid4().hex,
-            agentState=agent_state,
-            settings=settings or {"max-iterations": 3}
-        )
-
-    @staticmethod
-    async def parse_sse_events(response) -> List[AgentSseEvent]:
-        """Parse the SSE events from a response stream"""
-        event_objects = []
-        buffer = ""
-
-        async for line in response.aiter_lines():
-            buffer += line
-            if line.strip() == "":  # End of SSE event marked by empty line
-                if buffer.startswith("data:"):
-                    data_parts = buffer.split("data:", 1)
-                    if len(data_parts) > 1:
-                        data_str = data_parts[1].strip()
-                        try:
-                            # Parse as both raw JSON and model objects
-                            event_obj = AgentSseEvent.from_json(data_str)
-                            event_objects.append(event_obj)
-                        except json.JSONDecodeError as e:
-                            print(f"JSON decode error: {e}, data: {data_str[:100]}...")
-                        except Exception as e:
-                            print(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
-                # Reset buffer for next event
-                buffer = ""
-
-        return event_objects
 
 
 async def test_health():
@@ -189,19 +50,39 @@ async def test_invalid_token():
 
 async def test_auth_disabled(empty_token):
     async with AgentApiClient() as client:
-        events = await client.send_message("Hello", auth_token=None)
+        events, _ = await client.send_message("Hello", auth_token=None)
         assert len(events) > 0, "No events received with empty token"
 
-async def test_empty_token():
-    async with AgentApiClient() as client:
-        with pytest.raises(ValueError, match="Request failed with status code 401"):
-            await client.send_message("Hello", auth_token=None)
+async def test_empty_token(monkeypatch):
+    """Test that authentication fails when no token is provided but auth is required."""
+    # Save the original token
+    original_token = os.environ.get("BUILDER_TOKEN")
+    
+    try:
+        # Make sure a valid token exists in the environment, but don't pass it to the client
+        monkeypatch.setenv("BUILDER_TOKEN", "valid_token_that_will_not_be_used")
+        
+        async with AgentApiClient() as client:
+            # Explicitly set auth_token to None to bypass the default behavior in the client
+            with pytest.raises(ValueError, match="Request failed with status code 401"):
+                await client.send_message("Hello", auth_token=None)
+    finally:
+        # Restore the original token
+        if original_token is not None:
+            monkeypatch.setenv("BUILDER_TOKEN", original_token)
+        else:
+            monkeypatch.delenv("BUILDER_TOKEN", raising=False)
 
 
 async def test_async_agent_message_endpoint(agent_type):
     """Test the message endpoint with different agent types."""
     async with AgentApiClient() as client:
-        events, request = await client.send_message("Implement a calculator app")
+        # Explicitly use the environment token
+        auth_token = os.environ.get("BUILDER_TOKEN")
+        events, request = await client.send_message(
+            "Implement a calculator app", 
+            auth_token=auth_token
+        )
 
         assert len(events) > 0, f"No SSE events received with agent_type={agent_type}"
 
@@ -220,8 +101,14 @@ async def test_async_agent_message_endpoint(agent_type):
 async def test_async_agent_state_continuation():
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
+        # Explicitly use the environment token
+        auth_token = os.environ.get("BUILDER_TOKEN")
+        
         # Initial request
-        initial_events, initial_request = await client.send_message("Create a todo app")
+        initial_events, initial_request = await client.send_message(
+            "Create a todo app",
+            auth_token=auth_token
+        )
         assert len(initial_events) > 0, "No initial events received"
 
         # Continue conversation with new message
@@ -242,8 +129,14 @@ async def test_async_agent_state_continuation():
 async def test_sequential_sse_responses():
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
+        # Explicitly use the environment token
+        auth_token = os.environ.get("BUILDER_TOKEN")
+        
         # Initial request
-        initial_events, initial_request = await client.send_message("Create a hello world app")
+        initial_events, initial_request = await client.send_message(
+            "Create a hello world app",
+            auth_token=auth_token
+        )
         assert len(initial_events) > 0, "No initial events received"
 
         # First continuation
@@ -274,6 +167,9 @@ async def test_sequential_sse_responses():
 async def test_session_with_no_state():
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
+        # Explicitly use the environment token
+        auth_token = os.environ.get("BUILDER_TOKEN")
+        
         # Generate a fixed trace/chatbot ID to use for all requests
         fixed_trace_id = uuid.uuid4().hex
         fixed_application_id = f"test-bot-{uuid.uuid4().hex[:8]}"
@@ -282,7 +178,8 @@ async def test_session_with_no_state():
         first_events, _ = await client.send_message(
             "Create a counter app",
             application_id=fixed_application_id,
-            trace_id=fixed_trace_id
+            trace_id=fixed_trace_id,
+            auth_token=auth_token
         )
         assert len(first_events) > 0, "No events received from first request"
 
@@ -291,7 +188,8 @@ async def test_session_with_no_state():
             "Add a reset button",
             application_id=fixed_application_id,
             trace_id=fixed_trace_id,
-            agent_state=None
+            agent_state=None,
+            auth_token=auth_token
         )
         assert len(second_events) > 0, "No events received from second request"
 
@@ -303,8 +201,11 @@ async def test_session_with_no_state():
 async def test_agent_reaches_idle_state():
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
+        # Explicitly use the environment token
+        auth_token = os.environ.get("BUILDER_TOKEN")
+        
         # Send a simple "Hello" prompt
-        events, _ = await client.send_message("Hello")
+        events, _ = await client.send_message("Hello", auth_token=auth_token)
 
         # Check that we received some events
         assert len(events) > 0, "No events received"
@@ -436,8 +337,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
             # Send or continue conversation
             try:
                 print("\033[92mBot> \033[0m", end="", flush=True)
+                auth_token = os.environ.get("BUILDER_TOKEN")
                 if request is None:
-                    events, request = await client.send_message(content, settings=settings_dict)
+                    events, request = await client.send_message(content, settings=settings_dict, auth_token=auth_token)
                 else:
                     events, request = await client.continue_conversation(
                         previous_events, request, content, settings=settings_dict
