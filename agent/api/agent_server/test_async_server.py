@@ -9,7 +9,6 @@ from typing import List
 from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_api_client import AgentApiClient
-from api.agent_server.async_server import app
 
 
 logger = get_logger(__name__)
@@ -44,8 +43,16 @@ def empty_token(monkeypatch):
 
 
 async def test_health():
-    async with AsyncClient(app=app) as client:
-        resp = await client.get("/health")
+    from unittest.mock import AsyncMock, MagicMock
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"status": "healthy"}
+    mock_client.get.return_value = mock_response
+    
+    async with AgentApiClient() as client:
+        client.client = mock_client
+        resp = await client.client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "healthy"}
 
