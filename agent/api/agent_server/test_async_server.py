@@ -86,7 +86,14 @@ async def test_auth_disabled(empty_token):
         assert len(events) > 0, "No events received with empty token"
 
 async def test_empty_token():
+    from unittest.mock import AsyncMock, MagicMock
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_client.post.return_value = mock_response
+    
     async with AgentApiClient() as client:
+        client.client = mock_client
         with pytest.raises(ValueError, match="Request failed with status code 401"):
             await client.send_message("Hello", auth_token=None)
 
