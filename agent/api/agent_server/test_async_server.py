@@ -57,13 +57,24 @@ async def test_empty_token(monkeypatch):
     original_token = os.environ.get("BUILDER_TOKEN")
     
     try:
-        # Make sure a valid token exists in the environment, but don't pass it to the client
+        # Environment has a token set, but we'll modify the client to not use it
         monkeypatch.setenv("BUILDER_TOKEN", "valid_token_that_will_not_be_used")
         
         async with AgentApiClient() as client:
-            # Explicitly set auth_token to None to bypass the default behavior in the client
+            # Mock the client's post method to not add the Authorization header
+            original_post = client.client.post
+            
+            async def mock_post(*args, **kwargs):
+                # Remove Authorization header
+                if "headers" in kwargs and "Authorization" in kwargs["headers"]:
+                    del kwargs["headers"]["Authorization"]
+                return await original_post(*args, **kwargs)
+            
+            # Apply the mock
+            client.client.post = mock_post
+            
             with pytest.raises(ValueError, match="Request failed with status code 401"):
-                await client.send_message("Hello", auth_token=None)
+                await client.send_message("Hello")
     finally:
         # Restore the original token
         if original_token is not None:
