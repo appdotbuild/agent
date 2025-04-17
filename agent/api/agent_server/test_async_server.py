@@ -58,7 +58,14 @@ async def test_health():
 
 
 async def test_invalid_token():
+    from unittest.mock import AsyncMock, MagicMock
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 403
+    mock_client.post.return_value = mock_response
+    
     async with AgentApiClient() as client:
+        client.client = mock_client
         with pytest.raises(ValueError, match="Request failed with status code 403"):
             await client.send_message("Hello", auth_token="invalid_token")
 
