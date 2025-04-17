@@ -19,7 +19,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uvicorn
 from fire import Fire
 import dagger
-import sys
+import os
 
 from api.agent_server.models import (
     AgentRequest,
@@ -31,7 +31,7 @@ from api.agent_server.models import (
 )
 from api.agent_server.interface import AgentInterface
 # Use the TrpcAgentSession from trpc_agent.agent_session instead of the deprecated AsyncAgentSession
-from trpc_agent.agent_session import AsyncAgentSession as TrpcAgentSession
+from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
 
@@ -120,9 +120,9 @@ async def run_agent[T: AgentInterface](
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
-    
+
     # Establish Dagger connection for the agent's execution context
-    async with dagger.connection(dagger.Config(log_output=sys.stderr)):
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
 
         event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
