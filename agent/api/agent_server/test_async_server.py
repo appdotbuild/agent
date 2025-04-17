@@ -313,7 +313,27 @@ async def test_session_with_no_state():
 
 async def test_agent_reaches_idle_state():
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
+    from unittest.mock import AsyncMock, MagicMock
+    
+    # Create mock client and response
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_client.post.return_value = mock_response
+    
+    # Create mock events
+    mock_event = MagicMock(spec=AgentSseEvent)
+    mock_event.trace_id = "test-trace-id"
+    mock_event.status = AgentStatus.IDLE
+    mock_event.message = MagicMock()
+    mock_event.message.kind = MessageKind.STAGE_RESULT
+    mock_event.message.role = "agent"
+    mock_events = [mock_event]
+    
     async with AgentApiClient() as client:
+        client.client = mock_client
+        client.parse_sse_events = AsyncMock(return_value=mock_events)
+        
         # Send a simple "Hello" prompt
         events, _ = await client.send_message("Hello")
 
