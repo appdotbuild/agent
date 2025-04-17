@@ -114,7 +114,7 @@ class AsyncAgentSession(AgentInterface):
                     logger.debug(f"Setting default max_tokens for trace {self.trace_id}")
                     self.settings["max_tokens"] = 4096
                 new_messages = await self.processor_instance.step(self.messages, self.llm_client, self.settings)
-            except Exception as step_exc:
+            except Exception:
                 logger.exception(f"Exception during processor_instance.step for trace {self.trace_id}")
                 raise
                 
