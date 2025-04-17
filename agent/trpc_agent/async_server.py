@@ -1,6 +1,4 @@
 """
-DEPRECATED: This module is deprecated. Use trpc_agent.async_server instead.
-
 FastAPI implementation for the agent server.
 
 This server handles API requests initiated by clients (e.g., test clients),
@@ -11,14 +9,6 @@ request/response validation and interacts with LLMs via the `llm` wrappers
 
 Refer to `architecture.puml` for a visual overview.
 """
-import warnings
-
-warnings.warn(
-    "The module api.agent_server.async_server is deprecated. "
-    "Use trpc_agent.async_server instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -130,7 +120,6 @@ async def run_agent[T: AgentInterface](
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
     
-    # Establish Dagger connection for the agent's execution context
     async with dagger.connection(dagger.Config(log_output=sys.stderr)):
         agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
 
@@ -142,22 +131,16 @@ async def run_agent[T: AgentInterface](
                 tg.start_soon(agent.process, request, event_tx)
                 async with event_rx:
                     async for event in event_rx:
-                        # Keep track of the last state in events with non-null state
                         if event.message and event.message.agent_state:
                             final_state = event.message.agent_state
 
-                        # Format SSE event properly with data: prefix and double newline at the end
-                        # This ensures compatibility with SSE standard
                         yield f"data: {event.to_json()}\n\n"
 
-                        # If this event indicates the agent is idle, check if we need to remove the session
                         if event.status == AgentStatus.IDLE and request.agent_state is None:
-                            # Only remove session completely if this was not a continuation with state
                             logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id}")
 
         except* Exception as excgroup:
             for e in excgroup.exceptions:
-                # Log the specific exception from the group with traceback
                 logger.exception(f"Error in SSE generator TaskGroup for trace {request.trace_id}:", exc_info=e)
                 error_event = AgentSseEvent(
                     status=AgentStatus.IDLE,
@@ -170,14 +153,10 @@ async def run_agent[T: AgentInterface](
                         unifiedDiff=""
                     )
                 )
-                # Format error SSE event properly
                 yield f"data: {error_event.to_json()}\n\n"
 
-                # On error, remove the session entirely
                 session_manager.cleanup_session(request.application_id, request.trace_id)
         finally:
-            # For requests without agent state or where the session completed, clean up
-            # Ensure cleanup happens outside the dagger connection if needed, though session removal should be fine
             if request.agent_state is None and (final_state is None or final_state == {}):
                 logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
                 session_manager.cleanup_session(request.application_id, request.trace_id)
@@ -214,7 +193,6 @@ async def message(
     try:
         logger.info(f"Received message request for application {request.application_id}, trace {request.trace_id}")
 
-        # Start the SSE stream
         logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
         agent_type = {
             "trpc_agent": TrpcAgentSession,
@@ -227,7 +205,6 @@ async def message(
 
     except Exception as e:
         logger.error(f"Error processing message request: {str(e)}")
-        # Return an HTTP error response for non-SSE errors
         error_response = ErrorResponse(
             error="Internal Server Error",
             details=str(e)
@@ -248,7 +225,6 @@ async def healthcheck():
 async def dagger_healthcheck():
     """Dagger connection health check endpoint"""
     async with dagger.Connection() as client:
-        # Try a simple Dagger operation to verify connectivity
         container = client.container().from_("alpine:latest")
         version = await container.with_exec(["cat", "/etc/alpine-release"]).stdout()
         return {
@@ -266,7 +242,7 @@ def main(
 ):
     init_sentry()
     uvicorn.run(
-        "api.agent_server.async_server:app",
+        "trpc_agent.async_server:app",
         host=host,
         port=port,
         reload=reload,
