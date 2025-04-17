@@ -9,6 +9,7 @@ from typing import List
 from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_api_client import AgentApiClient
+from api.agent_server.async_server import app
 
 
 logger = get_logger(__name__)
@@ -43,8 +44,8 @@ def empty_token(monkeypatch):
 
 
 async def test_health():
-    async with AgentApiClient() as client:
-        resp = await client.client.get("http://test/health")
+    async with AsyncClient(app=app) as client:
+        resp = await client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "healthy"}
 
