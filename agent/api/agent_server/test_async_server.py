@@ -255,11 +255,31 @@ async def test_sequential_sse_responses():
 
 async def test_session_with_no_state():
     """Test session behavior when no state is provided in continuation requests."""
+    from unittest.mock import AsyncMock, MagicMock
+    
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_client.post.return_value = mock_response
+    
+    # Generate a fixed trace/chatbot ID to use for all requests
+    fixed_trace_id = uuid.uuid4().hex
+    fixed_application_id = f"test-bot-{uuid.uuid4().hex[:8]}"
+    
     async with AgentApiClient() as client:
-        # Generate a fixed trace/chatbot ID to use for all requests
-        fixed_trace_id = uuid.uuid4().hex
-        fixed_application_id = f"test-bot-{uuid.uuid4().hex[:8]}"
-
+        client.client = mock_client
+        
+        # Create mock events for first request
+        first_mock_event = MagicMock(spec=AgentSseEvent)
+        first_mock_event.trace_id = fixed_trace_id
+        first_mock_event.status = AgentStatus.IDLE
+        first_mock_event.message = MagicMock()
+        first_mock_event.message.kind = MessageKind.STAGE_RESULT
+        first_events = [first_mock_event]
+        
+        # Set up parse_sse_events for first request
+        client.parse_sse_events = AsyncMock(return_value=first_events)
+        
         # First request
         first_events, _ = await client.send_message(
             "Create a counter app",
@@ -267,7 +287,16 @@ async def test_session_with_no_state():
             trace_id=fixed_trace_id
         )
         assert len(first_events) > 0, "No events received from first request"
-
+        
+        second_mock_event = MagicMock(spec=AgentSseEvent)
+        second_mock_event.trace_id = fixed_trace_id
+        second_mock_event.status = AgentStatus.IDLE
+        second_mock_event.message = MagicMock()
+        second_mock_event.message.kind = MessageKind.STAGE_RESULT
+        second_events = [second_mock_event]
+        
+        client.parse_sse_events = AsyncMock(return_value=second_events)
+        
         # Second request - same session, explicitly pass None for agent_state
         second_events, _ = await client.send_message(
             "Add a reset button",
