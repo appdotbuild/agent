@@ -2,7 +2,7 @@ import os
 import anyio
 import logging
 import enum
-from typing import Dict, Self, Optional, Literal
+from typing import Dict, Self, Optional, Literal, Any
 from dataclasses import dataclass, field
 from core.statemachine import StateMachine, State, Context
 from llm.utils import get_llm_client
@@ -109,16 +109,16 @@ class FSMApplication:
          ])
 
     @classmethod
-    async def start_fsm(cls, user_prompt: str) -> Self:
+    async def start_fsm(cls, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:
         """Create the state machine for the application"""
-        states = await cls.make_states()
+        states = await cls.make_states(settings)
         context = ApplicationContext(user_prompt=user_prompt)
         fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
         await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
         return cls(fsm)
 
     @classmethod
-    async def make_states(cls) -> State[ApplicationContext, FSMEvent]:
+    async def make_states(cls, settings: Dict[str, Any] | None = None) -> State[ApplicationContext, FSMEvent]:
         def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
             files = {}
             for node in solution.get_trajectory():
@@ -147,11 +147,16 @@ class FSMApplication:
 
         async def set_error(ctx: ApplicationContext, error: Exception) -> None:
             """Set error in context"""
-            logger.error(f"Setting error in context: {error}")
+            # Use logger.exception to include traceback
+            logger.exception("Setting error in context:", exc_info=error)
             ctx.error = str(error)
 
         llm = get_llm_client()
-        model_params = {}
+        model_params = settings or {}
+        if "max_tokens" not in model_params:
+            logger.warning("max_tokens not found in settings, defaulting to 4096")
+            model_params["max_tokens"] = 4096
+            
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
             context=dagger.dag.host().directory("./trpc_agent/template"),

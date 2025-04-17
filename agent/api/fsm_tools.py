@@ -1,4 +1,4 @@
-from typing import Awaitable, Callable, Self, Protocol, runtime_checkable
+from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any
 import coloredlogs
 import sys
 import anyio
@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 @runtime_checkable
 class FSMInterface(ApplicationBase, Protocol):
     @classmethod
-    async def start_fsm(cls, user_prompt: str) -> Self: ...
+    async def start_fsm(cls, user_prompt: str, settings: Dict[str, Any]) -> Self: ...
     async def confirm_state(self): ...
     async def provide_feedback(self, feedback: str, component_name: str): ...
     async def complete_fsm(self): ...
@@ -40,16 +40,20 @@ class FSMToolProcessor[T: FSMInterface]:
 
     fsm_class: type[T]
     fsm_app: T | None
+    settings: Dict[str, Any]
 
-    def __init__(self, fsm_class: type[T], fsm_app: T | None = None):
+    def __init__(self, fsm_class: type[T], fsm_app: T | None = None, settings: Dict[str, Any] | None = None):
         """
         Initialize the FSM Tool Processor
 
         Args:
             fsm_class: FSM application class to use
+            fsm_app: Optional existing FSM application instance
+            settings: Optional dictionary of settings for the FSM/LLM
         """
         self.fsm_class = fsm_class
         self.fsm_app = fsm_app
+        self.settings = settings or {}
 
         # Define tool definitions for the AI agent using the common Tool structure
         self.tool_definitions: list[Tool] = [
@@ -123,8 +127,7 @@ class FSMToolProcessor[T: FSMInterface]:
                 logger.warning("[FSMTools] There's an active FSM session already. Completing it before starting a new one.")
                 return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one", is_error=True)
 
-            # Create a new FSM application
-            self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description)
+            self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description, settings=self.settings)
 
             # Check for errors
             if (error_msg := self.fsm_app.maybe_error()):

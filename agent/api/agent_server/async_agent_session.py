@@ -51,26 +51,47 @@ class AsyncAgentSession(AgentInterface):
         logger.debug(f"App description length: {len(app_description)}")
         # Create a proper Message object for the llm client
         self.messages = [Message(role="user", content=[TextRaw(app_description)])]
+        
+        # Initialize processor_instance if not already initialized
+        from trpc_agent.application import FSMApplication
+        
+        if agent_state:
+            logger.info(f"Loading FSM state for trace {self.trace_id}")
+            fsm = await FSMApplication.load(agent_state["fsm_state"])
+            self.processor_instance = FSMToolProcessor(FSMApplication, fsm, settings=self.settings)
+        else:
+            logger.info(f"Creating new FSM instance for trace {self.trace_id}")
+            self.processor_instance = FSMToolProcessor(FSMApplication, settings=self.settings)
+        
         return
 
     def get_state(self) -> Dict[str, Any]:
         """Get the current FSM state"""
         try:
             logger.debug(f"Getting state for trace {self.trace_id}")
-            if not self.processor_instance.fsm_app:
+            if not self.processor_instance:
+                logger.warning(f"No processor instance found for trace {self.trace_id}")
+                return {}
+                
+            if not hasattr(self.processor_instance, "fsm_app") or not self.processor_instance.fsm_app:
+                logger.warning(f"No FSM app found for trace {self.trace_id}")
                 return {}
 
+            if hasattr(self.processor_instance, "fsm_as_result"):
+                try:
+                    result = self.processor_instance.fsm_as_result()
+                    return result
+                except Exception as e:
+                    logger.error(f"Error getting FSM result: {str(e)}")
+                    return {}
+            
             fsm_app = self.processor_instance.fsm_app
-            # Build state representation
             state_data = {
-                "state": fsm_app.get_state(),
-                "context": fsm_app.get_context().dump() if hasattr(fsm_app.get_context(), "dump") else {}
+                "current_state": fsm_app.current_state if hasattr(fsm_app, "current_state") else "",
+                "output": fsm_app.state_output if hasattr(fsm_app, "state_output") else {},
+                "available_actions": fsm_app.available_actions if hasattr(fsm_app, "available_actions") else {}
             }
-
-            # Add available actions if the method exists in FSMToolProcessor
-            if hasattr(self.processor_instance, "_get_available_actions"):
-                state_data["actions"] = self.processor_instance._get_available_actions()
-
+            
             return state_data
         except Exception as e:
             logger.error(f"Error getting state for trace {self.trace_id}: {str(e)}")
@@ -93,7 +114,17 @@ class AsyncAgentSession(AgentInterface):
 
         try:
             logger.info(f"Processing step for trace {self.trace_id}")
-            new_messages, is_complete, final_tool_result = await run_with_claude(self.processor_instance, self.llm_client, self.messages)   # noqa: F821
+            try:
+                if "max_tokens" not in self.settings:
+                    logger.debug(f"Setting default max_tokens for trace {self.trace_id}")
+                    self.settings["max_tokens"] = 4096
+                new_messages = await self.processor_instance.step(self.messages, self.llm_client, self.settings)
+            except Exception:
+                logger.exception(f"Exception during processor_instance.step for trace {self.trace_id}")
+                raise
+                
+            is_complete = self.processor_instance.fsm_app and self.processor_instance.fsm_app.is_completed
+            final_tool_result = None
             self.is_complete = is_complete
             if final_tool_result or new_messages:
                 if new_messages:
@@ -135,7 +166,7 @@ class AsyncAgentSession(AgentInterface):
             return None
 
         except Exception as e:
-            logger.exception(f"Error in process_step: {str(e)}")
+            logger.exception(f"Error in process_step (outer handler) for trace {self.trace_id}: {str(e)}")
 
             self.is_complete = True
             return AgentSseEvent(
@@ -159,8 +190,17 @@ class AsyncAgentSession(AgentInterface):
             logger.info(f"FSM is already complete for trace {self.trace_id}")
             return False
 
-        if self.processor_instance.work_in_progress.locked():
-            logger.info(f"FSM is locked for trace {self.trace_id}, work in progress")
+        if not self.processor_instance:
+            logger.warning(f"No processor instance found for trace {self.trace_id}")
+            return False
+
+        # Check if work is in progress using the step method instead of directly accessing work_in_progress
+        try:
+            if hasattr(self.processor_instance, "fsm_app") and self.processor_instance.fsm_app:
+                logger.info(f"FSM is in progress for trace {self.trace_id}")
+                return False
+        except Exception as e:
+            logger.warning(f"Error checking FSM progress: {str(e)}")
             return False
 
         if not self.user_answered:
