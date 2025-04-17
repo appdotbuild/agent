@@ -14,6 +14,9 @@ from api.agent_server.agent_api_client import AgentApiClient
 
 logger = get_logger(__name__)
 
+
+logger = get_logger(__name__)
+
 if os.getenv("BUILDER_TOKEN") is None:
     os.environ["BUILDER_TOKEN"] = "dummy_token"
 
@@ -34,6 +37,7 @@ def agent_type(request, monkeypatch):
 def empty_token(monkeypatch):
     monkeypatch.delenv("BUILDER_TOKEN")
     yield
+
 
 
 
