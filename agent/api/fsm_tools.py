@@ -313,7 +313,6 @@ Do not consider the work complete until all components have been generated and t
             Dictionary with final state, output, and paths to generated files
         """
         import tempfile
-        import os
         
         try:
             logger.info(f"[FSMTools] Baking application with description: {app_description}")

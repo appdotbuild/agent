@@ -2,13 +2,12 @@ import json
 import uuid
 import pytest
 import anyio
-from httpx import AsyncClient, ASGITransport
+from httpx import AsyncClient
 import os
 import traceback
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List
 from log import get_logger
-from api.agent_server.async_server import app, CONFIG
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
+from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_api_client import AgentApiClient
 
 
@@ -213,9 +212,6 @@ async def test_template_diff_implementation():
 @pytest.mark.skip(reason="Requires actual FSM implementation")
 async def test_fsm_bake_functionality():
     """Test the bake functionality in FSMToolProcessor."""
-    import tempfile
-    from api.fsm_tools import FSMToolProcessor
-    
     
     # - The result contains expected keys (current_state, output, file_paths, temp_dir)
 
@@ -256,7 +252,6 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
     """
     Async interactive Agent CLI chat.
     """
-    import json
     from datetime import datetime
 
     # Prepare state and settings
