@@ -21,7 +21,7 @@ pytestmark = pytest.mark.anyio
 def anyio_backend():
     return 'asyncio'
 
-@pytest.fixture(params=["empty_diff", "trpc_agent"])
+@pytest.fixture(params=["template_diff", "trpc_agent"])
 def agent_type(request, monkeypatch):
     agent_value = request.param
     monkeypatch.setenv("CODEGEN_AGENT", agent_value)
