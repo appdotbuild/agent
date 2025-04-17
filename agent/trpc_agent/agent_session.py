@@ -38,8 +38,17 @@ class TrpcAgentSession(AgentInterface):
             "max_tokens": 8192,
         }
 
-    async def bake_app_diff(self) -> None:
-        logger.warning("No baking at the moment 🥖")
+    async def get_app_diff(self) -> str:
+        fsm_app = self.processor_instance.fsm_app
+        match fsm_app:
+            case None:
+                raise ValueError("FSMApplication is None")
+            case FSMApplication():
+                ctx = fsm_app.fsm.context
+
+        files = fsm_app.get_files_at_root(ctx)
+        diff = await fsm_app.get_diff_with(files)
+        return diff
 
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
@@ -79,8 +88,8 @@ class TrpcAgentSession(AgentInterface):
                 app_diff = None
                 # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
             else:
-                app_diff = await self.bake_app_diff()
                 fsm_state = await self.processor_instance.fsm_app.fsm.dump()
+                app_diff = await self.get_app_diff()
             event_out = AgentSseEvent(
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
