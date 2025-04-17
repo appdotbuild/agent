@@ -355,8 +355,6 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
     Async interactive Agent CLI chat.
     """
     import json
-    import readline         # enable input history/editing
-    import traceback
     from datetime import datetime
 
     # Prepare state and settings
@@ -469,7 +467,6 @@ def cli(host: str = "",
         port: int = 8001,
         state_file: str = "/tmp/agent_chat_state.json",
         settings: str = "{}"):
-    import anyio
     anyio.run(run_chatbot_client, host, port, state_file, settings, backend="asyncio")
 
 if __name__ == "__main__":

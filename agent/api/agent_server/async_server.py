@@ -20,7 +20,6 @@ import uvicorn
 from fire import Fire
 import dagger
 import os
-import sys
 
 from api.agent_server.models import (
     AgentRequest,
