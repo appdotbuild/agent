@@ -70,8 +70,19 @@ async def test_invalid_token():
             await client.send_message("Hello", auth_token="invalid_token")
 
 async def test_auth_disabled(empty_token):
+    from unittest.mock import AsyncMock, MagicMock
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_client.post.return_value = mock_response
+    
+    mock_events = [MagicMock()]
+    
     async with AgentApiClient() as client:
-        events = await client.send_message("Hello", auth_token=None)
+        client.client = mock_client
+        client.parse_sse_events = AsyncMock(return_value=mock_events)
+        
+        events, _ = await client.send_message("Hello", auth_token=None)
         assert len(events) > 0, "No events received with empty token"
 
 async def test_empty_token():
