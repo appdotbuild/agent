@@ -139,11 +139,36 @@ async def test_async_agent_message_endpoint(agent_type):
 
 async def test_async_agent_state_continuation():
     """Test that agent state can be restored and conversation can continue."""
+    from unittest.mock import AsyncMock, MagicMock
+    
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_client.post.return_value = mock_response
+    
+    mock_event = MagicMock(spec=AgentSseEvent)
+    mock_event.trace_id = "test-trace-id"
+    mock_event.status = AgentStatus.IDLE
+    mock_event.message = MagicMock()
+    mock_event.message.kind = MessageKind.STAGE_RESULT
+    mock_event.message.agent_state = {"test_state": True}
+    mock_events = [mock_event]
+    
     async with AgentApiClient() as client:
+        client.client = mock_client
+        client.parse_sse_events = AsyncMock(return_value=mock_events)
+        
         # Initial request
         initial_events, initial_request = await client.send_message("Create a todo app")
         assert len(initial_events) > 0, "No initial events received"
 
+        continuation_events = [MagicMock(spec=AgentSseEvent)]
+        for event in continuation_events:
+            event.trace_id = initial_request.trace_id
+        
+        # Mock continue_conversation
+        client.continue_conversation = AsyncMock(return_value=(continuation_events, initial_request))
+        
         # Continue conversation with new message
         continuation_events, continuation_request = await client.continue_conversation(
             previous_events=initial_events,
