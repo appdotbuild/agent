@@ -156,7 +156,7 @@ class CachedLLM(AsyncLLM):
                 else:
                     raise ValueError(
                         "no cached response found for this request in replay mode; "
-                        "run in record mode first to populate the cache"
+                        f"run in record mode first to populate the cache. Request: {request_params}"
                     )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")

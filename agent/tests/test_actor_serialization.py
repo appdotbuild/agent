@@ -1,3 +1,4 @@
+import os
 import pytest
 import dagger
 from core.base_node import Node
@@ -37,7 +38,7 @@ class SimpleActor(BaseActor):
 
 
 async def test_actor_recovery():
-    async with dagger.connection():
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         workspace = await Workspace.create()
         root = Node[BaseData](BaseData(
             workspace=workspace.clone(),

@@ -39,7 +39,7 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
-    "*.ipynb"
+    "*.ipynb",
 ]
 
 line-length = 120
@@ -52,7 +52,6 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+# FixMe: how to pull dev dependencies from the children workspace?
 [dependency-groups]
-dev = [
-    "ruff>=0.11.5",
-]
+dev = ["ruff>=0.11.5", "pdbpp>=0.10.3", "pytest>=8.3.5"]

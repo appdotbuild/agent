@@ -237,7 +237,7 @@ async def healthcheck():
 @app.get("/health/dagger")
 async def dagger_healthcheck():
     """Dagger connection health check endpoint"""
-    async with dagger.Connection() as client:
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Try a simple Dagger operation to verify connectivity
         container = client.container().from_("alpine:latest")
         version = await container.with_exec(["cat", "/etc/alpine-release"]).stdout()

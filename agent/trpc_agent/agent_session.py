@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, TypedDict
+from typing import Dict, Any, Optional, TypedDict, List
 
 from anyio.streams.memory import MemoryObjectSendStream
 
@@ -50,6 +50,12 @@ class TrpcAgentSession(AgentInterface):
         diff = await fsm_app.get_diff_with(files)
         return diff
 
+    @staticmethod
+    def user_answered(messages: List[Message]) -> bool:
+        if not messages:
+              return False
+        return messages[-1].role == "user"
+
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
         Process the incoming request and send events to the event stream.
@@ -81,27 +87,42 @@ class TrpcAgentSession(AgentInterface):
                 Message(role=m.role if m.role == "user" else "assistant", content=[TextRaw(text=m.content)])
                 for m in request.all_messages
             ]
-            new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
-            if self.processor_instance.fsm_app is None:
-                logger.info("FSMApplication is empty")
-                fsm_state = None
-                app_diff = None
-                # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
-            else:
-                fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                app_diff = await self.get_app_diff()
-            event_out = AgentSseEvent(
-                status=AgentStatus.IDLE,
-                traceId=self.trace_id,
-                message=AgentMessage(
-                    role="agent",
-                    kind=MessageKind.STAGE_RESULT,
-                    content=str(new_messages),
-                    agentState={"fsm_state": fsm_state} if fsm_state else None,
-                    unifiedDiff=app_diff
+
+
+            while True:
+                new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                if self.processor_instance.fsm_app is None:
+                    logger.info("FSMApplication is empty")
+                    fsm_state = None
+                    app_diff = None
+                    # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
+                else:
+                    fsm_state = await self.processor_instance.fsm_app.fsm.dump()
+                    app_diff = await self.get_app_diff()
+                event_out = AgentSseEvent(
+                    status=AgentStatus.IDLE,
+                    traceId=self.trace_id,
+                    message=AgentMessage(
+                        role="agent",
+                        kind=MessageKind.STAGE_RESULT,
+                        content=str(new_messages),
+                        agentState={"fsm_state": fsm_state} if fsm_state else None,
+                        unifiedDiff=app_diff
+                    )
                 )
-            )
-            await event_tx.send(event_out)
+                await event_tx.send(event_out)
+                messages += new_messages
+
+                match self.processor_instance.fsm_app:
+                    case None:
+                        is_completed = False
+                    case FSMApplication():
+                        fsm_app = self.processor_instance.fsm_app
+                        is_completed = fsm_app.is_completed
+
+                if not self.user_answered(new_messages) or is_completed:
+                    break
+
 
         except Exception as e:
             logger.exception(f"Error in process: {str(e)}")

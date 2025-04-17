@@ -22,11 +22,17 @@ pytestmark = pytest.mark.anyio
 def anyio_backend():
     return 'asyncio'
 
-@pytest.fixture(params=["empty_diff", "trpc_agent"])
+@pytest.fixture(params=["empty_diff", "trpc_agent"], scope="function")
 def agent_type(request, monkeypatch):
     agent_value = request.param
     monkeypatch.setenv("CODEGEN_AGENT", agent_value)
     yield agent_value
+
+
+@pytest.fixture
+def empty_diff(monkeypatch):
+    monkeypatch.setenv("CODEGEN_AGENT", "empty_diff")
+    yield
 
 
 @pytest.fixture
@@ -201,7 +207,7 @@ async def test_empty_token():
 async def test_async_agent_message_endpoint(agent_type):
     """Test the message endpoint with different agent types."""
     async with AgentApiClient() as client:
-        events, request = await client.send_message("Implement a calculator app")
+        events, request = await client.send_message("Implement a simple app with a counter of clicks on a single button")
 
         assert len(events) > 0, f"No SSE events received with agent_type={agent_type}"
 
@@ -217,11 +223,11 @@ async def test_async_agent_message_endpoint(agent_type):
 
 
 
-async def test_async_agent_state_continuation():
+async def test_async_agent_state_continuation(empty_diff):
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
         # Initial request
-        initial_events, initial_request = await client.send_message("Create a todo app")
+        initial_events, initial_request = await client.send_message("Implement a simple app with a counter of clicks on a single button")
         assert len(initial_events) > 0, "No initial events received"
 
         # Continue conversation with new message
@@ -239,7 +245,7 @@ async def test_async_agent_state_continuation():
 
 
 
-async def test_sequential_sse_responses():
+async def test_sequential_sse_responses(empty_diff):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
         # Initial request
@@ -271,7 +277,7 @@ async def test_sequential_sse_responses():
         assert all(tid == initial_request.trace_id for tid in all_trace_ids), "Trace IDs inconsistent across sequential SSE responses"
 
 
-async def test_session_with_no_state():
+async def test_session_with_no_state(empty_diff):
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
         # Generate a fixed trace/chatbot ID to use for all requests
@@ -300,7 +306,7 @@ async def test_session_with_no_state():
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
 
 
-async def test_agent_reaches_idle_state():
+async def test_agent_reaches_idle_state(empty_diff):
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
         # Send a simple "Hello" prompt
@@ -350,7 +356,7 @@ async def test_external_server_message():
             pytest.fail(f"Error testing external server: {e}")
 
 
-async def run_chatbot_client(host: str, port: int, state_file: str, settings: str) -> None:
+async def run_chatbot_client(host: str, port: int, state_file: str, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
@@ -359,7 +365,6 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
 
     # Prepare state and settings
     state_file = os.path.expanduser(state_file)
-    settings_dict = json.loads(settings)
     previous_events: List[AgentSseEvent] = []
     previous_messages: List[str] = []
     request = None
@@ -393,6 +398,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
         while True:
             try:
                 ui = input("\033[94mYou> \033[0m")
+                if ui.startswith("+"):
+                    ui = "A simple greeting app that says hello in five languages and stores history of greetings"
             except (EOFError, KeyboardInterrupt):
                 print("\nExiting…")
                 return
@@ -437,11 +444,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
             try:
                 print("\033[92mBot> \033[0m", end="", flush=True)
                 if request is None:
-                    events, request = await client.send_message(content, settings=settings_dict)
+                    logger.warning("Sending new message")
+                    events, request = await client.send_message(content)
                 else:
-                    events, request = await client.continue_conversation(
-                        previous_events, request, content, settings=settings_dict
-                    )
+                    logger.warning("Sending continuation")
+                    events, request = await client.continue_conversation(previous_events, request, content)
 
                 for evt in events:
                     if evt.message and evt.message.content:
@@ -451,14 +458,14 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
                 previous_messages.append(content)
                 previous_events.extend(events)
 
-                # Auto-save
-                with open(state_file, "w") as f:
-                    json.dump({
-                        "events": [e.model_dump() for e in previous_events],
-                        "messages": previous_messages,
-                        "agent_state": request.agent_state,
-                        "timestamp": datetime.now().isoformat()
-                    }, f, indent=2)
+                if autosave:
+                    with open(state_file, "w") as f:
+                        json.dump({
+                            "events": [e.model_dump() for e in previous_events],
+                            "messages": previous_messages,
+                            "agent_state": request.agent_state,
+                            "timestamp": datetime.now().isoformat()
+                        }, f, indent=2)
             except Exception as e:
                 print(f"Error: {e}")
                 traceback.print_exc()
@@ -466,8 +473,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
 def cli(host: str = "",
         port: int = 8001,
         state_file: str = "/tmp/agent_chat_state.json",
-        settings: str = "{}"):
-    anyio.run(run_chatbot_client, host, port, state_file, settings, backend="asyncio")
+        ):
+    anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
 
 if __name__ == "__main__":
     from fire import Fire

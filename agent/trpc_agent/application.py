@@ -274,7 +274,7 @@ class FSMApplication:
 
     @property
     def is_completed(self) -> bool:
-        return self.current_state == FSMState.COMPLETE
+        return self.current_state == FSMState.COMPLETE or self.current_state == FSMState.FAILURE
 
     def maybe_error(self) -> str | None:
         return self.fsm.context.error
