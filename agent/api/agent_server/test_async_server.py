@@ -209,12 +209,6 @@ async def test_template_diff_implementation():
             "Response doesn't mention increment/decrement functionality"
 
 
-@pytest.mark.skip(reason="Requires actual FSM implementation")
-async def test_fsm_bake_functionality():
-    """Test the bake functionality in FSMToolProcessor."""
-    
-    # - The result contains expected keys (current_state, output, file_paths, temp_dir)
-
 
 @pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
 async def test_external_server_health():
