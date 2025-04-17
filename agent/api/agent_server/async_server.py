@@ -1,9 +1,21 @@
+"""
+FastAPI implementation for the agent server.
+
+This server handles API requests initiated by clients (e.g., test clients),
+coordinates agent logic using components from `core` and specific agent
+implementations like `trpc_agent`. It utilizes `models.py` for
+request/response validation and interacts with LLMs via the `llm` wrappers
+(indirectly through agents).
+
+Refer to `architecture.puml` for a visual overview.
+"""
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import anyio
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uvicorn
 from fire import Fire
 import dagger
@@ -18,9 +30,10 @@ from api.agent_server.models import (
     ErrorResponse
 )
 from api.agent_server.interface import AgentInterface
-from api.agent_server.async_agent_session import AsyncAgentSession
+from trpc_agent.agent_session import AsyncAgentSession as TrpcAgentSession
 from api.agent_server.empty_diff_impl import EmptyDiffAgentImplementation
-from api import config
+from api.config import CONFIG
+
 from log import get_logger, init_sentry
 
 logger = get_logger(__name__)
@@ -37,6 +50,30 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    valid_token = CONFIG.builder_token
+    if not valid_token:
+        logger.info("No token configured, skipping authentication")
+        return True
+
+    if not credentials or not credentials.scheme == "Bearer":
+        logger.info("Missing authentication token")
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized - missing authentication token"
+        )
+
+    if credentials.scheme.lower() != "bearer" or credentials.credentials != valid_token:
+        logger.info("Invalid authentication token")
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized - invalid authentication token"
+        )
+
+    return True
 
 
 class SessionManager:
@@ -137,7 +174,10 @@ async def run_agent[T: AgentInterface](
 
 
 @app.post("/message", response_model=None)
-async def message(request: AgentRequest) -> StreamingResponse:
+async def message(
+    request: AgentRequest,
+    token: str = Depends(verify_token)
+) -> StreamingResponse:
     """
     Send a message to the agent and stream responses via SSE.
 
@@ -156,6 +196,7 @@ async def message(request: AgentRequest) -> StreamingResponse:
 
     Args:
         request: The agent request containing all necessary fields
+        token: Authentication token (automatically verified by verify_token dependency)
 
     Returns:
         Streaming response with SSE events according to the API spec
@@ -167,10 +208,10 @@ async def message(request: AgentRequest) -> StreamingResponse:
         logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
         agent_type = {
             "empty_diff": EmptyDiffAgentImplementation,
-            "trpc_agent": AsyncAgentSession,
+            "trpc_agent": TrpcAgentSession,
         }
         return StreamingResponse(
-            run_agent(request, agent_type[config.AGENT_TYPE]),
+            run_agent(request, agent_type[CONFIG.agent_type]),
             media_type="text/event-stream"
         )
 

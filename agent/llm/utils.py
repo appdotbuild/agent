@@ -53,7 +53,7 @@ def get_llm_client(
     backend: Literal["auto"] | LLMBackend = "auto",
     model_name: Literal["sonnet", "haiku"] = "sonnet",
     cache_mode: CacheMode = "auto",
-    cache_path: str = os.path.join(os.path.dirname(__file__), "../../../llm_cache.json"),
+    cache_path: str = os.path.join(os.path.dirname(__file__), "llm_cache.json"),
     client_params: dict | None = None,
 ) -> AsyncLLM:
     """Get a configured LLM client for the fullstack application.

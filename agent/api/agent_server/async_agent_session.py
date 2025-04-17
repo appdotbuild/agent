@@ -18,13 +18,18 @@ from api.agent_server.models import (
     MessageKind,
 )
 from api.agent_server.interface import AgentInterface
+import warnings
+
 
 logger = logging.getLogger(__name__)
+
 
 
 class AsyncAgentSession(AgentInterface):
     def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
+
+        warnings.warn("This is deprecated, annoy Igor to remove it", DeprecationWarning)
         self.application_id = application_id or uuid4().hex
         self.trace_id = trace_id or uuid4().hex
         self.settings = settings or {}

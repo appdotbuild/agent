@@ -1,0 +1,63 @@
+@startuml Architecture Diagram
+
+!theme vibrant
+skinparam packageStyle rectangle
+skinparam folderStyle package
+
+title Agent System Architecture
+
+package "agent" {
+    folder "api" as Api {
+        folder "agent_server" as AgentServer {
+            file "agent_api.tsp\nAPI Specification\n(TypeSpec)" as ApiSpec
+            file "models.py\nPython Models\n(Pydantic)" as ApiModels
+            file "async_server.py\nServer Implementation\n(FastAPI/AnyIO)" as AsyncServer
+        }
+        // Removed CLI folder as it doesn't exist, interactions are likely via tests
+        // folder "cli\nCLI Entrypoint" as Cli 
+    }
+
+    folder "core\nCore Framework\n(Base classes, State machine)" as Core
+
+    folder "trpc_agent\nTRPC Agent Implementation\n(Uses Core, LLM)" as TrpcAgent
+
+    folder "llm\nLLM Wrappers" as LLM
+
+    folder "stash_bot" as StashBot <<Deprecated>>
+
+    file "log.py\nGlobal Logging" as Log
+
+    note right of Log
+        Global logging component.
+        Used by most other components
+        (Api, Core, TrpcAgent, LLM, Cli)
+        for logging and tracing.
+    end note
+
+    ' --- Relationships ---
+
+    ' Server dependencies
+    AsyncServer --> Core : Uses
+    AsyncServer --> LLM : Uses (via Agents)
+    AsyncServer --> TrpcAgent : Runs Agent Logic
+    AsyncServer --> ApiModels : Uses Models
+    ApiModels ..> ApiSpec : Implements Spec
+
+    ' Agent dependencies
+    TrpcAgent --> Core : Uses Framework
+    TrpcAgent --> LLM : Uses Wrappers
+
+    // CLI dependencies -> Test Client dependencies
+    // Cli --> AgentServer : Interacts With
+    // Note: AgentServer is interacted with by test clients (e.g., in tests/)
+
+    ' Logging dependencies (dashed for lower coupling)
+    ' Removed logging arrows for clarity, see note near Log component
+    ' Api ..> Log : Uses
+    ' Core ..> Log : Uses
+    ' TrpcAgent ..> Log : Uses
+    ' LLM ..> Log : Uses
+    ' Cli ..> Log : Uses
+}
+
+@enduml 

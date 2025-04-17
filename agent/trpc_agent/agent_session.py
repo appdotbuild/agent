@@ -35,7 +35,6 @@ class AsyncAgentSession(AgentInterface):
         self.processor_instance = FSMToolProcessor(FSMApplication)
         self.llm_client: AsyncLLM = get_llm_client()
         self.model_params = {
-            "model": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
             "max_tokens": 8192,
         }
 

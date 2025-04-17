@@ -1,3 +1,9 @@
+"""
+Global logging setup for the agent system.
+
+Provides a centralized logging configuration used by various components
+(Api, Core, TrpcAgent, LLM, Test Clients) as indicated in the architecture diagram.
+"""
 import watchtower
 import logging
 import logging.handlers

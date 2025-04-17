@@ -1,3 +1,9 @@
+// TypeSpec definition for the Agent Server API.
+// This file specifies the data types, interfaces, and operations for the API.
+// It serves as the source of truth for the API structure, implemented by
+// `models.py` (Python Pydantic models) and `async_server.py` (FastAPI server).
+// Refer to `architecture.puml` for its place in the overall system.
+
 import "@typespec/http";
 import "@typespec/rest";
 
