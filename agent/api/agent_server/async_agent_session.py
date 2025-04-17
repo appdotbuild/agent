@@ -29,7 +29,12 @@ class AsyncAgentSession(AgentInterface):
     def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
 
-        warnings.warn("This is deprecated, annoy Igor to remove it", DeprecationWarning)
+        warnings.warn(
+            "The module api.agent_server.async_agent_session is deprecated. "
+            "Use trpc_agent.agent_session instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self.application_id = application_id or uuid4().hex
         self.trace_id = trace_id or uuid4().hex
         self.settings = settings or {}

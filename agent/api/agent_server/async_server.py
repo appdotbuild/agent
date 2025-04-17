@@ -1,6 +1,4 @@
 """
-DEPRECATED: This module is deprecated. Use trpc_agent.async_server instead.
-
 FastAPI implementation for the agent server.
 
 This server handles API requests initiated by clients (e.g., test clients),
@@ -11,14 +9,6 @@ request/response validation and interacts with LLMs via the `llm` wrappers
 
 Refer to `architecture.puml` for a visual overview.
 """
-import warnings
-
-warnings.warn(
-    "The module api.agent_server.async_server is deprecated. "
-    "Use trpc_agent.async_server instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -40,6 +30,7 @@ from api.agent_server.models import (
     ErrorResponse
 )
 from api.agent_server.interface import AgentInterface
+# Use the TrpcAgentSession from trpc_agent.agent_session instead of the deprecated AsyncAgentSession
 from trpc_agent.agent_session import AsyncAgentSession as TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
