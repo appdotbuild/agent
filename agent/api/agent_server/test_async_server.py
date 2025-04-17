@@ -6,9 +6,12 @@ from httpx import AsyncClient, ASGITransport
 import os
 import traceback
 from typing import List, Dict, Any, Tuple, Optional
-
+from log import get_logger
 from api.agent_server.async_server import app, CONFIG
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
+
+
+logger = get_logger(__name__)
 
 if os.getenv("BUILDER_TOKEN") is None:
     os.environ["BUILDER_TOKEN"] = "dummy_token"
@@ -60,6 +63,7 @@ class AgentApiClient:
 
     async def send_message(self,
                           message: str,
+                          request: Optional[AgentRequest] = None,
                           application_id: Optional[str] = None,
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
@@ -67,7 +71,11 @@ class AgentApiClient:
                           auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
 
         """Send a message to the agent and return the parsed SSE events"""
-        request = self.create_request(message, application_id, trace_id, agent_state, settings)
+
+        if request is None:
+            request = self.create_request(message, application_id, trace_id, agent_state, settings)
+        else:
+            logger.info(f"Using existing request with trace ID: {request.trace_id}, ignoring the message parameter")
 
         # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
         url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
@@ -342,143 +350,128 @@ async def test_external_server_message():
             pytest.fail(f"Error testing external server: {e}")
 
 
-async def run_chatbot_client():
+async def run_chatbot_client(host: str, port: int, state_file: str, settings: str) -> None:
     """
-    Run a command line chatbot client that preserves past messages and state in the JSON payload.
-    This allows for interactive conversations with the agent server.
+    Async interactive Agent CLI chat.
     """
-    import argparse
     import json
-    import os
+    import readline         # enable input history/editing
+    import traceback
     from datetime import datetime
 
-    parser = argparse.ArgumentParser(description="Command line chatbot client for the agent server")
-    parser.add_argument("--host", default="localhost", help="Host of the agent server")
-    parser.add_argument("--port", type=int, default=8001, help="Port of the agent server")
-    parser.add_argument("--app-id", default=f"cli-bot-{uuid.uuid4().hex[:8]}", help="Application ID")
-    parser.add_argument("--trace-id", default=uuid.uuid4().hex, help="Trace ID")
-    parser.add_argument("--state-file", default="~/.agent_chat_state.json", help="File to store chat state")
-    parser.add_argument("--settings", default="{}", help="JSON string with settings")
-    args = parser.parse_args()
+    # Prepare state and settings
+    state_file = os.path.expanduser(state_file)
+    settings_dict = json.loads(settings)
+    previous_events: List[AgentSseEvent] = []
+    previous_messages: List[str] = []
+    request = None
 
-    state_file = os.path.expanduser(args.state_file)
-    
-    previous_events = []
-    previous_messages = []
-    agent_state = None
-    
+    # Load saved state if available
     if os.path.exists(state_file):
         try:
-            with open(state_file, 'r') as f:
-                saved_state = json.load(f)
-                previous_events = saved_state.get('events', [])
-                previous_messages = saved_state.get('messages', [])
-                agent_state = saved_state.get('agent_state')
-                print(f"Loaded previous conversation with {len(previous_messages)} messages")
+            with open(state_file, "r") as f:
+                saved = json.load(f)
+                previous_events = [
+                    AgentSseEvent.model_validate(e) for e in saved.get("events", [])
+                ]
+                previous_messages = saved.get("messages", [])
+                print(f"Loaded conversation with {len(previous_messages)} messages")
         except Exception as e:
-            print(f"Error loading previous state: {e}")
-    
-    base_url = f"http://{args.host}:{args.port}"
-    
+            print(f"Warning: could not load state: {e}")
+
+    # Banner
+    divider = "=" * 60
+    print(divider)
+    print("Interactive Agent CLI Chat")
+    print("Type '/help' for commands.")
+    print(divider)
+
+    if host:
+        base_url = f"http://{host}:{port}"
+        print(f"Connected to {base_url}")
+    else:
+        base_url = None # Use ASGI transport for local testing
     async with AgentApiClient(base_url=base_url) as client:
-        print(f"Connected to agent server at {base_url}")
-        print("Type 'exit' or 'quit' to end the conversation")
-        print("Type 'clear' to start a new conversation")
-        print("Type 'save' to explicitly save the current state")
-        
-        if not previous_events:
-            request = AgentRequest(
-                allMessages=[],
-                applicationId=args.app_id,
-                traceId=args.trace_id,
-                agentState=None,
-                settings=json.loads(args.settings)
-            )
-        else:
-            # Extract agent state from the last event
-            for event in reversed(previous_events):
-                if event.message and event.message.agent_state:
-                    agent_state = event.message.agent_state
-                    break
-            
-            request = AgentRequest(
-                allMessages=[UserMessage(role="user", content=msg) for msg in previous_messages],
-                applicationId=args.app_id,
-                traceId=args.trace_id,
-                agentState=agent_state,
-                settings=json.loads(args.settings)
-            )
-        
         while True:
-            user_input = input("\nYou: ")
-            
-            if user_input.lower() in ['exit', 'quit']:
-                break
-            elif user_input.lower() == 'clear':
-                previous_events = []
-                previous_messages = []
-                agent_state = None
-                request = AgentRequest(
-                    allMessages=[],
-                    applicationId=args.app_id,
-                    traceId=args.trace_id,
-                    agentState=None,
-                    settings=json.loads(args.settings)
-                )
-                print("Conversation cleared")
-                continue
-            elif user_input.lower() == 'save':
-                with open(state_file, 'w') as f:
-                    json.dump({
-                        'events': [event.model_dump() for event in previous_events],
-                        'messages': previous_messages + [user_input],
-                        'agent_state': agent_state,
-                        'timestamp': datetime.now().isoformat()
-                    }, f, indent=2)
-                print(f"Conversation state saved to {state_file}")
-                continue
-            
-            previous_messages.append(user_input)
-            
-            # Update request with new message
-            request.allMessages.append(UserMessage(role="user", content=user_input))
-            
             try:
-                print("\nAgent: ", end="", flush=True)
-                
-                response = await client.client.post(
-                    "/message",
-                    json=request.model_dump(by_alias=True),
-                    headers={"Accept": "text/event-stream"},
-                    timeout=None
-                )
-                
-                if response.status_code != 200:
-                    print(f"Request failed with status code {response.status_code}")
+                ui = input("\033[94mYou> \033[0m")
+            except (EOFError, KeyboardInterrupt):
+                print("\nExiting…")
+                return
+
+            cmd = ui.strip()
+            if not cmd:
+                continue
+            action, *rest = cmd.split(None, 1)
+            match action.lower():
+                case "/exit" | "/quit":
+                    print("Goodbye!")
+                    return
+                case "/help":
+                    print(
+                        "Commands:\n"
+                        "/help       Show this help\n"
+                        "/exit, /quit Exit chat\n"
+                        "/clear      Clear conversation\n"
+                        "/save       Save state to file"
+                    )
                     continue
-                
-                events, _ = await AgentApiClient.parse_sse_events(response)
+                case "/clear":
+                    previous_events.clear()
+                    previous_messages.clear()
+                    request = None
+                    print("Conversation cleared.")
+                    continue
+                case "/save":
+                    with open(state_file, "w") as f:
+                        json.dump({
+                            "events": [e.model_dump() for e in previous_events],
+                            "messages": previous_messages,
+                            "agent_state": request.agent_state if request else None,
+                            "timestamp": datetime.now().isoformat()
+                        }, f, indent=2)
+                    print(f"State saved to {state_file}")
+                    continue
+                case _:
+                    content = cmd
+
+            # Send or continue conversation
+            try:
+                print("\033[92mBot> \033[0m", end="", flush=True)
+                if request is None:
+                    events, request = await client.send_message(content, settings=settings_dict)
+                else:
+                    events, request = await client.continue_conversation(
+                        previous_events, request, content, settings=settings_dict
+                    )
+
+                for evt in events:
+                    if evt.message and evt.message.content:
+                        print(evt.message.content, end="", flush=True)
+                print()
+
+                previous_messages.append(content)
                 previous_events.extend(events)
-                
-                # Extract agent state from the last event
-                for event in reversed(events):
-                    if event.message and event.message.agent_state:
-                        agent_state = event.message.agent_state
-                        break
-                
-                request.agentState = agent_state
-                
-                with open(state_file, 'w') as f:
+
+                # Auto-save
+                with open(state_file, "w") as f:
                     json.dump({
-                        'events': [event.model_dump() for event in previous_events],
-                        'messages': previous_messages,
-                        'agent_state': agent_state,
-                        'timestamp': datetime.now().isoformat()
+                        "events": [e.model_dump() for e in previous_events],
+                        "messages": previous_messages,
+                        "agent_state": request.agent_state,
+                        "timestamp": datetime.now().isoformat()
                     }, f, indent=2)
-                
             except Exception as e:
-                print(f"\nError: {str(e)}")
+                print(f"Error: {e}")
                 traceback.print_exc()
 
+def cli(host: str = "",
+        port: int = 8001,
+        state_file: str = "/tmp/agent_chat_state.json",
+        settings: str = "{}"):
+    import anyio
+    anyio.run(run_chatbot_client, host, port, state_file, settings, backend="asyncio")
+
 if __name__ == "__main__":
-    anyio.run(run_chatbot_client, backend="asyncio")
+    from fire import Fire
+    Fire(cli)

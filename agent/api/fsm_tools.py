@@ -336,7 +336,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     logger.info("[Main] FSM interaction completed successfully")
     return new_messages
 
-def run_main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
+def run_main(initial_prompt: str = "A simple greeting app that says hello in five languages and stores history of greetings"):
     return anyio.run(main, initial_prompt)
 
 if __name__ == "__main__":

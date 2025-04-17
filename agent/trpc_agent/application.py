@@ -153,10 +153,7 @@ class FSMApplication:
 
         llm = get_llm_client()
         model_params = settings or {}
-        if "max_tokens" not in model_params:
-            logger.warning("max_tokens not found in settings, defaulting to 4096")
-            model_params["max_tokens"] = 4096
-            
+
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
             context=dagger.dag.host().directory("./trpc_agent/template"),
@@ -300,7 +297,7 @@ class FSMApplication:
                 }
                 return {"handlers": handler_files}
             case FSMState.REVIEW_INDEX:
-                return {"index": self.fsm.context.server_files["index.ts"]}
+                return {"index": self.fsm.context.server_files["src/index.ts"]}
             case FSMState.REVIEW_FRONTEND:
                 return {"frontend": self.fsm.context.frontend_files}
             case FSMState.COMPLETE:

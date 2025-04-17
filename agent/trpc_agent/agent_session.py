@@ -26,7 +26,7 @@ class AgentState(TypedDict):
     fsm_state: MachineCheckpoint
 
 
-class AsyncAgentSession(AgentInterface):
+class TrpcAgentSession(AgentInterface):
     def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
         self.application_id = application_id or uuid4().hex
@@ -56,8 +56,13 @@ class AsyncAgentSession(AgentInterface):
             # Check if we need to initialize or if this is a continuation with an existing state
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
-                fsm = await FSMApplication.load(request.agent_state["fsm_state"])
-                self.processor_instance = FSMToolProcessor(FSMApplication, fsm)
+                fsm_state = request.agent_state.get("fsm_state")
+                match fsm_state:
+                    case None:
+                        self.processor_instance = FSMToolProcessor(FSMApplication)
+                    case _:
+                        fsm = await FSMApplication.load(fsm_state)
+                        self.processor_instance = FSMToolProcessor(FSMApplication, fsm_app=fsm)
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
@@ -69,9 +74,13 @@ class AsyncAgentSession(AgentInterface):
             ]
             new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
             if self.processor_instance.fsm_app is None:
-                raise RuntimeError("FSMApplication is None")
-            app_diff = await self.bake_app_diff()
-            fsm_state = await self.processor_instance.fsm_app.fsm.dump()
+                logger.info("FSMApplication is empty")
+                fsm_state = None
+                app_diff = None
+                # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
+            else:
+                app_diff = await self.bake_app_diff()
+                fsm_state = await self.processor_instance.fsm_app.fsm.dump()
             event_out = AgentSseEvent(
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
@@ -79,8 +88,8 @@ class AsyncAgentSession(AgentInterface):
                     role="agent",
                     kind=MessageKind.STAGE_RESULT,
                     content=str(new_messages),
-                    agentState={"fsm_state": fsm_state},
-                    unifiedDiff=app_diff,
+                    agentState={"fsm_state": fsm_state} if fsm_state else None,
+                    unifiedDiff=app_diff
                 )
             )
             await event_tx.send(event_out)
