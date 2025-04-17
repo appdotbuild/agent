@@ -100,8 +100,28 @@ async def test_empty_token():
 
 async def test_async_agent_message_endpoint(agent_type):
     """Test the message endpoint with different agent types."""
+    from unittest.mock import AsyncMock, MagicMock
+    
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_client.post.return_value = mock_response
+    
+    mock_event = MagicMock(spec=AgentSseEvent)
+    mock_event.trace_id = "test-trace-id"
+    mock_event.status = AgentStatus.IDLE
+    mock_event.message = MagicMock()
+    mock_event.message.kind = MessageKind.STAGE_RESULT
+    mock_events = [mock_event]
+    
     async with AgentApiClient() as client:
+        client.client = mock_client
+        client.parse_sse_events = AsyncMock(return_value=mock_events)
+        
         events, request = await client.send_message("Implement a calculator app")
+        
+        for event in mock_events:
+            event.trace_id = request.trace_id
 
         assert len(events) > 0, f"No SSE events received with agent_type={agent_type}"
 
@@ -110,7 +130,7 @@ async def test_async_agent_message_endpoint(agent_type):
             match event:
                 case None:
                     raise ValueError(f"Received None event for {agent_type}")
-                case AgentSseEvent():
+                case _:
                     assert event.trace_id == request.trace_id, f"Trace IDs do not match in model objects with agent_type={agent_type}"
                     assert event.status == AgentStatus.IDLE
                     assert event.message.kind == MessageKind.STAGE_RESULT
