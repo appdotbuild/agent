@@ -1,14 +1,12 @@
-import json
 import uuid
 import pytest
 import anyio
-from httpx import AsyncClient, ASGITransport
+from httpx import AsyncClient
 import os
 import traceback
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List
 from log import get_logger
-from api.agent_server.async_server import app, CONFIG
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
+from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_client import AgentApiClient
 
 
@@ -255,7 +253,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
     """
     Async interactive Agent CLI chat.
     """
-    import json
+    import json  # Import needed locally
     from datetime import datetime
 
     # Prepare state and settings

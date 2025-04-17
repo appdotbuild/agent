@@ -4,7 +4,7 @@ import os
 from typing import List, Dict, Any, Tuple, Optional
 from httpx import AsyncClient, ASGITransport
 
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus
+from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage
 from api.agent_server.async_server import app, CONFIG
 from log import get_logger
 
