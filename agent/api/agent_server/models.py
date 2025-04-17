@@ -8,7 +8,7 @@ They are used by the `async_server.py` for data validation.
 Refer to `architecture.puml` for context within the system.
 """
 from enum import Enum
-import ujson as json
+import json
 from typing import Dict, List, Optional, Any, Union, Literal, Type, TypeVar
 from pydantic import BaseModel, Field
 
