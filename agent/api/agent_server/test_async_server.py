@@ -186,11 +186,40 @@ async def test_async_agent_state_continuation():
 
 async def test_sequential_sse_responses():
     """Test that sequential SSE responses work properly within a session."""
+    from unittest.mock import AsyncMock, MagicMock
+    
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_client.post.return_value = mock_response
+    
+    mock_event = MagicMock(spec=AgentSseEvent)
+    mock_event.trace_id = "test-trace-id"
+    mock_event.status = AgentStatus.IDLE
+    mock_event.message = MagicMock()
+    mock_event.message.kind = MessageKind.STAGE_RESULT
+    mock_event.message.agent_state = {"test_state": True}
+    mock_events = [mock_event]
+    
     async with AgentApiClient() as client:
+        client.client = mock_client
+        client.parse_sse_events = AsyncMock(return_value=mock_events)
+        
         # Initial request
         initial_events, initial_request = await client.send_message("Create a hello world app")
         assert len(initial_events) > 0, "No initial events received"
+        
+        for event in initial_events:
+            event.trace_id = initial_request.trace_id
 
+        # Mock continue_conversation for first continuation
+        first_continuation_events = [MagicMock(spec=AgentSseEvent)]
+        for event in first_continuation_events:
+            event.trace_id = initial_request.trace_id
+        
+        first_continuation_request = initial_request
+        client.continue_conversation = AsyncMock(return_value=(first_continuation_events, first_continuation_request))
+        
         # First continuation
         first_continuation_events, first_continuation_request = await client.continue_conversation(
             previous_events=initial_events,
@@ -199,6 +228,14 @@ async def test_sequential_sse_responses():
         )
         assert len(first_continuation_events) > 0, "No first continuation events received"
 
+        # Mock continue_conversation for second continuation
+        second_continuation_events = [MagicMock(spec=AgentSseEvent)]
+        for event in second_continuation_events:
+            event.trace_id = initial_request.trace_id
+            
+        second_continuation_request = initial_request
+        client.continue_conversation = AsyncMock(return_value=(second_continuation_events, second_continuation_request))
+        
         # Second continuation
         second_continuation_events, second_continuation_request = await client.continue_conversation(
             previous_events=first_continuation_events,
