@@ -294,6 +294,158 @@ During your review process, consider the following questions:
 When providing feedback, be specific and actionable. If you're unsure about any aspect, ask for clarification before proceeding.
 
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
+        
+    async def bake(self, app_description: str, temp_dir: str = None) -> dict:
+        """
+        Generate an application in one go without interactive confirmation steps.
+        
+        This method handles the entire process of creating an FSM application:
+        1. Initializes the FSM with the app description
+        2. Automatically confirms each state
+        3. Saves all generated files to a temporary directory
+        4. Returns the final state and output
+        
+        Args:
+            app_description: Description of the application to generate
+            temp_dir: Optional path to save generated files (uses tempfile if None)
+            
+        Returns:
+            Dictionary with final state, output, and paths to generated files
+        """
+        import tempfile
+        import os
+        
+        try:
+            logger.info(f"[FSMTools] Baking application with description: {app_description}")
+            
+            # Create temp directory if not provided
+            if not temp_dir:
+                temp_dir = tempfile.mkdtemp(prefix="fsm_bake_")
+                logger.info(f"[FSMTools] Created temporary directory: {temp_dir}")
+            
+            self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description, settings=self.settings)
+            
+            # Check for errors
+            if (error_msg := self.fsm_app.maybe_error()):
+                return {"error": f"FSM initialization failed: {error_msg}"}
+            
+            while True:
+                current_state = self.fsm_app.current_state
+                logger.info(f"[FSMTools] Processing state: {current_state}")
+                
+                if current_state == "complete" or "complete" in current_state.lower():
+                    logger.info("[FSMTools] Reached terminal state, baking complete")
+                    break
+                
+                await self.fsm_app.confirm_state()
+                
+                # Check for errors after confirmation
+                if (error_msg := self.fsm_app.maybe_error()):
+                    return {"error": f"FSM confirmation failed at state {current_state}: {error_msg}"}
+                
+                if self.fsm_app.current_state == current_state:
+                    logger.warning(f"[FSMTools] State didn't change after confirmation: {current_state}")
+                    await self.fsm_app.confirm_state()
+                    if self.fsm_app.current_state == current_state:
+                        return {"error": f"FSM stuck in state {current_state}"}
+            
+            file_paths = await self._save_generated_files(temp_dir)
+            
+            # Prepare final result
+            result = {
+                "current_state": self.fsm_app.current_state,
+                "output": self.fsm_app.state_output,
+                "file_paths": file_paths,
+                "temp_dir": temp_dir
+            }
+            
+            logger.info(f"[FSMTools] Baking completed successfully with {len(file_paths)} files")
+            return result
+            
+        except Exception as e:
+            logger.exception(f"[FSMTools] Error during baking: {str(e)}")
+            return {"error": f"Failed to bake application: {str(e)}"}
+    
+    async def _save_generated_files(self, output_dir: str) -> dict:
+        """
+        Save all generated files from the FSM to the specified directory.
+        
+        Args:
+            output_dir: Directory to save files to
+            
+        Returns:
+            Dictionary mapping file names to their full paths
+        """
+        import os
+        import json
+        
+        if not self.fsm_app:
+            raise RuntimeError("No active FSM session")
+        
+        file_paths = {}
+        
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            
+            state_output = self.fsm_app.state_output
+            
+            if isinstance(state_output, dict):
+                if "files" in state_output:
+                    files = state_output["files"]
+                    for file_name, content in files.items():
+                        file_path = os.path.join(output_dir, file_name)
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        
+                        with open(file_path, "w") as f:
+                            f.write(content)
+                        
+                        file_paths[file_name] = file_path
+                        logger.info(f"[FSMTools] Saved file: {file_path}")
+                
+                if "server_template" in state_output:
+                    server_dir = os.path.join(output_dir, "server")
+                    os.makedirs(server_dir, exist_ok=True)
+                    
+                    for file_name, content in state_output["server_template"].items():
+                        file_path = os.path.join(server_dir, file_name)
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        
+                        with open(file_path, "w") as f:
+                            f.write(content)
+                        
+                        file_paths[f"server/{file_name}"] = file_path
+                        logger.info(f"[FSMTools] Saved server file: {file_path}")
+                
+                if "frontend_template" in state_output:
+                    frontend_dir = os.path.join(output_dir, "frontend")
+                    os.makedirs(frontend_dir, exist_ok=True)
+                    
+                    for file_name, content in state_output["frontend_template"].items():
+                        file_path = os.path.join(frontend_dir, file_name)
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        
+                        with open(file_path, "w") as f:
+                            f.write(content)
+                        
+                        file_paths[f"frontend/{file_name}"] = file_path
+                        logger.info(f"[FSMTools] Saved frontend file: {file_path}")
+            
+            metadata_path = os.path.join(output_dir, "fsm_metadata.json")
+            with open(metadata_path, "w") as f:
+                json.dump({
+                    "file_count": len(file_paths),
+                    "files": list(file_paths.keys()),
+                    "state": self.fsm_app.current_state
+                }, f, indent=2)
+            
+            file_paths["fsm_metadata.json"] = metadata_path
+            logger.info(f"[FSMTools] Saved metadata: {metadata_path}")
+            
+            return file_paths
+            
+        except Exception as e:
+            logger.exception(f"[FSMTools] Error saving generated files: {str(e)}")
+            return {"error": str(e)}
 
 
 async def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):

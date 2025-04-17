@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from api.agent_server.async_server import app, CONFIG
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, AgentStatus, MessageKind
+from api.agent_server.agent_api_client import AgentApiClient
 
 if os.getenv("BUILDER_TOKEN") is None:
     os.environ["BUILDER_TOKEN"] = "dummy_token"
@@ -19,7 +20,7 @@ pytestmark = pytest.mark.anyio
 def anyio_backend():
     return 'asyncio'
 
-@pytest.fixture(params=["empty_diff", "trpc_agent"])
+@pytest.fixture(params=["empty_diff", "trpc_agent", "template_diff"])
 def agent_type(request, monkeypatch):
     agent_value = request.param
     monkeypatch.setenv("CODEGEN_AGENT", agent_value)
@@ -32,139 +33,6 @@ def empty_token(monkeypatch):
     yield
 
 
-class AgentApiClient:
-    """Reusable client for interacting with the Agent API server"""
-
-    def __init__(self, app_instance=None, base_url=None):
-        """Initialize the client with an optional app instance or base URL
-
-        Args:
-            app_instance: FastAPI app instance for direct ASGI transport
-            base_url: External base URL to test against (e.g., "http://18.237.53.81")
-        """
-        self.app = app_instance or app
-        self.base_url = base_url
-        self.transport = ASGITransport(app=self.app) if base_url is None else None
-        self.client = None
-
-    async def __aenter__(self):
-        if self.base_url:
-            self.client = AsyncClient(base_url=self.base_url)
-        else:
-            self.client = AsyncClient(transport=self.transport)
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.client:
-            await self.client.aclose()
-
-    async def send_message(self,
-                          message: str,
-                          application_id: Optional[str] = None,
-                          trace_id: Optional[str] = None,
-                          agent_state: Optional[Dict[str, Any]] = None,
-                          settings: Optional[Dict[str, Any]] = None,
-                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
-
-        """Send a message to the agent and return the parsed SSE events"""
-        request = self.create_request(message, application_id, trace_id, agent_state, settings)
-
-        # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
-        url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
-        headers={"Accept": "text/event-stream"}
-        if auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
-
-        response = await self.client.post(
-            url,
-            json=request.model_dump(by_alias=True),
-            headers=headers,
-            timeout=None
-        )
-
-        if response.status_code != 200:
-            raise ValueError(f"Request failed with status code {response.status_code}")
-
-        events = await self.parse_sse_events(response)
-        return events, request
-
-    async def continue_conversation(self,
-                                  previous_events: List[AgentSseEvent],
-                                  previous_request: AgentRequest,
-                                  message: str,
-                                  settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
-        """Continue a conversation using the agent state from previous events"""
-        agent_state = None
-
-        # Extract agent state from the last event
-        for event in reversed(previous_events):
-            if event.message and event.message.agent_state:
-                agent_state = event.message.agent_state
-                break
-
-        # If no state was found, use a dummy state
-        if agent_state is None:
-            agent_state = {"test_state": True, "generated_in_test": True}
-
-        # Use the same trace ID for continuity
-        trace_id = previous_request.trace_id
-        application_id = previous_request.application_id
-
-        events, request = await self.send_message(
-            message=message,
-            application_id=application_id,
-            trace_id=trace_id,
-            agent_state=agent_state,
-            settings=settings
-        )
-
-        return events, request
-
-    @staticmethod
-    def create_request(message: str,
-                     application_id: Optional[str] = None,
-                     trace_id: Optional[str] = None,
-                     agent_state: Optional[Dict[str, Any]] = None,
-                     settings: Optional[Dict[str, Any]] = None) -> AgentRequest:
-        """Create a request object for the agent API"""
-        return AgentRequest(
-            allMessages=[
-                UserMessage(
-                    role="user",
-                    content=message
-                )
-            ],
-            applicationId=application_id or f"test-bot-{uuid.uuid4().hex[:8]}",
-            traceId=trace_id or uuid.uuid4().hex,
-            agentState=agent_state,
-            settings=settings or {"max-iterations": 3}
-        )
-
-    @staticmethod
-    async def parse_sse_events(response) -> List[AgentSseEvent]:
-        """Parse the SSE events from a response stream"""
-        event_objects = []
-        buffer = ""
-
-        async for line in response.aiter_lines():
-            buffer += line
-            if line.strip() == "":  # End of SSE event marked by empty line
-                if buffer.startswith("data:"):
-                    data_parts = buffer.split("data:", 1)
-                    if len(data_parts) > 1:
-                        data_str = data_parts[1].strip()
-                        try:
-                            # Parse as both raw JSON and model objects
-                            event_obj = AgentSseEvent.from_json(data_str)
-                            event_objects.append(event_obj)
-                        except json.JSONDecodeError as e:
-                            print(f"JSON decode error: {e}, data: {data_str[:100]}...")
-                        except Exception as e:
-                            print(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
-                # Reset buffer for next event
-                buffer = ""
-
-        return event_objects
 
 
 async def test_health():
@@ -308,6 +176,40 @@ async def test_agent_reaches_idle_state():
         # Additional checks that may be useful
         assert final_event.message is not None, "Final event has no message"
         assert final_event.message.role == "agent", "Final message role is not 'agent'"
+
+
+async def test_template_diff_implementation():
+    """Test the TemplateDiffAgentImplementation specifically."""
+    os.environ["CODEGEN_AGENT"] = "template_diff"
+    
+    async with AgentApiClient() as client:
+        events, _ = await client.send_message("Create a counter app with increment and decrement buttons")
+        
+        # Check that we received events
+        assert len(events) > 0, "No events received from template_diff implementation"
+        
+        # Verify the final event has IDLE status
+        final_event = events[-1]
+        assert final_event.status == AgentStatus.IDLE, "Agent did not reach IDLE state"
+        
+        assert final_event.message is not None, "Final event has no message"
+        assert final_event.message.unified_diff, "No unified diff in template_diff implementation response"
+        
+        # Verify the content contains expected counter app elements
+        content = final_event.message.content
+        assert "counter" in content.lower(), "Response doesn't mention counter"
+        assert any(term in content.lower() for term in ["increment", "decrement", "button"]), \
+            "Response doesn't mention increment/decrement functionality"
+
+
+@pytest.mark.skip(reason="Requires actual FSM implementation")
+async def test_fsm_bake_functionality():
+    """Test the bake functionality in FSMToolProcessor."""
+    import tempfile
+    from api.fsm_tools import FSMToolProcessor
+    
+    
+    # - The result contains expected keys (current_state, output, file_paths, temp_dir)
 
 
 @pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
