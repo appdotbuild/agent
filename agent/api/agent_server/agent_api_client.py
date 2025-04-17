@@ -50,7 +50,7 @@ class AgentApiClient:
         """Send a message to the agent and return the parsed SSE events"""
         request = self.create_request(message, application_id, trace_id, agent_state, settings)
 
-        url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
+        url = "/message" if self.base_url or self.transport else os.getenv("EXTERNAL_SERVER_URL", "http://localhost:8001") + "/message"
         headers={"Accept": "text/event-stream"}
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
