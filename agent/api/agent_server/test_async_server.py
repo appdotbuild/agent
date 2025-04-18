@@ -255,7 +255,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
             print(f"⚠ Connection test failed: {e}")
             logger.error(f"Connection test failed: {e}")
             
-        print(f"Connection established. Ready for chat.")
+        print("Connection established. Ready for chat.")
 
         while True:
             try:
