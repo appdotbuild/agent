@@ -12,9 +12,6 @@ from api.agent_server.agent_client import AgentApiClient
 
 logger = get_logger(__name__)
 
-# Set dummy token for tests
-os.environ["BUILDER_TOKEN"] = "dummy_token_for_tests"
-
 pytestmark = pytest.mark.anyio
 
 @pytest.fixture
@@ -46,7 +43,7 @@ async def test_invalid_token():
         with pytest.raises(ValueError, match="Request failed with status code 403"):
             await client.send_message("Hello", auth_token="invalid_token")
 
-async def test_auth_disabled(empty_token):
+async def test_auth_disabled():
     async with AgentApiClient() as client:
         events, _ = await client.send_message("Hello", auth_token=None)
         assert len(events) > 0, "No events received with empty token"
@@ -86,11 +83,8 @@ async def test_empty_token(monkeypatch):
 async def test_async_agent_message_endpoint(agent_type):
     """Test the message endpoint with different agent types."""
     async with AgentApiClient() as client:
-        # Explicitly use the environment token
-        auth_token = os.environ.get("BUILDER_TOKEN")
         events, request = await client.send_message(
-            "Implement a calculator app", 
-            auth_token=auth_token
+            "Implement a calculator app"
         )
 
         assert len(events) > 0, f"No SSE events received with agent_type={agent_type}"
@@ -110,13 +104,8 @@ async def test_async_agent_message_endpoint(agent_type):
 async def test_async_agent_state_continuation():
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
-        # Explicitly use the environment token
-        auth_token = os.environ.get("BUILDER_TOKEN")
-        
-        # Initial request
         initial_events, initial_request = await client.send_message(
-            "Create a todo app",
-            auth_token=auth_token
+            "Create a todo app"
         )
         assert len(initial_events) > 0, "No initial events received"
 
@@ -138,13 +127,8 @@ async def test_async_agent_state_continuation():
 async def test_sequential_sse_responses():
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
-        # Explicitly use the environment token
-        auth_token = os.environ.get("BUILDER_TOKEN")
-        
-        # Initial request
         initial_events, initial_request = await client.send_message(
-            "Create a hello world app",
-            auth_token=auth_token
+            "Create a hello world app"
         )
         assert len(initial_events) > 0, "No initial events received"
 
@@ -176,10 +160,6 @@ async def test_sequential_sse_responses():
 async def test_session_with_no_state():
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
-        # Explicitly use the environment token
-        auth_token = os.environ.get("BUILDER_TOKEN")
-        
-        # Generate a fixed trace/chatbot ID to use for all requests
         fixed_trace_id = uuid.uuid4().hex
         fixed_application_id = f"test-bot-{uuid.uuid4().hex[:8]}"
 
@@ -187,8 +167,7 @@ async def test_session_with_no_state():
         first_events, _ = await client.send_message(
             "Create a counter app",
             application_id=fixed_application_id,
-            trace_id=fixed_trace_id,
-            auth_token=auth_token
+            trace_id=fixed_trace_id
         )
         assert len(first_events) > 0, "No events received from first request"
 
@@ -197,8 +176,7 @@ async def test_session_with_no_state():
             "Add a reset button",
             application_id=fixed_application_id,
             trace_id=fixed_trace_id,
-            agent_state=None,
-            auth_token=auth_token
+            agent_state=None
         )
         assert len(second_events) > 0, "No events received from second request"
 
@@ -211,10 +189,7 @@ async def test_agent_reaches_idle_state():
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
         # Explicitly use the environment token
-        auth_token = os.environ.get("BUILDER_TOKEN")
-        
-        # Send a simple "Hello" prompt
-        events, _ = await client.send_message("Hello", auth_token=auth_token)
+        events, _ = await client.send_message("Hello")
 
         # Check that we received some events
         assert len(events) > 0, "No events received"
