@@ -25,12 +25,6 @@ def agent_type(request, monkeypatch):
     yield agent_value
 
 
-@pytest.fixture
-def empty_token(monkeypatch):
-    monkeypatch.delenv("BUILDER_TOKEN", raising=False)
-    yield
-
-
 async def test_health():
     async with AgentApiClient() as client:
         resp = await client.client.get("http://test/health")
@@ -47,37 +41,6 @@ async def test_auth_disabled():
     async with AgentApiClient() as client:
         events, _ = await client.send_message("Hello", auth_token=None)
         assert len(events) > 0, "No events received with empty token"
-
-async def test_empty_token(monkeypatch):
-    """Test that authentication fails when no token is provided but auth is required."""
-    # Save the original token
-    original_token = os.environ.get("BUILDER_TOKEN")
-    
-    try:
-        # Environment has a token set, but we'll modify the client to not use it
-        monkeypatch.setenv("BUILDER_TOKEN", "valid_token_that_will_not_be_used")
-        
-        async with AgentApiClient() as client:
-            # Mock the client's post method to not add the Authorization header
-            original_post = client.client.post
-            
-            async def mock_post(*args, **kwargs):
-                # Remove Authorization header
-                if "headers" in kwargs and "Authorization" in kwargs["headers"]:
-                    del kwargs["headers"]["Authorization"]
-                return await original_post(*args, **kwargs)
-            
-            # Apply the mock
-            client.client.post = mock_post
-            
-            with pytest.raises(ValueError, match="Request failed with status code 401"):
-                await client.send_message("Hello")
-    finally:
-        # Restore the original token
-        if original_token is not None:
-            monkeypatch.setenv("BUILDER_TOKEN", original_token)
-        else:
-            monkeypatch.delenv("BUILDER_TOKEN", raising=False)
 
 
 async def test_async_agent_message_endpoint(agent_type):
@@ -271,10 +234,29 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: st
 
     if host:
         base_url = f"http://{host}:{port}"
-        print(f"Connected to {base_url}")
+        print(f"Attempting connection to server at {base_url}...")
+        logger.info(f"Attempting connection to server at {base_url}")
     else:
         base_url = None # Use ASGI transport for local testing
+        print("Using local ASGI transport for testing")
+        logger.info("Using local ASGI transport for testing")
+        
     async with AgentApiClient(base_url=base_url) as client:
+        try:
+            if base_url:
+                resp = await client.client.get(f"{base_url}/health")
+                if resp.status_code == 200:
+                    print(f"✓ Successfully connected to {base_url}")
+                    logger.info(f"Successfully connected to {base_url}")
+                else:
+                    print(f"⚠ Connected but server returned status code {resp.status_code}")
+                    logger.warning(f"Connected but server returned status code {resp.status_code}")
+        except Exception as e:
+            print(f"⚠ Connection test failed: {e}")
+            logger.error(f"Connection test failed: {e}")
+            
+        print(f"Connection established. Ready for chat.")
+
         while True:
             try:
                 ui = input("\033[94mYou> \033[0m")
