@@ -17,11 +17,12 @@ Refer to `agent/architecture.puml` for a visual representation of the system arc
       - `models.py` - Models for the agent server consistent with agent_api.tsp
       - `agent_api.tsp` - Server type specification for the agent server
       - `async_server.py` - Agent server implementation
+      - `async_agent_session.py` - DEPRECATED: Use trpc_agent/agent_session.py instead
     - `cli` - CLI entrypoint (Note: Interacted via test clients, not a dedicated CLI app)
   - `core` - Core framework logic (base classes, state machine, etc.)
   - `trpc_agent` - Agent for fullstack code generation (new agents follow this pattern)
   - `llm` - LLM wrappers
-  - `stash_bot` - Deprecated!
+  - `stash_bot` - DEPRECATED: Use trpc_agent implementation instead
   - `log.py` - Global logging and tracing
 
 # Development Workflow

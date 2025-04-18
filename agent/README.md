@@ -2,6 +2,9 @@
 
 Generates full stack apps using trpc + shadcn components.
 
+> **Important**: The implementation in `stash_bot` is deprecated and will be removed in a future version.
+> New development should use the `trpc_agent` implementation.
+
 ## Installation:
 
 1. Install [dagger](https://docs.dagger.io/install/)
