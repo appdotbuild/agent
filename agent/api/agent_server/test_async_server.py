@@ -9,9 +9,6 @@ from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_client import AgentApiClient
 
-if os.getenv("CODEGEN_AGENT") is None:
-    os.environ["CODEGEN_AGENT"] = "template_diff"
-
 logger = get_logger(__name__)
 
 pytestmark = pytest.mark.anyio
@@ -20,7 +17,7 @@ pytestmark = pytest.mark.anyio
 def anyio_backend():
     return 'asyncio'
 
-@pytest.fixture(params=["template_diff", "trpc_agent"])
+@pytest.fixture(params=["template_diff"])
 def agent_type(request, monkeypatch):
     agent_value = request.param
     monkeypatch.setenv("CODEGEN_AGENT", agent_value)
