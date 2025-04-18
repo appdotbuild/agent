@@ -81,7 +81,7 @@ class RunTests:
         logger.info(f"Tests failed with exit code {result.exit_code}")
         # Normalize the output
         err = self.test_output_normalizer.sub("[DURATION]", result.stderr)
-        return result, TextRaw(f"Error running tests: err")
+        return result, TextRaw(f"Error running tests: {err}")
 
 run_tests = RunTests()
 

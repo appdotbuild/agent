@@ -10,6 +10,10 @@ from log import get_logger
 
 logger = get_logger(__name__)
 
+# Set dummy token for tests
+os.environ["BUILDER_TOKEN"] = "dummy_token_for_tests"
+
+
 class AgentApiClient:
     """Reusable client for interacting with the Agent API server"""
 
@@ -43,15 +47,9 @@ class AgentApiClient:
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
                           settings: Optional[Dict[str, Any]] = None,
-                          auth_token: Optional[str] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
 
         """Send a message to the agent and return the parsed SSE events"""
-        
-        # Use builder token from environment or CONFIG if auth_token not explicitly provided
-        if auth_token is None:
-            auth_token = os.environ.get("BUILDER_TOKEN") or CONFIG.builder_token
-            logger.debug(f"Using auth token from environment: {auth_token is not None}")
-
         if request is None:
             request = self.create_request(message, application_id, trace_id, agent_state, settings)
         else:
@@ -64,7 +62,7 @@ class AgentApiClient:
             headers["Authorization"] = f"Bearer {auth_token}"
             logger.debug("Added authorization header")
         else:
-            logger.warning("No auth token available for authorization")
+            logger.info("No auth token available for authorization")
 
         response = await self.client.post(
             url,
@@ -155,4 +153,4 @@ class AgentApiClient:
                 # Reset buffer for next event
                 buffer = ""
 
-        return event_objects 
+        return event_objects

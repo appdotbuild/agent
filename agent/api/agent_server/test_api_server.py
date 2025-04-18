@@ -1,20 +1,10 @@
-import json
-import uuid
 import pytest
-import anyio
-from httpx import AsyncClient, ASGITransport
+from httpx import AsyncClient
 import os
-from typing import List, Dict, Any, Tuple, Optional
 from log import get_logger
-from api.agent_server.async_server import app, CONFIG
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage
 from api.agent_server.agent_api_client import AgentApiClient
 
-
 logger = get_logger(__name__)
-
-if os.getenv("BUILDER_TOKEN") is None:
-    os.environ["BUILDER_TOKEN"] = "dummy_token"
 
 pytestmark = pytest.mark.anyio
 

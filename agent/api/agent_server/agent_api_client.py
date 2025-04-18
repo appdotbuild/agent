@@ -1,32 +1,27 @@
 import json
-import uuid
 import anyio
-from httpx import AsyncClient
 import os
 import traceback
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Optional
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage
+from api.agent_server.models import AgentSseEvent
+from datetime import datetime
 
 logger = get_logger(__name__)
 
-# Set dummy token for tests
-os.environ["BUILDER_TOKEN"] = "dummy_token_for_tests"
 
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
-    import json  # Import needed locally
-    from datetime import datetime
 
     # Prepare state and settings
     state_file = os.path.expanduser(state_file)
     previous_events: List[AgentSseEvent] = []
     previous_messages: List[str] = []
     request = None
-    
+
     # Parse settings if provided
     settings_dict = {}
     if settings:

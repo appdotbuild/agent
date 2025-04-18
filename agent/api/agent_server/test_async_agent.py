@@ -1,7 +1,5 @@
 import uuid
 import pytest
-import os
-from typing import List, Dict, Any
 from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_api_client import AgentApiClient
@@ -36,7 +34,7 @@ async def test_async_agent_message_endpoint(agent_type, request):
         request.getfixturevalue("trpc_agent")
     elif agent_type == "empty_diff":
         request.getfixturevalue("empty_diff")
-    
+
     async with AgentApiClient() as client:
         events, request = await client.send_message("Implement a simple app with a counter of clicks on a single button")
 
