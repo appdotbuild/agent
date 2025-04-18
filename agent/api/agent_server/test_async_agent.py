@@ -21,20 +21,13 @@ def trpc_agent(monkeypatch):
 
 
 @pytest.fixture
-def empty_diff(monkeypatch):
-    monkeypatch.setenv("CODEGEN_AGENT", "empty_diff")
+def template_diff(monkeypatch):
+    monkeypatch.setenv("CODEGEN_AGENT", "template_diff")
     yield
 
 
-@pytest.mark.parametrize("agent_type", ["trpc_agent", "empty_diff"])
-async def test_async_agent_message_endpoint(agent_type, request):
-    """Test the message endpoint with different agent types."""
-    # Use the appropriate fixture based on agent_type
-    if agent_type == "trpc_agent":
-        request.getfixturevalue("trpc_agent")
-    elif agent_type == "empty_diff":
-        request.getfixturevalue("empty_diff")
-
+@pytest.mark.parametrize("agent_type", [trpc_agent, template_diff])
+async def test_async_agent_message_endpoint(agent_type):
     async with AgentApiClient() as client:
         events, request = await client.send_message("Implement a simple app with a counter of clicks on a single button")
 
@@ -51,7 +44,7 @@ async def test_async_agent_message_endpoint(agent_type, request):
                     assert event.message.kind == MessageKind.STAGE_RESULT
 
 
-async def test_async_agent_state_continuation(empty_diff):
+async def test_async_agent_state_continuation(template_diff):
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
         # Initial request
@@ -71,8 +64,7 @@ async def test_async_agent_state_continuation(empty_diff):
         for event in continuation_events:
             assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in continuation (model)"
 
-
-async def test_sequential_sse_responses(empty_diff):
+async def test_sequential_sse_responses(template_diff):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
         # Initial request
@@ -103,8 +95,7 @@ async def test_sequential_sse_responses(empty_diff):
         all_trace_ids = [event.trace_id for event in initial_events + first_continuation_events + second_continuation_events]
         assert all(tid == initial_request.trace_id for tid in all_trace_ids), "Trace IDs inconsistent across sequential SSE responses"
 
-
-async def test_session_with_no_state(empty_diff):
+async def test_session_with_no_state(template_diff):
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
         # Generate a fixed trace/chatbot ID to use for all requests
@@ -132,8 +123,7 @@ async def test_session_with_no_state(empty_diff):
         for event in first_events + second_events:
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
 
-
-async def test_agent_reaches_idle_state(empty_diff):
+async def test_agent_reaches_idle_state(template_diff):
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
         # Send a simple "Hello" prompt

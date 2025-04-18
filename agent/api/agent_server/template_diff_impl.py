@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 class TemplateDiffAgentImplementation(AgentInterface):
     """
     Agent implementation that generates a counter application with unified diffs.
-    
+
     This implementation demonstrates how to create a simple application with
     server and frontend components, providing unified diffs for the changes.
     """
@@ -27,7 +27,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
     def __init__(self, application_id: str, trace_id: str, settings: Optional[Dict[str, Any]] = None):
         """
         Initialize the TemplateDiffAgentImplementation.
-        
+
         Args:
             application_id: Unique identifier for the application
             trace_id: Trace ID for tracking the request
@@ -43,7 +43,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
     async def process(self, request, event_sender):
         """
         Process the agent request and generate a counter application.
-        
+
         Args:
             request: The agent request containing messages and context
             event_sender: Channel to send events back to the client
@@ -104,13 +104,17 @@ class TemplateDiffAgentImplementation(AgentInterface):
                 )
             ))
 
+        finally:
+            await event_sender.aclose()
+
+
     def _generate_counter_app(self, user_message: str) -> Tuple[Dict[str, str], Dict[str, str], str]:
         """
         Generate a counter application based on the user message.
-        
+
         Args:
             user_message: The user's request message
-            
+
         Returns:
             Tuple containing server files, frontend files, and unified diff
         """
@@ -225,10 +229,10 @@ button:hover {
     const incrementBtn = document.getElementById('increment-btn');
     const decrementBtn = document.getElementById('decrement-btn');
     const resetBtn = document.getElementById('reset-btn');
-    
+
     // API URL - change this to match your server
     const API_URL = 'http://localhost:5000/api/counter';
-    
+
     // Function to update the counter display
     const updateCounter = async () => {
         try {
@@ -239,10 +243,10 @@ button:hover {
             console.error('Error fetching counter:', error);
         }
     };
-    
+
     // Initialize counter
     updateCounter();
-    
+
     // Event listeners for buttons
     incrementBtn.addEventListener('click', async () => {
         try {
@@ -252,7 +256,7 @@ button:hover {
             console.error('Error incrementing counter:', error);
         }
     });
-    
+
     decrementBtn.addEventListener('click', async () => {
         try {
             await fetch(`${API_URL}/decrement`, { method: 'POST' });
@@ -261,7 +265,7 @@ button:hover {
             console.error('Error decrementing counter:', error);
         }
     });
-    
+
     resetBtn.addEventListener('click', async () => {
         try {
             await fetch(`${API_URL}/reset`, { method: 'POST' });
@@ -281,11 +285,11 @@ button:hover {
     def _generate_unified_diff(self, server_files: Dict[str, str], frontend_files: Dict[str, str]) -> str:
         """
         Generate a unified diff for the created files.
-        
+
         Args:
             server_files: Dictionary of server file names to content
             frontend_files: Dictionary of frontend file names to content
-            
+
         Returns:
             Unified diff string
         """
@@ -318,7 +322,7 @@ button:hover {
     def _save_files(self, server_files: Dict[str, str], frontend_files: Dict[str, str]) -> None:
         """
         Save the generated files to the temporary directory.
-        
+
         Args:
             server_files: Dictionary of server file names to content
             frontend_files: Dictionary of frontend file names to content
