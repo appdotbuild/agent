@@ -9,6 +9,8 @@ from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_client import AgentApiClient
 
+if os.getenv("CODEGEN_AGENT") is None:
+    os.environ["CODEGEN_AGENT"] = "template_diff"
 
 logger = get_logger(__name__)
 
