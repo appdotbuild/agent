@@ -24,12 +24,13 @@ import warnings
 logger = logging.getLogger(__name__)
 
 
-
+# DEPRECATED: Use trpc_agent/agent_session.py (TrpcAgentSession) instead
+# This class will be removed in a future version
 class AsyncAgentSession(AgentInterface):
     def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
 
-        warnings.warn("This is deprecated, annoy Igor to remove it", DeprecationWarning)
+        warnings.warn("This class is deprecated. Use trpc_agent.agent_session.TrpcAgentSession instead", DeprecationWarning)
         self.application_id = application_id or uuid4().hex
         self.trace_id = trace_id or uuid4().hex
         self.settings = settings or {}

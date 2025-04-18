@@ -1,5 +1,14 @@
 from typing import Any, Awaitable, Callable, NotRequired, Protocol, TypedDict
 import logging
+import warnings
+
+# DEPRECATED: This module is deprecated and will be removed in a future version.
+# Use the implementation in trpc_agent instead.
+warnings.warn(
+    "stash_bot.statemachine is deprecated. Use trpc_agent implementation instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 logger = logging.getLogger(__name__)
 
