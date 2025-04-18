@@ -77,7 +77,14 @@ class CachedLLM(AsyncLLM):
                 case list() | tuple():
                     return [normalize(item) for item in obj]
                 case dict():
-                    return {k: normalize(v) for k, v in sorted(obj.items())}
+                    # Replace 'id' values with a placeholder
+                    normalized_dict = {}
+                    for k, v in sorted(obj.items()):
+                        if k == "id":
+                            normalized_dict[k] = "__ID_PLACEHOLDER__"
+                        else:
+                            normalized_dict[k] = normalize(v)
+                    return normalized_dict
                 case _ if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
                     return normalize(obj.to_dict())
                 case _:
@@ -85,9 +92,8 @@ class CachedLLM(AsyncLLM):
 
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
-
-        logger.debug(f"Getting key for {key_str}")
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return key_str
+        # return hashlib.md5(key_str.encode()).hexdigest(), key_str
 
     async def completion(
         self,
@@ -101,10 +107,12 @@ class CachedLLM(AsyncLLM):
         **kwargs,
     ) -> Completion:
         """performs LLM completion with caching support."""
+        if args:
+            raise RuntimeError("args are not expected in this method, use kwargs instead")
         # Create a dict of all parameters for caching
         request_params = {
             "model": model,
-            "messages": [m.to_dict() for m in messages],
+            "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "tools": tools,
@@ -141,7 +149,6 @@ class CachedLLM(AsyncLLM):
                             temperature=temperature,
                             tools=tools,
                             tool_choice=tool_choice,
-                            *args,
                             **kwargs
                         )
                         self._cache[cache_key] = response.to_dict()
@@ -156,7 +163,7 @@ class CachedLLM(AsyncLLM):
                 else:
                     raise ValueError(
                         "no cached response found for this request in replay mode; "
-                        f"run in record mode first to populate the cache. Request: {request_params}"
+                        f"run in record mode first to populate the cache. cache_key: {cache_key}"
                     )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")

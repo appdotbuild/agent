@@ -69,14 +69,21 @@ async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]
     return result, TextRaw(f"Error running drizzle: {result.stderr}")
 
 
-async def run_tests(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
-    result = await node.data.workspace.exec_with_pg(["bun", "test"])
-    if result.exit_code == 0:
-        return result, None
+class RunTests:
+    def __init__(self):
+        self.test_output_normalizer = re.compile(r"\[\d+(\.\d+)?ms\]")
 
-    logger.info(f"Tests failed with exit code {result.exit_code}")
-    return result, TextRaw(f"Error running tests: {result.stderr}")
+    async def __call__(self, node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
+        result = await node.data.workspace.exec_with_pg(["bun", "test"])
+        if result.exit_code == 0:
+            return result, None
 
+        logger.info(f"Tests failed with exit code {result.exit_code}")
+        # Normalize the output
+        err = self.test_output_normalizer.sub("[DURATION]", result.stderr)
+        return result, TextRaw(f"Error running tests: err")
+
+run_tests = RunTests()
 
 class BaseTRPCActor(BaseActor, LLMActor):
     model_params: dict
