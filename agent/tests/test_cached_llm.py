@@ -1,10 +1,10 @@
 import pytest
 import tempfile
-import os
-import json
-from llm.cached import CachedLLM
-from llm.utils import get_llm_client
-from llm.common import Message, TextRaw
+from llm.cached import CachedLLM, AsyncLLM
+from llm.common import Message, TextRaw, Completion, Tool
+import uuid
+import ujson as json
+
 
 pytestmark = pytest.mark.anyio
 
@@ -14,9 +14,38 @@ def anyio_backend():
     return 'asyncio'
 
 
+class StubLLM(AsyncLLM):
+    def __init__(self):
+        self.calls = 0
+
+    async def completion(
+        self,
+        messages: list[Message],
+        max_tokens: int,
+        model: str | None = None,
+        temperature: float = 1.0,
+        tools: list[Tool] | None = None,
+        tool_choice: str | None = None,
+        system_prompt: str | None = None,
+        *args,
+        **kwargs,
+    ) -> Completion:
+
+        random_str = uuid.uuid4().hex
+        self.calls += 1
+        return Completion(
+            role="assistant",
+            content=[TextRaw(text=random_str)],
+            input_tokens=1,
+            output_tokens=10,
+            stop_reason="end_turn",
+            thinking_tokens=0,
+        )
+
+
 async def test_cached_llm():
     with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp_file:
-        base_llm = get_llm_client(cache_mode="off", model_name="haiku")
+        base_llm = StubLLM()
         record_llm = CachedLLM(
             client=base_llm,
             cache_mode="record",
@@ -29,127 +58,55 @@ async def test_cached_llm():
         }
 
         recorded = await record_llm.completion(**call_args)
-
         replay_llm = CachedLLM(
             client=base_llm,
             cache_mode="replay",
             cache_path=tmp_file.name,
         )
         replayed = await replay_llm.completion(**call_args)
-
+        assert base_llm.calls == 1, "Base LLM should be called once"
         assert recorded == replayed
 
 
-async def test_lru_cache_hit():
+
+async def test_cached_lru():
     with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp_file:
-        base_llm = get_llm_client(cache_mode="off", model_name="haiku")
-        
-        lru_llm = CachedLLM(
+        base_llm = StubLLM()
+        record_llm = CachedLLM(
             client=base_llm,
             cache_mode="lru",
             cache_path=tmp_file.name,
-            max_cache_size=2
+            max_cache_size=2,
         )
 
-        call_args = {
-            "messages": [Message(role="user", content=[TextRaw("LRU test message")])],
-            "max_tokens": 100,
+        requests = {
+            key: {
+                "messages": [Message(role="user", content=[TextRaw(str(i + 1))])],
+                "max_tokens": 100,
+            }
+            for i, key in enumerate(["first", "second", "third"])
         }
-        
-        # First call populates the cache
-        response1 = await lru_llm.completion(**call_args)
-        
-        # Second call with same args should hit the cache and return the same response
-        response2 = await lru_llm.completion(**call_args)
-        
-        # Responses should be identical since the second one comes from cache
-        assert response1 == response2
-        
-        # Check the cache file was created and contains at least one entry
-        with open(tmp_file.name, 'r') as f:
-            cache_data = json.load(f)
-            assert len(cache_data) == 1
+        responses = {}
 
+        for key, call_args in requests.items():
+            resp = await record_llm.completion(**call_args)
+            responses[key] = json.dumps(resp.to_dict())
 
-async def test_lru_cache_size_limit():
-    with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp_file:
-        base_llm = get_llm_client(cache_mode="off", model_name="haiku")
-        
-        # Set max cache size to 2
-        lru_llm = CachedLLM(
-            client=base_llm,
-            cache_mode="lru",
-            cache_path=tmp_file.name,
-            max_cache_size=2
-        )
+        assert base_llm.calls == 3, "Base LLM should be called three times"
 
-        # Make 3 different calls to exceed the cache size
-        call_args1 = {
-            "messages": [Message(role="user", content=[TextRaw("LRU Message 1")])],
-            "max_tokens": 100,
-        }
-        call_args2 = {
-            "messages": [Message(role="user", content=[TextRaw("LRU Message 2")])],
-            "max_tokens": 100,
-        }
-        call_args3 = {
-            "messages": [Message(role="user", content=[TextRaw("LRU Message 3")])],
-            "max_tokens": 100,
-        }
-        
-        # Make the calls in sequence
-        await lru_llm.completion(**call_args1)
-        await lru_llm.completion(**call_args2)
-        await lru_llm.completion(**call_args3)
-        
-        # Check the cache only contains 2 entries (since max_cache_size=2)
-        with open(tmp_file.name, 'r') as f:
-            cache_data = json.load(f)
-            assert len(cache_data) == 2
-        
-        # Make a new call to push out another entry
-        call_args4 = {
-            "messages": [Message(role="user", content=[TextRaw("LRU Message 4")])],
-            "max_tokens": 100,
-        }
-        await lru_llm.completion(**call_args4)
-        
-        # Check we still have only 2 entries
-        with open(tmp_file.name, 'r') as f:
-            updated_cache_data = json.load(f)
-            assert len(updated_cache_data) == 2
+        # Check that the first request was evicted from the cache
+        assert len(record_llm._cache_lru) == 2, "Cache should contain only the last two requests"
 
+        # 2 and 3 should be in the cache
+        new_resp = await record_llm.completion(**requests["second"])
+        assert json.dumps(new_resp.to_dict()) == responses["second"], "Second request should hit the cache"
 
-async def test_lru_cache_persistence():
-    with tempfile.NamedTemporaryFile(delete_on_close=False) as tmp_file:
-        base_llm = get_llm_client(cache_mode="off", model_name="haiku")
-        
-        # First client writes to cache
-        lru_llm1 = CachedLLM(
-            client=base_llm,
-            cache_mode="lru",
-            cache_path=tmp_file.name,
-            max_cache_size=5
-        )
+        new_resp = await record_llm.completion(**requests["third"])
+        assert json.dumps(new_resp.to_dict()) == responses["third"], "Third request should hit the cache"
 
-        call_args = {
-            "messages": [Message(role="user", content=[TextRaw("LRU Persistent message")])],
-            "max_tokens": 100,
-        }
-        
-        # Call and populate cache
-        response1 = await lru_llm1.completion(**call_args)
-        
-        # Create a new client that reads from the same cache file
-        lru_llm2 = CachedLLM(
-            client=base_llm,
-            cache_mode="lru",
-            cache_path=tmp_file.name,
-            max_cache_size=5
-        )
-        
-        # Should return the cached response
-        response2 = await lru_llm2.completion(**call_args)
-        
-        # Responses should be identical since the second one comes from cache
-        assert response1 == response2
+        assert base_llm.calls == 3, "Base LLM should still be called three times"
+
+        # check call to first is not in cache
+        new_resp = await record_llm.completion(**requests["first"])
+        assert json.dumps(new_resp.to_dict()) != responses["first"], "First request should not hit the cache"
+        assert base_llm.calls == 4, "Base LLM should still be called four times"

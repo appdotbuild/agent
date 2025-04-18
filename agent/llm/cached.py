@@ -1,4 +1,4 @@
-from typing import Literal, Dict, Any, List, OrderedDict
+from typing import Literal, Dict, Any, List
 import json
 import hashlib
 from pathlib import Path
@@ -79,13 +79,13 @@ class CachedLLM(AsyncLLM):
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         with cache_file.open("w") as f:
             json.dump(self._cache, f, indent=2)
-    
+
     def _update_lru_cache(self, key: str) -> None:
         """Update the LRU cache order and ensure it stays within size limit."""
         # Move to end (most recently used) or add if not present
         self._cache_lru.pop(key, None)
         self._cache_lru[key] = None
-        
+
         # Evict oldest entries if we exceed max cache size
         while len(self._cache_lru) > self.max_cache_size:
             oldest_key, _ = self._cache_lru.popitem(last=False)
@@ -176,7 +176,7 @@ class CachedLLM(AsyncLLM):
                         self._cache[cache_key] = response.to_dict()
                         self._save_cache()
                     return response
-                    
+
             case "lru":
                 async with anyio.Lock():
                     cache_key = self._get_cache_key(**request_params)
@@ -197,9 +197,8 @@ class CachedLLM(AsyncLLM):
                         )
                         self._cache[cache_key] = response.to_dict()
                         self._update_lru_cache(cache_key)
-                        self._save_cache()
                         return response
-                        
+
             case "replay":
                 cache_key = self._get_cache_key(**request_params)
                 if cache_key in self._cache:
