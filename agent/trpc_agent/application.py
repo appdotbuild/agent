@@ -5,7 +5,7 @@ import enum
 from typing import Dict, Self, Optional, Literal, Any
 from dataclasses import dataclass, field
 from core.statemachine import StateMachine, State, Context
-from llm.utils import get_llm_client, CachedLLM
+from llm.utils import get_llm_client
 from core.actors import BaseData
 from core.base_node import Node
 from core.statemachine import MachineCheckpoint
@@ -164,12 +164,7 @@ class FSMApplication:
 
         draft_actor = DraftActor(llm, backend_workspace.clone(), model_params)
 
-        # ugly hack for tests! fix it ASAP please
-        if isinstance(llm, CachedLLM):
-           beam_width = 1
-        else:
-           beam_width = 3
-
+        beam_width = 3
         handlers_actor = HandlersActor(llm, backend_workspace.clone(), model_params, beam_width=beam_width)
         index_actor = IndexActor(llm, backend_workspace.clone(), model_params, beam_width=beam_width)
         front_actor = FrontendActor(llm, frontend_workspace.clone(), model_params, beam_width=1, max_depth=20)

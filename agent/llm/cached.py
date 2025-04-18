@@ -40,6 +40,7 @@ class CachedLLM(AsyncLLM):
         self.max_cache_size = max_cache_size
         self._cache: Dict[str, Any] = {}
         self._cache_lru: OrderedDict[str, None] = OrderedDict()
+        self.lock = anyio.Lock()
 
         match (self.cache_mode, Path(self.cache_path)):
             case ("replay", file) if not file.exists():
@@ -157,7 +158,7 @@ class CachedLLM(AsyncLLM):
                 return response
 
             case "record":
-                async with anyio.Lock():
+                async with self.lock:
                     cache_key = self._get_cache_key(**request_params)
                     logger.info(f"Caching response with key: {cache_key}")
                     if cache_key in self._cache:
@@ -178,7 +179,7 @@ class CachedLLM(AsyncLLM):
                     return response
 
             case "lru":
-                async with anyio.Lock():
+                async with self.lock:
                     cache_key = self._get_cache_key(**request_params)
                     if cache_key in self._cache:
                         logger.info(f"lru cache hit: {cache_key}")
