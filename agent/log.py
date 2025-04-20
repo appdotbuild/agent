@@ -9,9 +9,6 @@ import logging.handlers
 import logging.config
 import sentry_sdk
 import os
-import boto3
-from datetime import datetime
-from botocore.exceptions import NoCredentialsError
 
 # Configure root logger to avoid duplicate handlers
 root_logger = logging.getLogger()
@@ -21,7 +18,7 @@ if root_logger.handlers:
 
 # Single formatter definition
 _FORMATTER = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+    '%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s'
 )
 
 
@@ -77,3 +74,22 @@ def init_sentry():
         )
     else:
         logger.warning("Sentry disabled")
+
+
+def configure_uvicorn_logging():
+    logging_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                "format": _FORMATTER._fmt,
+            },
+        },
+        "loggers": {
+            "uvicorn": {"level": "INFO", "propagate": True},
+            "uvicorn.error": {"level": "INFO", "propagate": True},
+            "uvicorn.access": {"level": "INFO", "propagate": True},
+        },
+    }
+
+    return logging_config

@@ -34,7 +34,7 @@ from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
 
-from log import get_logger, init_sentry
+from log import get_logger, init_sentry, configure_uvicorn_logging
 
 logger = get_logger(__name__)
 
@@ -255,12 +255,14 @@ def main(
     log_level: str = "info"
 ):
     init_sentry()
+
     uvicorn.run(
         "api.agent_server.async_server:app",
         host=host,
         port=port,
         reload=reload,
-        log_level=log_level
+        log_level=log_level,
+        log_config=configure_uvicorn_logging(),
     )
 
 if __name__ == "__main__":

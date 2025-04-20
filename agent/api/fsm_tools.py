@@ -1,6 +1,4 @@
 from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any
-import coloredlogs
-import sys
 import anyio
 from fire import Fire
 
@@ -10,9 +8,6 @@ from llm.common import Message, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
 from log import get_logger
 
-
-# Configure logging to use stderr instead of stdout
-coloredlogs.install(level="INFO", stream=sys.stderr)
 logger = get_logger(__name__)
 
 
