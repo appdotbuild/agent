@@ -8,6 +8,7 @@ import json
 import tempfile
 import shutil
 from typing import Dict, Any, Optional, Tuple
+import re
 
 from api.agent_server.interface import AgentInterface
 from api.agent_server.models import AgentSseEvent, AgentMessage, AgentStatus, MessageKind
@@ -121,205 +122,55 @@ class TemplateDiffAgentImplementation(AgentInterface):
             Tuple containing server files, frontend files, and unified diff
         """
         logger.info(f"Generating counter app based on: {user_message}")
-
-        server_files = {
-            "app.py": """from flask import Flask, jsonify, request
-from flask_cors import CORS
-app = Flask(__name__)
-CORS(app)
-counter = 0
-@app.route('/api/counter', methods=['GET'])
-def get_counter():
-    global counter
-    return jsonify({"value": counter})
-@app.route('/api/counter/increment', methods=['POST'])
-def increment_counter():
-    global counter
-    counter += 1
-    return jsonify({"value": counter})
-@app.route('/api/counter/decrement', methods=['POST'])
-def decrement_counter():
-    global counter
-    counter -= 1
-    return jsonify({"value": counter})
-@app.route('/api/counter/reset', methods=['POST'])
-def reset_counter():
-    global counter
-    counter = 0
-    return jsonify({"value": counter})
-if __name__ == '__main__':
-    app.run(debug=True)
-""",
-            "requirements.txt": """flask==2.0.1
-flask-cors==3.0.10
-"""
-        }
-
-        frontend_files = {
-            "index.html": """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Counter App</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <div class="container">
-        <h1>Counter App</h1>
-        <div class="counter-display">
-            <span id="counter-value">0</span>
-        </div>
-        <div class="counter-controls">
-            <button id="decrement-btn">-</button>
-            <button id="reset-btn">Reset</button>
-            <button id="increment-btn">+</button>
-        </div>
-    </div>
-    <script src="app.js"></script>
-</body>
-</html>
-""",
-            "styles.css": """body {
-    font-family: Arial, sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-    background-color: #f5f5f5;
-}
-.container {
-    text-align: center;
-    background-color: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-.counter-display {
-    font-size: 4rem;
-    margin: 1rem 0;
-}
-.counter-controls {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-}
-button {
-    font-size: 1.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-    background-color: #4caf50;
-    color: white;
-}
-    background-color: #f44336;
-    color: white;
-}
-    background-color: #2196f3;
-    color: white;
-}
-button:hover {
-    opacity: 0.9;
-}
-""",
-            "app.js": """document.addEventListener('DOMContentLoaded', () => {
-    const counterValue = document.getElementById('counter-value');
-    const incrementBtn = document.getElementById('increment-btn');
-    const decrementBtn = document.getElementById('decrement-btn');
-    const resetBtn = document.getElementById('reset-btn');
-
-    // API URL - change this to match your server
-    const API_URL = 'http://localhost:5000/api/counter';
-
-    // Function to update the counter display
-    const updateCounter = async () => {
-        try {
-            const response = await fetch(API_URL);
-            const data = await response.json();
-            counterValue.textContent = data.value;
-        } catch (error) {
-            console.error('Error fetching counter:', error);
-        }
-    };
-
-    // Initialize counter
-    updateCounter();
-
-    // Event listeners for buttons
-    incrementBtn.addEventListener('click', async () => {
-        try {
-            await fetch(`${API_URL}/increment`, { method: 'POST' });
-            updateCounter();
-        } catch (error) {
-            console.error('Error incrementing counter:', error);
-        }
-    });
-
-    decrementBtn.addEventListener('click', async () => {
-        try {
-            await fetch(`${API_URL}/decrement`, { method: 'POST' });
-            updateCounter();
-        } catch (error) {
-            console.error('Error decrementing counter:', error);
-        }
-    });
-
-    resetBtn.addEventListener('click', async () => {
-        try {
-            await fetch(`${API_URL}/reset`, { method: 'POST' });
-            updateCounter();
-        } catch (error) {
-            console.error('Error resetting counter:', error);
-        }
-    });
-});
-"""
-        }
-
-        unified_diff = self._generate_unified_diff(server_files, frontend_files)
-
+        
+        # Use the pre-defined counter_app.patch file
+        patch_file_path = os.path.join(os.path.dirname(__file__), "counter_app.patch")
+        
+        with open(patch_file_path, 'r') as f:
+            unified_diff = f.read()
+        
+        # Extract files from the patch
+        server_files = {}
+        frontend_files = {}
+        
+        # Parse the patch to extract file contents
+        current_file = None
+        current_content = []
+        file_path = None
+        
+        for line in unified_diff.split('\n'):
+            # Check for new file headers
+            if line.startswith('diff --git'):
+                # Save previous file if exists
+                if current_file and file_path:
+                    content = '\n'.join(current_content)
+                    if file_path.startswith('server/'):
+                        server_files[os.path.basename(file_path)] = content
+                    elif file_path.startswith('frontend/'):
+                        frontend_files[os.path.basename(file_path)] = content
+                
+                # Reset for new file
+                current_file = line
+                current_content = []
+                file_path = None
+            
+            # Extract file path from +++ line
+            elif line.startswith('+++') and not line.startswith('+++ /dev/null'):
+                file_path = line.split(' ')[1][2:]  # Remove "b/" prefix
+            
+            # Collect content lines (those starting with +)
+            elif line.startswith('+') and not line.startswith('+++'):
+                current_content.append(line[1:])  # Remove the + sign
+        
+        # Don't forget the last file
+        if current_file and file_path:
+            content = '\n'.join(current_content)
+            if file_path.startswith('server/'):
+                server_files[os.path.basename(file_path)] = content
+            elif file_path.startswith('frontend/'):
+                frontend_files[os.path.basename(file_path)] = content
+        
         return server_files, frontend_files, unified_diff
-
-    def _generate_unified_diff(self, server_files: Dict[str, str], frontend_files: Dict[str, str]) -> str:
-        """
-        Generate a unified diff for the created files.
-
-        Args:
-            server_files: Dictionary of server file names to content
-            frontend_files: Dictionary of frontend file names to content
-
-        Returns:
-            Unified diff string
-        """
-        diff_lines = []
-
-        for filename, content in server_files.items():
-            diff_lines.append(f"diff --git a/server/{filename} b/server/{filename}")
-            diff_lines.append("new file mode 100644")
-            diff_lines.append(f"index 0000000..{hash(content) & 0xFFFFFF:x}")
-            diff_lines.append("--- /dev/null")
-            diff_lines.append(f"+++ b/server/{filename}")
-            diff_lines.append(f"@@ -0,0 +1,{content.count(chr(10)) + 1} @@")
-
-            for line in content.split('\n'):
-                diff_lines.append(f"+{line}")
-
-        for filename, content in frontend_files.items():
-            diff_lines.append(f"diff --git a/frontend/{filename} b/frontend/{filename}")
-            diff_lines.append("new file mode 100644")
-            diff_lines.append(f"index 0000000..{hash(content) & 0xFFFFFF:x}")
-            diff_lines.append("--- /dev/null")
-            diff_lines.append(f"+++ b/frontend/{filename}")
-            diff_lines.append(f"@@ -0,0 +1,{content.count(chr(10)) + 1} @@")
-
-            for line in content.split('\n'):
-                diff_lines.append(f"+{line}")
-
-        return '\n'.join(diff_lines)
 
     def _save_files(self, server_files: Dict[str, str], frontend_files: Dict[str, str]) -> None:
         """
