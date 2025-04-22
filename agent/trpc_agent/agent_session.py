@@ -9,6 +9,7 @@ from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
+import ujson as json
 
 from api.agent_server.models import (
     AgentRequest,
@@ -88,7 +89,6 @@ class TrpcAgentSession(AgentInterface):
                 for m in request.all_messages
             ]
 
-
             while True:
                 new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
                 if self.processor_instance.fsm_app is None:
@@ -99,19 +99,20 @@ class TrpcAgentSession(AgentInterface):
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     app_diff = await self.get_app_diff()
+
+                messages += new_messages
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
                     traceId=self.trace_id,
                     message=AgentMessage(
                         role="agent",
-                        kind=MessageKind.STAGE_RESULT,
-                        content=str(new_messages),
+                        kind=MessageKind.STAGE_RESULT if self.user_answered(messages) else MessageKind.REFINEMENT_REQUEST,
+                        content=json.dumps([x.to_dict() for x in messages] ),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
                         unifiedDiff=app_diff
                     )
                 )
                 await event_tx.send(event_out)
-                messages += new_messages
 
                 match self.processor_instance.fsm_app:
                     case None:

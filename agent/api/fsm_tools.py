@@ -265,7 +265,7 @@ class FSMToolProcessor[T: FSMInterface]:
 
     @property
     def system_prompt(self) -> str:
-        return f"""You are a software engineering expert who can generate application code using a code generation framework. This framework uses a Finite State Machine (FSM) to guide the generation process.
+        return f"""You are a software engineering expert who can generate application code using a code generation framework based on Typescript, TRPC and Drizzle. This framework uses a Finite State Machine (FSM) to guide the generation process.
 
 Your task is to control the FSM through the following stages of code generation:
 {self.fsm_class.base_execution_plan()}
@@ -287,6 +287,7 @@ During your review process, consider the following questions:
 - Does it match other requirements mentioned in the dialogue?
 
 When providing feedback, be specific and actionable. If you're unsure about any aspect, ask for clarification before proceeding.
+FSM is an internal API, you don't need to know how it works under the hood or expose its details to the user.
 
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
 

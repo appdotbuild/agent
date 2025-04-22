@@ -24,9 +24,9 @@ class AgentStatus(str, Enum):
 
 class MessageKind(str, Enum):
     """Defines the type of message being sent from the Agent Server."""
-    STAGE_RESULT = "StageResult"
-    FEEDBACK_RESPONSE = "FeedbackResponse"
-    RUNTIME_ERROR = "RuntimeError"
+    STAGE_RESULT = "StageResult"  # tool was used, and FSM state is expected to be updated
+    RUNTIME_ERROR = "RuntimeError"  #  things went wrong!
+    REFINEMENT_REQUEST = "RefinementRequest"  # no tool was used, meaning the agent is asking for more information
 
 
 class UserMessage(BaseModel):

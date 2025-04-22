@@ -43,7 +43,6 @@ async def test_auth_disabled(empty_token, client):
 
 
 async def test_empty_token(client):
-    # async with AgentApiClient() as client:
     with pytest.raises(ValueError, match="Request failed with status code 401"):
         await client.send_message("Hello", auth_token=None)
 

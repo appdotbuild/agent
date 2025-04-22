@@ -26,10 +26,12 @@ def template_diff(monkeypatch):
     yield
 
 
+DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a single button"
+
 @pytest.mark.parametrize("agent_type", [trpc_agent, template_diff])
 async def test_async_agent_message_endpoint(agent_type):
     async with AgentApiClient() as client:
-        events, request = await client.send_message("Implement a simple app with a counter of clicks on a single button")
+        events, request = await client.send_message(DEFAULT_APP_REQUEST)
 
         assert len(events) > 0, f"No SSE events received with agent_type={agent_type}"
 
@@ -44,18 +46,17 @@ async def test_async_agent_message_endpoint(agent_type):
                     assert event.message.kind == MessageKind.STAGE_RESULT
 
 
-async def test_async_agent_state_continuation(template_diff):
+async def test_async_agent_state_continuation(trpc_agent):
     """Test that agent state can be restored and conversation can continue."""
     async with AgentApiClient() as client:
-        # Initial request
-        initial_events, initial_request = await client.send_message("Implement a simple app with a counter of clicks on a single button")
+        initial_events, initial_request = await client.send_message(DEFAULT_APP_REQUEST)
         assert len(initial_events) > 0, "No initial events received"
 
         # Continue conversation with new message
         continuation_events, continuation_request = await client.continue_conversation(
             previous_events=initial_events,
             previous_request=initial_request,
-            message="Add authentication to the app"
+            message="Add message with emojis to the app to make it more fun"
         )
 
         assert len(continuation_events) > 0, "No continuation events received"
@@ -64,18 +65,18 @@ async def test_async_agent_state_continuation(template_diff):
         for event in continuation_events:
             assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in continuation (model)"
 
-async def test_sequential_sse_responses(template_diff):
+async def test_sequential_sse_responses(trpc_agent):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
         # Initial request
-        initial_events, initial_request = await client.send_message("Create a hello world app")
+        initial_events, initial_request = await client.send_message(DEFAULT_APP_REQUEST)
         assert len(initial_events) > 0, "No initial events received"
 
         # First continuation
         first_continuation_events, first_continuation_request = await client.continue_conversation(
             previous_events=initial_events,
             previous_request=initial_request,
-            message="Add a welcome message"
+            message="make one more button to reset the counter"
         )
         assert len(first_continuation_events) > 0, "No first continuation events received"
 
@@ -83,7 +84,7 @@ async def test_sequential_sse_responses(template_diff):
         second_continuation_events, second_continuation_request = await client.continue_conversation(
             previous_events=first_continuation_events,
             previous_request=first_continuation_request,
-            message="Add a goodbye message"
+            message="Add message with emojis to the app to make it more fun"
         )
         assert len(second_continuation_events) > 0, "No second continuation events received"
 
@@ -95,7 +96,7 @@ async def test_sequential_sse_responses(template_diff):
         all_trace_ids = [event.trace_id for event in initial_events + first_continuation_events + second_continuation_events]
         assert all(tid == initial_request.trace_id for tid in all_trace_ids), "Trace IDs inconsistent across sequential SSE responses"
 
-async def test_session_with_no_state(template_diff):
+async def test_session_with_no_state(trpc_agent):
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
         # Generate a fixed trace/chatbot ID to use for all requests
@@ -104,7 +105,7 @@ async def test_session_with_no_state(template_diff):
 
         # First request
         first_events, _ = await client.send_message(
-            "Create a counter app",
+            DEFAULT_APP_REQUEST,
             application_id=fixed_application_id,
             trace_id=fixed_trace_id
         )
@@ -123,7 +124,7 @@ async def test_session_with_no_state(template_diff):
         for event in first_events + second_events:
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
 
-async def test_agent_reaches_idle_state(template_diff):
+async def test_agent_reaches_idle_state(trpc_agent):
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
         # Send a simple "Hello" prompt
@@ -136,6 +137,8 @@ async def test_agent_reaches_idle_state(template_diff):
         final_event = events[-1]
         assert final_event.status == AgentStatus.IDLE, "Agent did not reach IDLE state"
 
-        # Additional checks that may be useful
         assert final_event.message is not None, "Final event has no message"
         assert final_event.message.role == "agent", "Final message role is not 'agent'"
+        assert final_event.message.kind == MessageKind.REFINEMENT_REQUEST, "Final message kind is not REFINEMENT_REQUEST"
+        assert final_event.message.agent_state is None, "Final event has non-null agent state"
+        assert final_event.message.unified_diff is None, "Final event has non-null unified diff"
