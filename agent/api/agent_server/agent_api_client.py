@@ -3,7 +3,7 @@ import anyio
 import os
 import traceback
 import tempfile
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
