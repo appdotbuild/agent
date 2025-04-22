@@ -11,7 +11,9 @@ from datetime import datetime
 from patch_ng import PatchSet
 
 logger = get_logger(__name__)
-def _apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
+
+
+def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
     try:
         print(f"Preparing to apply patch to directory: '{target_dir}'")
         target_dir = os.path.abspath(target_dir)
@@ -160,9 +162,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print("No diff available to apply")
                         continue
                     try:
-                        # Get target directory from rest, or use current directory
                         target_dir = rest[0] if rest else "."
-                        success, message = _apply_patch(diff, target_dir)
+                        success, message = apply_patch(diff, target_dir)
                         print(message)
                     except IndexError:
                         print("Usage: /apply <directory>")
