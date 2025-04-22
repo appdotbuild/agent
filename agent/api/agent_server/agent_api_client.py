@@ -2,66 +2,37 @@ import json
 import anyio
 import os
 import traceback
-import subprocess
 import tempfile
 from typing import List, Optional, Tuple, Set
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
 from datetime import datetime
+from patch_ng import PatchSet
 
 logger = get_logger(__name__)
-
-
-def _extract_file_paths_from_diff(diff: str) -> Set[str]:
-    """Extract file paths from a unified diff."""
-    file_paths = set()
-    for line in diff.splitlines():
-        if line.startswith("diff --git"):
-            parts = line.split()
-            if len(parts) >= 4:
-                # parts[2] is like "a/server/app.py"
-                path = parts[2][2:] if parts[2].startswith("a/") else parts[2]
-                file_paths.add(path)
-                print(f"Found file in diff: {path}")
-    return file_paths
-
-
 def _apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
     try:
         print(f"Preparing to apply patch to directory: '{target_dir}'")
         target_dir = os.path.abspath(target_dir)
         os.makedirs(target_dir, exist_ok=True)
-        print(f"Created target directory: '{target_dir}'") if not os.path.exists(target_dir) else None
-        file_paths = _extract_file_paths_from_diff(diff)
-        for path in file_paths:
-            dir_path = os.path.join(target_dir, os.path.dirname(path))
-            if dir_path:
-                os.makedirs(dir_path, exist_ok=True)
-                print(f"Created directory: {dir_path}") if not os.path.exists(dir_path) else None
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
             print(f"Wrote patch to temporary file: {tmp_path}")
+        
         original_dir = os.getcwd()
         try:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
-            print(f"Running: patch -p1 < {tmp_path}")
-            result = subprocess.run(
-                f"patch -p1 < {tmp_path}",
-                shell=True,
-                capture_output=True,
-                text=True
-            )
-            if result.stdout:
-                print(f"Patch output: {result.stdout}")
-            if result.stderr:
-                print(f"Patch error: {result.stderr}")
-            if result.returncode == 0:
+            print("Applying patch using python-patch-ng")
+            with open(tmp_path, 'r') as patch_file:
+                patch_set = PatchSet(patch_file)
+            success = patch_set.apply(strip=1)  # Use strip=1 to remove 'a/' and 'b/' prefixes
+            if success:
                 return True, f"Successfully applied the patch to the directory '{target_dir}'"
             else:
-                return False, f"Failed to apply the patch: {result.stderr or 'unknown error'}"
+                return False, "Failed to apply the patch (some hunks may have been rejected)"
         finally:
             os.chdir(original_dir)
             os.unlink(tmp_path)
