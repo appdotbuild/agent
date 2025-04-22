@@ -8,7 +8,6 @@ import json
 import tempfile
 import shutil
 from typing import Dict, Any, Optional, Tuple
-import re
 
 from api.agent_server.interface import AgentInterface
 from api.agent_server.models import AgentSseEvent, AgentMessage, AgentStatus, MessageKind
