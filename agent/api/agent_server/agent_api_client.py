@@ -27,19 +27,55 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
         print(f"Preparing to apply patch to directory: '{target_dir}'")
         target_dir = os.path.abspath(target_dir)
         os.makedirs(target_dir, exist_ok=True)
+        
+        # Parse the diff to extract file information first
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
             print(f"Wrote patch to temporary file: {tmp_path}")
         
+        # First detect all target paths from the patch
+        file_paths = []
+        with open(tmp_path, 'rb') as patch_file:
+            patch_set = PatchSet(patch_file)
+            for item in patch_set.items:
+                # Decode the target paths and extract them
+                if item.target:
+                    target_path = item.target.decode('utf-8')
+                    if target_path.startswith('b/'):  # Remove prefix from git style patches
+                        target_path = target_path[2:]
+                    file_paths.append(target_path)
+        
         original_dir = os.getcwd()
         try:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
+            
+            # Pre-create all the directories needed for files
+            for filepath in file_paths:
+                if '/' in filepath:
+                    directory = os.path.dirname(filepath)
+                    if directory:
+                        os.makedirs(directory, exist_ok=True)
+                        print(f"Created directory: {directory}")
+            
+            # Apply the patch
             print("Applying patch using python-patch-ng")
             with open(tmp_path, 'rb') as patch_file:
                 patch_set = PatchSet(patch_file)
-            success = patch_set.apply(strip=1)  # Use strip=1 to remove 'a/' and 'b/' prefixes
+                success = patch_set.apply(strip=1)  # Use strip=1 to remove 'a/' and 'b/' prefixes
+            
+            # Check if any files ended up in the wrong place and move them if needed
+            for filepath in file_paths:
+                if '/' in filepath:
+                    basename = os.path.basename(filepath)
+                    dirname = os.path.dirname(filepath)
+                    # If the file exists at the root but should be in a subdirectory
+                    if os.path.exists(basename) and not os.path.exists(filepath):
+                        print(f"Moving {basename} to correct location {filepath}")
+                        os.makedirs(dirname, exist_ok=True)
+                        os.rename(basename, filepath)
+            
             if success:
                 return True, f"Successfully applied the patch to the directory '{target_dir}'"
             else:
@@ -171,12 +207,21 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print("No diff available to apply")
                         continue
                     try:
-                        target_dir = rest[0] if rest else DEFAULT_PROJECT_DIR
+                        # Create a timestamp-based project directory name
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        project_name = f"project_{timestamp}"
+                        
+                        if rest and rest[0]:
+                            base_dir = rest[0]
+                        else:
+                            base_dir = DEFAULT_PROJECT_DIR
+                            print(f"Using default project directory: {base_dir}")
+                        
+                        # Create the full project directory path
+                        target_dir = os.path.join(base_dir, project_name)
+                        
+                        # Apply the patch
                         success, message = apply_patch(diff, target_dir)
-                        print(message)
-                    except IndexError:
-                        print(f"Using default project directory: {DEFAULT_PROJECT_DIR}")
-                        success, message = apply_patch(diff, DEFAULT_PROJECT_DIR)
                         print(message)
                     except Exception as e:
                         print(f"Error applying diff: {e}")
