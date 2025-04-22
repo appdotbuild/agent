@@ -6,6 +6,7 @@ with detailed logging and error handling.
 import os
 import json
 import tempfile
+import shutil
 from typing import Dict, Any, Optional, Tuple
 
 from api.agent_server.interface import AgentInterface
@@ -105,6 +106,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
             ))
 
         finally:
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
             await event_sender.aclose()
 
 

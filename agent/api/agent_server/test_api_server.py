@@ -18,30 +18,34 @@ def empty_token(monkeypatch):
     monkeypatch.delenv("BUILDER_TOKEN")
     yield
 
-
-async def test_health():
+@pytest.fixture
+async def client(monkeypatch):
+    monkeypatch.setenv("CODEGEN_AGENT", "template_diff")
     async with AgentApiClient() as client:
-        resp = await client.client.get("http://test/health")
-        assert resp.status_code == 200
-        assert resp.json() == {"status": "healthy"}
+        yield client
 
 
-async def test_invalid_token():
-    async with AgentApiClient() as client:
-        with pytest.raises(ValueError, match="Request failed with status code 403"):
-            await client.send_message("Hello", auth_token="invalid_token")
+
+async def test_health(client):
+    resp = await client.client.get("http://test/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "healthy"}
 
 
-async def test_auth_disabled(empty_token):
-    async with AgentApiClient() as client:
-        events, _ = await client.send_message("Hello", auth_token=None)
-        assert len(events) > 0, "No events received with empty token"
+async def test_invalid_token(client):
+    with pytest.raises(ValueError, match="Request failed with status code 403"):
+        await client.send_message("Hello", auth_token="invalid_token")
 
 
-async def test_empty_token():
-    async with AgentApiClient() as client:
-        with pytest.raises(ValueError, match="Request failed with status code 401"):
-            await client.send_message("Hello", auth_token=None)
+async def test_auth_disabled(empty_token, client):
+    events, _ = await client.send_message("Hello", auth_token=None)
+    assert len(events) > 0, "No events received with empty token"
+
+
+async def test_empty_token(client):
+    # async with AgentApiClient() as client:
+    with pytest.raises(ValueError, match="Request failed with status code 401"):
+        await client.send_message("Hello", auth_token=None)
 
 
 @pytest.mark.skipif(os.getenv("TEST_EXTERNAL_SERVER") != "true", reason="Set TEST_EXTERNAL_SERVER=true to run tests against an external server")
