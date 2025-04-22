@@ -4,7 +4,7 @@ import os
 import traceback
 import subprocess
 import tempfile
-from typing import List, Optional
+from typing import List, Optional, Tuple, Set
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
@@ -58,6 +58,62 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             except AttributeError:
                 continue
         return None
+    
+    def _extract_file_paths_from_diff(diff: str) -> Set[str]:
+        """Extract file paths from a unified diff."""
+        file_paths = set()
+        for line in diff.splitlines():
+            if line.startswith("diff --git"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    # parts[2] is like "a/server/app.py"
+                    path = parts[2][2:] if parts[2].startswith("a/") else parts[2]
+                    file_paths.add(path)
+                    print(f"Found file in diff: {path}")
+        return file_paths
+    
+    def _apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
+        try:
+            print(f"Preparing to apply patch to directory: '{target_dir}'")
+            target_dir = os.path.abspath(target_dir)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir, exist_ok=True)
+                print(f"Created target directory: '{target_dir}'")
+            file_paths = _extract_file_paths_from_diff(diff)
+            for path in file_paths:
+                dir_path = os.path.join(target_dir, os.path.dirname(path))
+                if dir_path and not os.path.exists(dir_path):
+                    os.makedirs(dir_path, exist_ok=True)
+                    print(f"Created directory: {dir_path}")
+            with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
+                tmp.write(diff.encode('utf-8'))
+                tmp_path = tmp.name
+                print(f"Wrote patch to temporary file: {tmp_path}")
+            original_dir = os.getcwd()
+            try:
+                os.chdir(target_dir)
+                print(f"Changed to directory: {target_dir}")
+                print(f"Running: patch -p1 < {tmp_path}")
+                result = subprocess.run(
+                    f"patch -p1 < {tmp_path}",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                if result.stdout:
+                    print(f"Patch output: {result.stdout}")
+                if result.stderr:
+                    print(f"Patch error: {result.stderr}")
+                if result.returncode == 0:
+                    return True, f"Successfully applied the patch to the directory '{target_dir}'"
+                else:
+                    return False, f"Failed to apply the patch: {result.stderr or 'unknown error'}"
+            finally:
+                os.chdir(original_dir)
+                os.unlink(tmp_path)
+        except Exception as e:
+            traceback.print_exc()
+            return False, f"Error applying patch: {str(e)}"
 
     # Banner
     divider = "=" * 60
@@ -98,7 +154,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         "/save       Save state to file"
                         "\n"
                         "/diff       Show the latest unified diff\n"
-                        "/apply      Apply the latest diff to the current directory\n"
+                        "/apply <dir> Apply the latest diff to the <dir> directory\n"
                         "/export     Export the latest diff to a patchfile"
                     )
                     continue
@@ -131,35 +187,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print("No diff available to apply")
                         continue
                     try:
-                        # Ensure all directories for new files exist before applying the patch
-                        import re
-                        file_paths = set()
-                        for line in diff.splitlines():
-                            if line.startswith("diff --git"):
-                                parts = line.split()
-                                if len(parts) >= 4:
-                                    # parts[2] is like "a/server/app.py"
-                                    path = parts[2][2:] if parts[2].startswith("a/") else parts[2]
-                                    file_paths.add(path)
-                        for path in file_paths:
-                            dir_path = os.path.dirname(path)
-                            if dir_path and not os.path.exists(dir_path):
-                                os.makedirs(dir_path, exist_ok=True)
-                        with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
-                            tmp.write(diff.encode('utf-8'))
-                            tmp_path = tmp.name
-                        result = subprocess.run(
-                            ['git', 'apply', tmp_path],
-                            capture_output=True,
-                            text=True
-                        )
-                        os.unlink(tmp_path)
-                        if result.returncode == 0:
-                            print("Successfully applied the diff to the current directory")
-                        else:
-                            print(f"Failed to apply diff: {result.stderr}")
+                        # Get target directory from rest, or use current directory
+                        target_dir = rest[0] if rest else "."
+                        success, message = _apply_patch(diff, target_dir)
+                        print(message)
+                    except IndexError:
+                        print("Usage: /apply <directory>")
                     except Exception as e:
                         print(f"Error applying diff: {e}")
+                        traceback.print_exc()
                     continue
                 case "/export":
                     diff = latest_unified_diff()
