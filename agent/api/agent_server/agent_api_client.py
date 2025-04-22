@@ -37,7 +37,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
             print("Applying patch using python-patch-ng")
-            with open(tmp_path, 'r') as patch_file:
+            with open(tmp_path, 'rb') as patch_file:
                 patch_set = PatchSet(patch_file)
             success = patch_set.apply(strip=1)  # Use strip=1 to remove 'a/' and 'b/' prefixes
             if success:
