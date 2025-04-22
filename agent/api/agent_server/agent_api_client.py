@@ -111,7 +111,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     try:
                         previous_events.append(AgentSseEvent.model_validate(e))
                     except Exception as err:
-                        logger.exception(f"Skipping invalid saved event: {e}")
+                        logger.exception(f"Skipping invalid saved event: {err}")
                 previous_messages = saved.get("messages", [])
                 print(f"Loaded conversation with {len(previous_messages)} messages")
         except Exception as e:
