@@ -12,6 +12,15 @@ from patch_ng import PatchSet
 
 logger = get_logger(__name__)
 
+# Default project directory for generated files
+# Use environment variable or create a temp directory
+DEFAULT_PROJECT_DIR = os.environ.get(
+    "AGENT_PROJECT_DIR", 
+    os.path.join(tempfile.gettempdir(), "agent_projects")
+)
+os.makedirs(DEFAULT_PROJECT_DIR, exist_ok=True)
+logger.info(f"Using project directory: {DEFAULT_PROJECT_DIR}")
+
 
 def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
     try:
@@ -129,7 +138,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         "/save       Save state to file"
                         "\n"
                         "/diff       Show the latest unified diff\n"
-                        "/apply <dir> Apply the latest diff to the <dir> directory\n"
+                        f"/apply [dir] Apply the latest diff to directory (default: {DEFAULT_PROJECT_DIR})\n"
                         "/export     Export the latest diff to a patchfile"
                     )
                     continue
@@ -162,11 +171,13 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print("No diff available to apply")
                         continue
                     try:
-                        target_dir = rest[0] if rest else "."
+                        target_dir = rest[0] if rest else DEFAULT_PROJECT_DIR
                         success, message = apply_patch(diff, target_dir)
                         print(message)
                     except IndexError:
-                        print("Usage: /apply <directory>")
+                        print(f"Using default project directory: {DEFAULT_PROJECT_DIR}")
+                        success, message = apply_patch(diff, DEFAULT_PROJECT_DIR)
+                        print(message)
                     except Exception as e:
                         print(f"Error applying diff: {e}")
                         traceback.print_exc()
