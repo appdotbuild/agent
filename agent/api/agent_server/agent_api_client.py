@@ -48,6 +48,17 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         except Exception as e:
             print(f"Warning: could not load state: {e}")
 
+    def latest_unified_diff() -> Optional[str]:
+        """Return the most recent unified diff found in previous_events, if any."""
+        for evt in reversed(previous_events):
+            try:
+                diff_val = evt.message.unified_diff
+                if diff_val:
+                    return diff_val
+            except AttributeError:
+                continue
+        return None
+
     # Banner
     divider = "=" * 60
     print(divider)
@@ -120,6 +131,20 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print("No diff available to apply")
                         continue
                     try:
+                        # Ensure all directories for new files exist before applying the patch
+                        import re
+                        file_paths = set()
+                        for line in diff.splitlines():
+                            if line.startswith("diff --git"):
+                                parts = line.split()
+                                if len(parts) >= 4:
+                                    # parts[2] is like "a/server/app.py"
+                                    path = parts[2][2:] if parts[2].startswith("a/") else parts[2]
+                                    file_paths.add(path)
+                        for path in file_paths:
+                            dir_path = os.path.dirname(path)
+                            if dir_path and not os.path.exists(dir_path):
+                                os.makedirs(dir_path, exist_ok=True)
                         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
                             tmp.write(diff.encode('utf-8'))
                             tmp_path = tmp.name
@@ -182,19 +207,6 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             except Exception as e:
                 print(f"Error: {e}")
                 traceback.print_exc()
-
-    # Helper to fetch the most recent unified diff from collected events
-    def latest_unified_diff() -> Optional[str]:
-        """Return the most recent unified diff found in previous_events, if any."""
-        for evt in reversed(previous_events):
-            try:
-                diff_val = evt.message.unified_diff  # type: ignore[attr-defined]
-                if diff_val:
-                    return diff_val
-            except AttributeError:
-                # Event message may not have unified_diff
-                continue
-        return None
 
 def cli(host: str = "",
         port: int = 8001,
