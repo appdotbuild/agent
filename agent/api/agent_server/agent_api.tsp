@@ -65,7 +65,8 @@ model AgentEvent {
   status: AgentStatus;
 
   @doc("The trace ID corresponding to the POST request that initiated this stream of events.")
-  traceId: string;
+  @encodedName("application/json", "traceId")
+  traceId?: string;
 
   @doc("The detailed message payload from the agent.")
   message: AgentMessage;

@@ -87,7 +87,7 @@ def parse_conversation_message(json_str: str) -> ConversationMessage:
 class AgentSseEvent(BaseModel):
     """Structure of the data payload within each Server-Sent Event (SSE)."""
     status: AgentStatus = Field(..., description="Current status of the agent (running or idle).")
-    trace_id: str = Field(..., alias="traceId", description="The trace ID corresponding to the POST request.")
+    trace_id: Optional[str] = Field(None, alias="traceId", description="The trace ID corresponding to the POST request.")
     message: AgentMessage = Field(..., description="The detailed message payload from the agent.")
     
     def to_json(self) -> str:
