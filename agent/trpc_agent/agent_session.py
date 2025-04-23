@@ -45,16 +45,25 @@ class TrpcAgentSession(AgentInterface):
             case None:
                 raise ValueError("FSMApplication is None")
             case FSMApplication():
-                ctx = fsm_app.fsm.context
+                # We intentionally generate the diff against an *empty* snapshot.
+                # Passing the current files as the snapshot results in an empty diff
+                # (because the snapshot and the final state are identical).
+                # Using an empty snapshot correctly produces a diff that contains
+                # all files that have been generated or modified in the current
+                # FSM state.
+                snapshot: dict[str, str] = {}
 
-        files = fsm_app.get_files_at_root(ctx)
-        logger.info(f"Generating diff with {len(files)} files in state {fsm_app.current_state}")
-        
+        logger.info(
+            "Generating diff with %s files in state %s compared to empty snapshot",
+            len(fsm_app.get_files_at_root(fsm_app.fsm.context)),
+            fsm_app.current_state,
+        )
+
         try:
-            diff = await fsm_app.get_diff_with(files)
+            diff = await fsm_app.get_diff_with(snapshot)
             # Log the diff length to help diagnose issues
             if diff:
-                logger.info(f"Generated diff with length {len(diff)}")
+                logger.info("Generated diff with length %d", len(diff))
             else:
                 logger.warning("Generated empty diff")
             return diff
@@ -139,12 +148,10 @@ class TrpcAgentSession(AgentInterface):
                         if self.processor_instance.fsm_app and self.processor_instance.fsm_app.current_state == FSMState.COMPLETE:
                             logger.info(f"Sending final state diff for trace {self.trace_id}")
                             
-                            # Get final context and files
-                            ctx = self.processor_instance.fsm_app.fsm.context
-                            files = self.processor_instance.fsm_app.get_files_at_root(ctx)
-                            
-                            # Get and send a final diff specifically for the completion state
-                            final_diff = await self.processor_instance.fsm_app.get_diff_with(files)
+                            # We purposely generate diff against an empty snapshot to ensure
+                            # that *all* generated files are included in the final diff. Using
+                            # the current files as the snapshot would yield an empty diff.
+                            final_diff = await self.processor_instance.fsm_app.get_diff_with({})
                             
                             # Always include a diff in the final state, even if empty
                             if not final_diff:
