@@ -58,7 +58,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
                 status=AgentStatus.RUNNING,
                 traceId=self.trace_id,
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content="Starting counter app generation...",
                     agentState=self.state,
@@ -82,7 +82,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content=f"Counter application generated successfully with {len(server_files)} server files and {len(frontend_files)} frontend files.",
                     agentState=self.state,
@@ -97,7 +97,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error generating counter application: {str(e)}",
                     agentState=self.state,

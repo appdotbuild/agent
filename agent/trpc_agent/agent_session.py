@@ -105,7 +105,7 @@ class TrpcAgentSession(AgentInterface):
                     status=AgentStatus.IDLE,
                     traceId=self.trace_id,
                     message=AgentMessage(
-                        role="agent",
+                        role="assistant",
                         kind=MessageKind.STAGE_RESULT if self.user_answered(messages) else MessageKind.REFINEMENT_REQUEST,
                         content=json.dumps([x.to_dict() for x in messages] ),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
@@ -131,7 +131,7 @@ class TrpcAgentSession(AgentInterface):
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing request: {str(e)}",
                     agentState=None,

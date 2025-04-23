@@ -138,7 +138,7 @@ async def test_agent_reaches_idle_state(trpc_agent):
         assert final_event.status == AgentStatus.IDLE, "Agent did not reach IDLE state"
 
         assert final_event.message is not None, "Final event has no message"
-        assert final_event.message.role == "agent", "Final message role is not 'agent'"
+        assert final_event.message.role == "assistant", "Final message role is not 'assistant'"
         assert final_event.message.kind == MessageKind.REFINEMENT_REQUEST, "Final message kind is not REFINEMENT_REQUEST"
         assert final_event.message.agent_state is None, "Final event has non-null agent state"
         assert final_event.message.unified_diff is None, "Final event has non-null unified diff"

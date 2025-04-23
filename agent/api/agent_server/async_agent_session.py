@@ -155,7 +155,7 @@ class AsyncAgentSession(AgentInterface):
                     status=status,
                     traceId=self.trace_id,
                     message=AgentMessage(
-                        role="agent",
+                        role="assistant",
                         kind=MessageKind.STAGE_RESULT,
                         content=content,
                         agentState=self.get_state(),
@@ -174,7 +174,7 @@ class AsyncAgentSession(AgentInterface):
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing step: {str(e)}",
                     agentState=None,
@@ -275,7 +275,7 @@ class AsyncAgentSession(AgentInterface):
                 status=AgentStatus.IDLE,
                 traceId=self.trace_id,
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing request: {str(e)}",
                     agentState=None,

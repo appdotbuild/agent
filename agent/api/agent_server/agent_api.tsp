@@ -44,7 +44,7 @@ enum MessageKind {
 @doc("Represents a message from the agent to the user, including content, state, and any code changes.")
 model AgentMessage {
   @doc("Fixed field for client to detect agent message in the history") 
-  role: 'agent';
+  role: 'assistant';
 
   @doc("The type of message being sent.")
   kind: MessageKind;

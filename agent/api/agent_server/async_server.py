@@ -154,7 +154,7 @@ async def run_agent[T: AgentInterface](
                     status=AgentStatus.IDLE,
                     traceId=request.trace_id,
                     message=AgentMessage(
-                        role="agent",
+                        role="assistant",
                         kind=MessageKind.RUNTIME_ERROR,
                         content=f"Error processing request: {str(e)}", # Keep simple message for client
                         agentState=None,

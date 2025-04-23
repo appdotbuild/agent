@@ -91,7 +91,7 @@ def test_message_endpoint(
                 status=AgentStatus.RUNNING,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content="Processing...",
                     agentState={},
@@ -165,7 +165,7 @@ def test_multiple_sse_updates(
                 status=AgentStatus.RUNNING,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content="Analyzing requirements...",
                     agentState={"step": 1},
@@ -176,7 +176,7 @@ def test_multiple_sse_updates(
                 status=AgentStatus.RUNNING,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content="Designing architecture...",
                     agentState={"step": 2},
@@ -187,7 +187,7 @@ def test_multiple_sse_updates(
                 status=AgentStatus.IDLE,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content="Implementation complete",
                     agentState={"step": 3, "completed": True},
@@ -243,7 +243,7 @@ def test_different_message_kinds(
                 status=AgentStatus.RUNNING,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.STAGE_RESULT,
                     content="Working on implementation...",
                     agentState={"stage": "implementation"},
@@ -254,7 +254,7 @@ def test_different_message_kinds(
                 status=AgentStatus.RUNNING,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.FEEDBACK_RESPONSE,
                     content="Responding to feedback...",
                     agentState={"stage": "feedback"},
@@ -265,7 +265,7 @@ def test_different_message_kinds(
                 status=AgentStatus.IDLE,
                 traceId="test-trace-id",
                 message=AgentMessage(
-                    role="agent",
+                    role="assistant",
                     kind=MessageKind.RUNTIME_ERROR,
                     content="Non-fatal error occurred during processing",
                     agentState={"stage": "error_handling"},

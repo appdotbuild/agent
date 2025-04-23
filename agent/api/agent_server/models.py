@@ -24,20 +24,20 @@ class AgentStatus(str, Enum):
 
 class MessageKind(str, Enum):
     """Defines the type of message being sent from the Agent Server."""
-    STAGE_RESULT = "StageResult"  # tool was used, and FSM state is expected to be updated
-    RUNTIME_ERROR = "RuntimeError"  #  things went wrong!
-    REFINEMENT_REQUEST = "RefinementRequest"  # no tool was used, meaning the agent is asking for more information
+    STAGE_RESULT = "StageResult"
+    RUNTIME_ERROR = "RuntimeError"
+    FEEDBACK_RESPONSE = "FeedbackResponse"
 
 
 class UserMessage(BaseModel):
     """Represents a message from the user to the agent."""
     role: Literal["user"] = Field("user", description="Fixed field for client to detect user message in the history")
     content: str = Field(..., description="The content of the user's message.")
-
+    
     def to_json(self) -> str:
         """Serialize the model to JSON string."""
         return self.model_dump_json(by_alias=True)
-
+    
     @classmethod
     def from_json(cls: Type[T], json_str: str) -> T:
         """Deserialize a JSON string to a model instance."""
@@ -46,24 +46,24 @@ class UserMessage(BaseModel):
 
 class AgentMessage(BaseModel):
     """The detailed message payload from the agent."""
-    role: Literal["agent"] = Field("agent", description="Fixed field for client to detect agent message in the history")
+    role: Literal["assistant"] = Field("assistant", description="Fixed field for client to detect assistant message in the history") 
     kind: MessageKind = Field(..., description="The type of message being sent.")
     content: str = Field(..., description="Formatted content of the message. Can be long and contain formatting.")
     agent_state: Optional[Dict[str, Any]] = Field(
-        None,
-        alias="agentState",
+        None, 
+        alias="agentState", 
         description="Updated state of the Agent Server for the next request."
     )
     unified_diff: Optional[str] = Field(
-        None,
-        alias="unifiedDiff",
+        None, 
+        alias="unifiedDiff", 
         description="A unified diff format string representing code changes made by the agent."
     )
-
+    
     def to_json(self) -> str:
         """Serialize the model to JSON string."""
         return self.model_dump_json(by_alias=True)
-
+    
     @classmethod
     def from_json(cls: Type[T], json_str: str) -> T:
         """Deserialize a JSON string to a model instance."""
@@ -78,7 +78,7 @@ def parse_conversation_message(json_str: str) -> ConversationMessage:
     data = json.loads(json_str)
     if data.get("role") == "user":
         return UserMessage.model_validate(data)
-    elif data.get("role") == "agent":
+    elif data.get("role") == "assistant":
         return AgentMessage.model_validate(data)
     else:
         raise ValueError(f"Unknown role in message: {data.get('role')}")
@@ -89,11 +89,11 @@ class AgentSseEvent(BaseModel):
     status: AgentStatus = Field(..., description="Current status of the agent (running or idle).")
     trace_id: str = Field(..., alias="traceId", description="The trace ID corresponding to the POST request.")
     message: AgentMessage = Field(..., description="The detailed message payload from the agent.")
-
+    
     def to_json(self) -> str:
         """Serialize the model to JSON string."""
         return self.model_dump_json(by_alias=True)
-
+    
     @classmethod
     def from_json(cls: Type[T], json_str: str) -> T:
         """Deserialize a JSON string to a model instance."""
@@ -106,19 +106,19 @@ class AgentRequest(BaseModel):
     application_id: str = Field(..., alias="applicationId", description="Unique identifier for the application instance.")
     trace_id: str = Field(..., alias="traceId", description="Unique identifier for this request/response cycle.")
     agent_state: Optional[Dict[str, Any]] = Field(
-        None,
-        alias="agentState",
+        None, 
+        alias="agentState", 
         description="The full state of the Agent Server to restore from."
     )
     settings: Optional[Dict[str, Any]] = Field(
-        None,
+        None, 
         description="Settings for the agent execution, such as maximum number of iterations."
     )
-
+    
     def to_json(self) -> str:
         """Serialize the model to JSON string."""
         return self.model_dump_json(by_alias=True)
-
+    
     @classmethod
     def from_json(cls: Type[T], json_str: str) -> T:
         """Deserialize a JSON string to a model instance."""
@@ -129,11 +129,11 @@ class ErrorResponse(BaseModel):
     """Error response model."""
     error: str
     details: Optional[str] = None
-
+    
     def to_json(self) -> str:
         """Serialize the model to JSON string."""
         return self.model_dump_json()
-
+    
     @classmethod
     def from_json(cls: Type[T], json_str: str) -> T:
         """Deserialize a JSON string to a model instance."""
