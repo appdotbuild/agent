@@ -305,6 +305,7 @@ dependencies = [
     { name = "fire" },
     { name = "google-genai" },
     { name = "jinja2" },
+    { name = "patch-ng" },
     { name = "sentry-sdk" },
     { name = "ujson" },
     { name = "uvicorn" },
@@ -334,6 +335,7 @@ requires-dist = [
     { name = "fire", specifier = ">=0.7.0" },
     { name = "google-genai", specifier = ">=1.7.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "patch-ng", specifier = ">=1.17.4" },
     { name = "sentry-sdk", specifier = ">=2.25.1" },
     { name = "ujson", specifier = ">=5.10.0" },
     { name = "uvicorn", specifier = "==0.34.0" },
@@ -780,6 +782,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/d0/63/68dbb6eb2de9cb10e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/ef/eb23f262cca3c0c4eb7ab1933c3b1f03d021f2c48f54763065b6f0e321be/packaging-24.2-py3-none-any.whl", hash = "sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759", size = 65451 },
 ]
+
+[[package]]
+name = "patch-ng"
+version = "1.18.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/c0/53a2f017ac5b5397a7064c2654b73c3334ac8461315707cbede6c12199eb/patch-ng-1.18.1.tar.gz", hash = "sha256:52fd46ee46f6c8667692682c1fd7134edc65a2d2d084ebec1d295a6087fc0291", size = 17913 }
 
 [[package]]
 name = "pdbpp"

@@ -1,0 +1,186 @@
+diff --git a/frontend/app.js b/frontend/app.js
+new file mode 100644
+index 0000000..f2ca406
+--- /dev/null
++++ b/frontend/app.js
+@@ -0,0 +1,51 @@
++document.addEventListener('DOMContentLoaded', () => {
++    const counterValue = document.getElementById('counter-value');
++    const incrementBtn = document.getElementById('increment-btn');
++    const decrementBtn = document.getElementById('decrement-btn');
++    const resetBtn = document.getElementById('reset-btn');
++
++    // API URL - change this to match your server
++    const API_URL = 'http://localhost:5000/api/counter';
++
++    // Function to update the counter display
++    const updateCounter = async () => {
++        try {
++            const response = await fetch(API_URL);
++            const data = await response.json();
++            counterValue.textContent = data.value;
++        } catch (error) {
++            console.error('Error fetching counter:', error);
++        }
++    };
++
++    // Initialize counter
++    updateCounter();
++
++    // Event listeners for buttons
++    incrementBtn.addEventListener('click', async () => {
++        try {
++            await fetch(`${API_URL}/increment`, { method: 'POST' });
++            updateCounter();
++        } catch (error) {
++            console.error('Error incrementing counter:', error);
++        }
++    });
++
++    decrementBtn.addEventListener('click', async () => {
++        try {
++            await fetch(`${API_URL}/decrement`, { method: 'POST' });
++            updateCounter();
++        } catch (error) {
++            console.error('Error decrementing counter:', error);
++        }
++    });
++
++    resetBtn.addEventListener('click', async () => {
++        try {
++            await fetch(`${API_URL}/reset`, { method: 'POST' });
++            updateCounter();
++        } catch (error) {
++            console.error('Error resetting counter:', error);
++        }
++    });
++});
+\ No newline at end of file
+diff --git a/frontend/index.html b/frontend/index.html
+new file mode 100644
+index 0000000..6a0f70d
+--- /dev/null
++++ b/frontend/index.html
+@@ -0,0 +1,23 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Counter App</title>
++    <link rel="stylesheet" href="styles.css">
++</head>
++<body>
++    <div class="container">
++        <h1>Counter App</h1>
++        <div class="counter-display">
++            <span id="counter-value">0</span>
++        </div>
++        <div class="counter-controls">
++            <button id="decrement-btn">-</button>
++            <button id="reset-btn">Reset</button>
++            <button id="increment-btn">+</button>
++        </div>
++    </div>
++    <script src="app.js"></script>
++</body>
++</html>
+\ No newline at end of file
+diff --git a/frontend/styles.css b/frontend/styles.css
+new file mode 100644
+index 0000000..46e1a4e
+--- /dev/null
++++ b/frontend/styles.css
+@@ -0,0 +1,48 @@
++body {
++    font-family: Arial, sans-serif;
++    display: flex;
++    justify-content: center;
++    align-items: center;
++    height: 100vh;
++    margin: 0;
++    background-color: #f5f5f5;
++}
++.container {
++    text-align: center;
++    background-color: white;
++    padding: 2rem;
++    border-radius: 8px;
++    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
++}
++.counter-display {
++    font-size: 4rem;
++    margin: 1rem 0;
++}
++.counter-controls {
++    display: flex;
++    justify-content: center;
++    gap: 1rem;
++}
++button {
++    font-size: 1.5rem;
++    padding: 0.5rem 1rem;
++    border: none;
++    border-radius: 4px;
++    cursor: pointer;
++    transition: background-color 0.3s;
++}
++#increment-btn {
++    background-color: #4caf50;
++    color: white;
++}
++#decrement-btn {
++    background-color: #f44336;
++    color: white;
++}
++#reset-btn {
++    background-color: #2196f3;
++    color: white;
++}
++button:hover {
++    opacity: 0.9;
++}
+\ No newline at end of file
+diff --git a/server/app.py b/server/app.py
+new file mode 100644
+index 0000000..6c03b2f
+--- /dev/null
++++ b/server/app.py
+@@ -0,0 +1,26 @@
++from flask import Flask, jsonify, request
++from flask_cors import CORS
++app = Flask(__name__)
++CORS(app)
++counter = 0
++@app.route('/api/counter', methods=['GET'])
++def get_counter():
++    global counter
++    return jsonify({"value": counter})
++@app.route('/api/counter/increment', methods=['POST'])
++def increment_counter():
++    global counter
++    counter += 1
++    return jsonify({"value": counter})
++@app.route('/api/counter/decrement', methods=['POST'])
++def decrement_counter():
++    global counter
++    counter -= 1
++    return jsonify({"value": counter})
++@app.route('/api/counter/reset', methods=['POST'])
++def reset_counter():
++    global counter
++    counter = 0
++    return jsonify({"value": counter})
++if __name__ == '__main__':
++    app.run(debug=True)
+\ No newline at end of file
+diff --git a/server/requirements.txt b/server/requirements.txt
+new file mode 100644
+index 0000000..5c994c7
+--- /dev/null
++++ b/server/requirements.txt
+@@ -0,0 +1,3 @@
++flask==2.0.1
++flask-cors==3.0.10
++werkzeug==2.0.1
+\ No newline at end of file
