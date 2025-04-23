@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, TypedDict, List
 
 from anyio.streams.memory import MemoryObjectSendStream
 
-from trpc_agent.application import FSMApplication, FSMState
+from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor
@@ -148,11 +148,17 @@ class TrpcAgentSession(AgentInterface):
                         if self.processor_instance.fsm_app and self.processor_instance.fsm_app.current_state == FSMState.COMPLETE:
                             logger.info(f"Sending final state diff for trace {self.trace_id}")
                             
+                            # Get final context and files
+                            #ctx = self.processor_instance.fsm_app.fsm.context
+                            #files = self.processor_instance.fsm_app.get_files_at_root(ctx)
+                            # Get and send a final diff specifically for the completion state
+                            #final_diff = await self.processor_instance.fsm_app.get_diff_with(files)
+                            
                             # We purposely generate diff against an empty snapshot to ensure
                             # that *all* generated files are included in the final diff. Using
                             # the current files as the snapshot would yield an empty diff.
                             final_diff = await self.processor_instance.fsm_app.get_diff_with({})
-                            
+                           
                             # Always include a diff in the final state, even if empty
                             if not final_diff:
                                 final_diff = "# Note: This is a valid empty diff (means no changes from template)"
