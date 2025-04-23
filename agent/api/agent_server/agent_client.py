@@ -125,7 +125,7 @@ class AgentApiClient:
 
     @staticmethod
     def create_request(message: str,
-                        messages_history: Optional[List[ConversationMessage]] = None,
+                     messages_history: Optional[List[ConversationMessage]] = None,
                      application_id: Optional[str] = None,
                      trace_id: Optional[str] = None,
                      agent_state: Optional[Dict[str, Any]] = None,
