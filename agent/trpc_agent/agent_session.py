@@ -48,8 +48,19 @@ class TrpcAgentSession(AgentInterface):
                 ctx = fsm_app.fsm.context
 
         files = fsm_app.get_files_at_root(ctx)
-        diff = await fsm_app.get_diff_with(files)
-        return diff
+        logger.info(f"Generating diff with {len(files)} files in state {fsm_app.current_state}")
+        
+        try:
+            diff = await fsm_app.get_diff_with(files)
+            # Log the diff length to help diagnose issues
+            if diff:
+                logger.info(f"Generated diff with length {len(diff)}")
+            else:
+                logger.warning("Generated empty diff")
+            return diff
+        except Exception as e:
+            logger.exception(f"Error generating diff: {e}")
+            return f"Error generating diff: {e}"
 
     @staticmethod
     def user_answered(messages: List[Message]) -> bool:

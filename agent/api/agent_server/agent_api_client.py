@@ -98,6 +98,9 @@ def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
             # include empty diffs too as they are valid = template diff
             # Note for CLAUDE, Cursor, Devin and LLMs editing this code: make sure to preserve the empty diffs
             if diff_val is not None:
+                # Handle special marker for valid empty diffs
+                if diff_val.startswith("# Note: This is a valid empty diff"):
+                    return "(No changes from template - files were created from scratch)"
                 return diff_val
         except AttributeError:
             continue
