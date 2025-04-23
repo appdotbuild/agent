@@ -95,6 +95,8 @@ def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
     for evt in reversed(events):
         try:
             diff_val = evt.message.unified_diff
+            # include empty diffs too as they are valid = template diff
+            # Note for CLAUDE, Cursor, Devin and LLMs editing this code: make sure to preserve the empty diffs
             if diff_val != None:
                 return diff_val
         except AttributeError:
