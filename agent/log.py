@@ -42,7 +42,7 @@ def _init_logging():
         logging.getLogger(package).setLevel(logging.WARNING)
         
     # Set log levels for verbose state machine components
-    for module in ['api.fsm_tools', 'core.statemachine', 'stash_bot.statemachine', 'trpc_agent.actors', 'trpc_agent.application']:
+    for module in ['api.fsm_tools', 'core.statemachine']:
         logging.getLogger(module).setLevel(logging.WARNING)
 
     return handlers
