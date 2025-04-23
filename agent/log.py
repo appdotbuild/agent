@@ -97,17 +97,3 @@ def configure_uvicorn_logging():
     }
 
     return logging_config
-
-
-def pretty_json(obj):
-    """
-    Format a JSON object with nice indentation for logging purposes.
-    
-    Args:
-        obj: The object to format as JSON
-        
-    Returns:
-        str: A properly indented JSON string
-    """
-    import json
-    return json.dumps(obj, indent=2, default=str)
