@@ -12,6 +12,8 @@ from patch_ng import PatchSet
 
 logger = get_logger(__name__)
 
+DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a single button"
+
 # Default project directory for generated files
 # Use environment variable or create a temp directory
 DEFAULT_PROJECT_DIR = os.environ.get(
@@ -93,7 +95,7 @@ def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
     for evt in reversed(events):
         try:
             diff_val = evt.message.unified_diff
-            if diff_val:
+            if diff_val != None:
                 return diff_val
         except AttributeError:
             continue
@@ -152,7 +154,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             try:
                 ui = input("\033[94mYou> \033[0m")
                 if ui.startswith("+"):
-                    ui = "A simple greeting app that says hello in five languages and stores history of greetings"
+                    ui = DEFAULT_APP_REQUEST
             except (EOFError, KeyboardInterrupt):
                 print("\nExiting…")
                 return
@@ -257,6 +259,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 for evt in events:
                     if evt.message and evt.message.content:
                         print(evt.message.content, end="", flush=True)
+                    # Automatically print diffs when they're provided
+                    if evt.message and evt.message.unified_diff:
+                        print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
+                        print(f"\033[36m{evt.message.unified_diff}\033[0m")
+                        print("\033[36m--- End of Diff ---\033[0m\n")
                 print()
 
                 previous_messages.append(content)

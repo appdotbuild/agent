@@ -99,7 +99,7 @@ class TrpcAgentSession(AgentInterface):
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     app_diff = await self.get_app_diff()
-
+                    # include empty diffs too as they are valid = template diff
                 messages += new_messages
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
