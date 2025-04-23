@@ -119,13 +119,13 @@ class Workspace:
         )
 
     @function
-    async def exec(self, command: list[str]) -> ExecResult:
+    async def exec(self, command: list[str], cwd: str = ".") -> ExecResult:
         return await ExecResult.from_ctr(
-            self.ctr.with_exec(command, expect=ReturnType.ANY)
+            self.ctr.with_workdir(cwd).with_exec(command, expect=ReturnType.ANY)
         )
 
     @function
-    async def exec_with_pg(self, command: list[str]) -> ExecResult:
+    async def exec_with_pg(self, command: list[str], cwd: str = ".") -> ExecResult:
         postgresdb = (
             dag.container()
             .from_("postgres:17.0-alpine")
@@ -141,6 +141,7 @@ class Workspace:
             .with_service_binding("postgres", postgresdb)
             .with_env_variable("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
             .with_exec(["sh", "-c", "while ! pg_isready -h postgres -U postgres; do sleep 1; done"])
+            .with_workdir(cwd)
             .with_exec(command, expect=ReturnType.ANY)
         )
 
@@ -163,7 +164,7 @@ class Workspace:
 
     @function
     def clone(self) -> Self:
-        return Workspace(
+        return type(self)(
             ctr=self.ctr,
             start=self.start,
             protected=self.protected,

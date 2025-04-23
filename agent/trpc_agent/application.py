@@ -354,6 +354,7 @@ class FSMApplication:
 
 
 async def main(user_prompt="Simple todo app"):
+    import json
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         fsm_app = await FSMApplication.start_fsm(user_prompt)
 
@@ -369,6 +370,8 @@ async def main(user_prompt="Simple todo app"):
             # Count files generated
             server_files = context.server_files or {}
             frontend_files = context.frontend_files or {}
+            with open("generated_files.json", "w") as f:
+                json.dump({"server": server_files, "frontend": frontend_files}, f)
             logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
 
 
