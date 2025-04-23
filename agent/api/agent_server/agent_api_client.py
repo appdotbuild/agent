@@ -161,7 +161,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             if not cmd:
                 continue
             action, *rest = cmd.split(None, 1)
-            match action.lower():
+            match action.lower().strip():
                 case "/exit" | "/quit":
                     print("Goodbye!")
                     return
