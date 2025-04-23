@@ -4,9 +4,10 @@ import os
 from typing import List, Dict, Any, Tuple, Optional
 from httpx import AsyncClient, ASGITransport
 
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage
+from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, AgentMessage, MessageKind
 from api.agent_server.async_server import app, CONFIG
 from log import get_logger
+from llm.common import Message
 
 logger = get_logger(__name__)
 
@@ -42,6 +43,7 @@ class AgentApiClient:
 
     async def send_message(self,
                           message: str,
+                          messages_history: Optional[List[ConversationMessage]] = None,
                           request: Optional[AgentRequest] = None,
                           application_id: Optional[str] = None,
                           trace_id: Optional[str] = None,
@@ -50,8 +52,9 @@ class AgentApiClient:
                           auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
 
         """Send a message to the agent and return the parsed SSE events"""
+
         if request is None:
-            request = self.create_request(message, application_id, trace_id, agent_state, settings)
+            request = self.create_request(message, messages_history, application_id, trace_id, agent_state, settings)
         else:
             logger.info(f"Using existing request with trace ID: {request.trace_id}, ignoring the message parameter")
 
@@ -84,23 +87,34 @@ class AgentApiClient:
                                   settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Continue a conversation using the agent state from previous events"""
         agent_state = None
+        messages_history = None
 
         # Extract agent state from the last event
         for event in reversed(previous_events):
             if event.message and event.message.agent_state:
                 agent_state = event.message.agent_state
+                messages_history = event.message.content
                 break
-
-        # If no state was found, use a dummy state
-        if agent_state is None:
-            agent_state = {"test_state": True, "generated_in_test": True}
 
         # Use the same trace ID for continuity
         trace_id = previous_request.trace_id
         application_id = previous_request.application_id
 
+        messages_history_casted = []
+        for m in [Message.from_dict(x) for x in json.loads(messages_history or "[]")]:
+            role = m.role if m.role == "user" else "assistant"
+            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content 
+
+            if role == "user":
+                msg = UserMessage(role=role, content=content)
+            else:
+                msg = AgentMessage(role="agent", content=content, agentState=None, unifiedDiff=None, kind=MessageKind.STAGE_RESULT)
+
+            messages_history_casted.append(msg)
+
         events, request = await self.send_message(
             message=message,
+            messages_history=messages_history_casted,
             application_id=application_id,
             trace_id=trace_id,
             agent_state=agent_state,
@@ -111,18 +125,18 @@ class AgentApiClient:
 
     @staticmethod
     def create_request(message: str,
+                        messages_history: Optional[List[ConversationMessage]] = None,
                      application_id: Optional[str] = None,
                      trace_id: Optional[str] = None,
                      agent_state: Optional[Dict[str, Any]] = None,
                      settings: Optional[Dict[str, Any]] = None) -> AgentRequest:
         """Create a request object for the agent API"""
+
+        all_messages = messages_history or []
+        all_messages += [UserMessage(role="user", content=message)]
+
         return AgentRequest(
-            allMessages=[
-                UserMessage(
-                    role="user",
-                    content=message
-                )
-            ],
+            allMessages=all_messages,
             applicationId=application_id or f"test-bot-{uuid.uuid4().hex[:8]}",
             traceId=trace_id or uuid.uuid4().hex,
             agentState=agent_state,
