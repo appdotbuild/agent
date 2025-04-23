@@ -108,7 +108,7 @@ class AgentApiClient:
             if role == "user":
                 msg = UserMessage(role=role, content=content)
             else:
-                msg = AgentMessage(role="agent", content=content, agentState=None, unifiedDiff=None, kind=MessageKind.STAGE_RESULT)
+                msg = AgentMessage(role="assistant", content=content, agentState=None, unifiedDiff=None, kind=MessageKind.STAGE_RESULT)
 
             messages_history_casted.append(msg)
 
