@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, TypedDict, List
 
 from anyio.streams.memory import MemoryObjectSendStream
 
-from trpc_agent.application import FSMApplication
+from trpc_agent.application import FSMApplication, FSMState
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor
@@ -131,6 +131,40 @@ class TrpcAgentSession(AgentInterface):
                     case FSMApplication():
                         fsm_app = self.processor_instance.fsm_app
                         is_completed = fsm_app.is_completed
+
+                # If the FSM is completed, ensure the diff is sent properly
+                if is_completed:
+                    try:
+                        # This is the final state - make sure we produce a proper diff
+                        if self.processor_instance.fsm_app and self.processor_instance.fsm_app.current_state == FSMState.COMPLETE:
+                            logger.info(f"Sending final state diff for trace {self.trace_id}")
+                            
+                            # Get final context and files
+                            ctx = self.processor_instance.fsm_app.fsm.context
+                            files = self.processor_instance.fsm_app.get_files_at_root(ctx)
+                            
+                            # Get and send a final diff specifically for the completion state
+                            final_diff = await self.processor_instance.fsm_app.get_diff_with(files)
+                            
+                            # Always include a diff in the final state, even if empty
+                            if not final_diff:
+                                final_diff = "# Note: This is a valid empty diff (means no changes from template)"
+                            
+                            completion_event = AgentSseEvent(
+                                status=AgentStatus.IDLE,
+                                traceId=self.trace_id,
+                                message=AgentMessage(
+                                    role="assistant",
+                                    kind=MessageKind.STAGE_RESULT,
+                                    content=json.dumps([x.to_dict() for x in messages]),
+                                    agentState={"fsm_state": fsm_state} if fsm_state else None,
+                                    unifiedDiff=final_diff
+                                )
+                            )
+                            logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
+                            await event_tx.send(completion_event)
+                    except Exception as e:
+                        logger.exception(f"Error sending final diff: {e}")
 
                 if not self.user_answered(new_messages) or is_completed:
                     break

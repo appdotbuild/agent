@@ -207,6 +207,18 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print(diff)
                     else:
                         print("No diff available")
+                        # Check if we're in a COMPLETE state - if so, this is unexpected
+                        for evt in reversed(previous_events):
+                            try:
+                                if (evt.message and evt.message.agent_state and 
+                                    "fsm_state" in evt.message.agent_state and 
+                                    "current_state" in evt.message.agent_state["fsm_state"] and
+                                    evt.message.agent_state["fsm_state"]["current_state"] == "complete"):
+                                    print("\nWARNING: Application is in COMPLETE state but no diff is available.")
+                                    print("This is likely a bug - the diff should be generated in the final state.")
+                                    break
+                            except (AttributeError, KeyError):
+                                continue
                     continue
                 case "/apply":
                     diff = latest_unified_diff(previous_events)

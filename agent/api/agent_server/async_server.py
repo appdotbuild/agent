@@ -141,10 +141,10 @@ async def run_agent[T: AgentInterface](
                         # This ensures compatibility with SSE standard
                         yield f"data: {event.to_json()}\n\n"
 
-                        # If this event indicates the agent is idle, check if we need to remove the session
+                        # Only log that we'll clean up later - don't do the actual cleanup here
+                        # The actual cleanup happens in the finally block
                         if event.status == AgentStatus.IDLE and request.agent_state is None:
-                            # Only remove session completely if this was not a continuation with state
-                            logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id}")
+                            logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
 
         except* Exception as excgroup:
             for e in excgroup.exceptions:
