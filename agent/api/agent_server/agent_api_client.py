@@ -3,6 +3,7 @@ import anyio
 import os
 import traceback
 import tempfile
+import shutil
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -48,21 +49,57 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                         target_path = target_path[2:]
                     file_paths.append(target_path)
         
-        # If the diff references the default template layout (client/ or server/),
-        # pre-populate the target directory with the template files so the patch
-        # can apply cleanly against existing context.
+        # Optimisation: instead of copying the full template into the working
+        # directory (which can be slow for large trees), create *symlinks* only
+        # for the files that the diff is going to touch.  This gives patch_ng
+        # the required context while ensuring we don't modify the original
+        # template sources.
         try:
             if any(p.startswith(("client/", "server/")) for p in file_paths):
                 template_root = os.path.abspath(
                     os.path.join(os.path.dirname(__file__), "../../trpc_agent/template")
                 )
+
                 if os.path.isdir(template_root):
-                    import shutil
-                    print(f"Copying template from {template_root} to {target_dir}")
-                    shutil.copytree(template_root, target_dir, dirs_exist_ok=True)
-        except Exception as copy_err:
-            # Non-fatal – patch may still succeed without template
-            print(f"Warning: could not pre-copy template: {copy_err}")
+                    print(f"Creating symlinks from template ({template_root})")
+
+                    for rel_path in file_paths:
+                        template_file = os.path.join(template_root, rel_path)
+
+                        # Only symlink existing template files; new files will be
+                        # created by the patch itself.
+                        if os.path.isfile(template_file):
+                            dest_file = os.path.join(target_dir, rel_path)
+                            dest_dir = os.path.dirname(dest_file)
+                            os.makedirs(dest_dir, exist_ok=True)
+
+                            # Skip if the symlink / file already exists.
+                            if not os.path.lexists(dest_file):
+                                try:
+                                    os.symlink(template_file, dest_file)
+                                    print(f"  ↳ symlinked {rel_path}")
+                                except Exception as link_err:
+                                    print(f"Warning: could not symlink {rel_path}: {link_err}")
+
+                    # After creating symlinks, we immediately convert them into
+                    # *real* files (copy-once).  This still saves time because
+                    # we only copy the handful of files the diff references,
+                    # not the entire template, while guaranteeing that future
+                    # patch modifications do **not** propagate back to the
+                    # template directory.
+                    for rel_path in file_paths:
+                        dest_file = os.path.join(target_dir, rel_path)
+                        if os.path.islink(dest_file):
+                            try:
+                                # Read the target then replace link with copy.
+                                target_path = os.readlink(dest_file)
+                                os.unlink(dest_file)
+                                shutil.copy2(target_path, dest_file)
+                            except Exception as cp_err:
+                                print(f"Warning: could not materialise copy for {rel_path}: {cp_err}")
+        except Exception as link_copy_err:
+            # Non-fatal – the patch may still succeed without template files
+            print(f"Warning: could not prepare template symlinks: {link_copy_err}")
         
         original_dir = os.getcwd()
         try:
