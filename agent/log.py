@@ -40,6 +40,10 @@ def _init_logging():
     # Set log levels for noisy loggers
     for package in ['urllib3', 'httpx', 'google_genai.models', "anthropic._base_client"]:
         logging.getLogger(package).setLevel(logging.WARNING)
+        
+    # Set log levels for verbose state machine components
+    for module in ['api.fsm_tools', 'core.statemachine', 'stash_bot.statemachine']:
+        logging.getLogger(module).setLevel(logging.WARNING)
 
     return handlers
 
@@ -93,3 +97,17 @@ def configure_uvicorn_logging():
     }
 
     return logging_config
+
+
+def pretty_json(obj):
+    """
+    Format a JSON object with nice indentation for logging purposes.
+    
+    Args:
+        obj: The object to format as JSON
+        
+    Returns:
+        str: A properly indented JSON string
+    """
+    import json
+    return json.dumps(obj, indent=2, default=str)
