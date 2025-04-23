@@ -1,4 +1,4 @@
-from typing import Literal, List
+from typing import Literal, List, Tuple
 
 from google import genai
 from google.genai import types as genai_types
@@ -18,7 +18,7 @@ class GeminiLLM(common.AsyncLLM):
                  ):
         super().__init__()
 
-        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], **(client_params or {}))
+        _client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"], **(client_params or {}))
         self._async_client = _client.aio
 
         # Map friendly model names to actual model identifiers
@@ -45,98 +45,92 @@ class GeminiLLM(common.AsyncLLM):
         *args, # consume unused args passed down
         **kwargs, # consume unused kwargs passed down
     ) -> common.Completion:
-
-        if tools:
-            raise ValueError("Gemini client does not support tools atm.")
-
-        gemini_contents = self._convert_messages_to_gemini(messages)
+        if tool_choice:
+            logger.error(f"Ignoring tool_choice={tool_choice}. Unsupported.")
         config = genai_types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=temperature,
             response_mime_type="text/plain",
         )
+        if tools:
+            declarations = [
+                genai_types.FunctionDeclaration(
+                    name=tool["name"],
+                    description=tool.get("description", None),
+                    parameters=tool["input_schema"], # pyright: ignore
+                ) for tool in tools
+            ]
+            config.tools = [genai_types.Tool(function_declarations=declarations)]
         response = await self._async_client.models.generate_content(
             model=self.model_name,
-            contents=gemini_contents,
+            contents=self._messages_into(messages),
             config=config,
         )
-
-        return self._convert_messages_from_gemini(response)
-
-    @staticmethod
-    def _convert_messages_to_gemini(messages: List[common.Message]) -> List[genai_types.Content]:
-        gemini_contents = []
-        for message in messages:
-            new_content = genai_types.Content(
-                parts=[
-                    genai_types.Part(
-                        text=x.text if message.content else "",
-                    )
-                    for x in message.content
-                    if isinstance(x, common.TextRaw)
-                ],
-                role="user" if message.role == "user" else "model",
-            )
-
-            gemini_contents.append(new_content)
-        return gemini_contents
+        return self._completion_from(response)
 
     @staticmethod
-    def _convert_messages_from_gemini(response: genai_types.GenerateContentResponse) -> common.Completion:
-        text_blocks = []
-        match response.usage_metadata:
-            case genai_types.GenerateContentResponseUsageMetadata():
-                input_tokens = response.usage_metadata.prompt_token_count or 0
-                if hasattr(response.usage_metadata, "thinking_token_count"):
-                    # backward compatibility with older versions
-                    thinking_tokens = response.usage_metadata.thoughts_token_count or 0
+    def _completion_from(completion: genai_types.GenerateContentResponse) -> common.Completion:
+        if not completion.candidates:
+            raise ValueError(f"Empty completion: {completion}")
+        if not completion.candidates[0].content:
+            raise ValueError(f"Empty content in completion: {completion}")
+        if not completion.candidates[0].content.parts:
+            raise ValueError(f"Empty parts in content in completion: {completion}")
+        ours_content: list[common.TextRaw | common.ToolUse | common.ThinkingBlock] = []
+        for block in completion.candidates[0].content.parts:
+            if block.text:
+                if block.thought:
+                    ours_content.append(common.ThinkingBlock(thinking=block.text))
                 else:
-                    thinking_tokens = None
+                    ours_content.append(common.TextRaw(text=block.text))
+            if block.function_call and block.function_call.name and block.function_call.args:
+                ours_content.append(common.ToolUse(
+                    id=block.function_call.id,
+                    name=block.function_call.name,
+                    input=block.function_call.args
+                ))
+        match completion.usage_metadata:
+            case genai_types.GenerateContentResponseUsageMetadata(prompt_token_count=input_tokens, candidates_token_count=output_tokens, thoughts_token_count=thinking_tokens):
+                usage = (input_tokens, output_tokens, thinking_tokens)
+            case genai_types.GenerateContentResponseUsageMetadata(prompt_token_count=input_tokens, candidates_token_count=output_tokens):
+                usage = (input_tokens, output_tokens, None)
             case None:
-                input_tokens = 0
-                thinking_tokens = 0
+                usage = (0, 0, None)
+            case unknown:
+                raise ValueError(f"Unexpected usage metadata: {unknown}")
+        match completion.candidates[0].finish_reason:
+            case genai_types.FinishReason.MAX_TOKENS:
+                stop_reason = "max_tokens"
+            case genai_types.FinishReason.STOP:
+                stop_reason = "end_turn"
             case _:
-                raise ValueError("Invalid usage metadata in response")
-
-        output_tokens = 0
-        stop_reason = "unknown"
-
-        match response.candidates:
-            case [*candidates]:
-                candidates = response.candidates
-            case None:
-                raise ValueError("No candidates in response")
-
-        for candidate in candidates:
-            match candidate.content:
-                case None:
-                    pass
-                case _:
-                    text_blocks += [common.TextRaw(part.text) for part in (candidate.content.parts or []) if part.text]
-                    output_tokens += candidate.token_count or 0
-
-            fr = genai_types.FinishReason
-            match candidate.finish_reason:
-                case None:
-                    pass
-                case fr.MAX_TOKENS:
-                    stop_reason = "max_tokens"
-                case fr.STOP:
-                    stop_reason = "stop_sequence"
-                case _:
-                    stop_reason = "unknown"
-
-        if len(text_blocks) == 0:
-            raise ValueError(f"No text blocks in response: {response}")
-
+                stop_reason = "unknown"
         return common.Completion(
             role="assistant",
-            content=text_blocks,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            content=ours_content,
+            input_tokens=usage[0] or 0,
+            output_tokens=usage[1] or 0,
             stop_reason=stop_reason,
-            thinking_tokens=thinking_tokens,
+            thinking_tokens=usage[2],
         )
+
+    @staticmethod
+    def _messages_into(messages: list[common.Message]) -> List[genai_types.Content]:
+        theirs_messages: List[genai_types.Content] = []
+        for message in messages:
+            theirs_parts: List[genai_types.Part] = []
+            for block in message.content:
+                match block:
+                    case common.TextRaw(text=text):
+                        theirs_parts.append(genai_types.Part.from_text(text=text))
+                    case common.ToolUse(name, input):
+                        theirs_parts.append(genai_types.Part.from_function_call(name=name, args=input)) # pyright: ignore
+                    case common.ToolUseResult(tool_use, tool_result):
+                        theirs_parts.append(genai_types.Part.from_function_response(name=tool_use.name, response={"result": tool_result.content}))
+                    case _:
+                        raise ValueError(f"Unknown block type {type(block)} for {block}")
+            theirs_messages.append(genai_types.Content(parts=theirs_parts, role=message.role))
+        return theirs_messages
 
 
 async def main():
