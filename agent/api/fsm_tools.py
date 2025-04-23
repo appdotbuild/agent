@@ -7,6 +7,7 @@ from llm.utils import AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
 from log import get_logger
+from trpc_agent.application import FSMState
 
 logger = get_logger(__name__)
 
@@ -176,8 +177,32 @@ class FSMToolProcessor[T: FSMInterface]:
             # Determine current state and feedback event type
             current_state = self.fsm_app.current_state
             logger.info(f"[FSMTools] Current state: {current_state}")
-
-            # Handle feedback
+            
+            # If we're in COMPLETE state, restart FSM with the feedback as new input
+            if current_state in ["complete", "failure", FSMState.COMPLETE, FSMState.FAILURE]:
+                logger.info(f"[FSMTools] Restarting FSM from {current_state} state with feedback as new input")
+                
+                # Capture the current context information to preserve between sessions
+                old_context = self.fsm_app.fsm.context
+                user_prompt = old_context.user_prompt
+                
+                # Create new combined prompt with history and feedback
+                combined_prompt = f"{user_prompt}\n\nFeedback: {feedback}"
+                if component_name:
+                    combined_prompt += f" (regarding {component_name})"
+                
+                # Start new FSM with combined prompt
+                self.fsm_app = await self.fsm_class.start_fsm(combined_prompt, self.settings)
+                
+                # Check for immediate errors
+                if (error_msg := self.fsm_app.maybe_error()):
+                    return CommonToolResult(content=f"Error starting new FSM: {error_msg}", is_error=True)
+                
+                result = self.fsm_as_result()
+                logger.info(f"[FSMTools] FSM restarted with feedback incorporated, now in state {self.fsm_app.current_state}")
+                return CommonToolResult(content=str(result))
+            
+            # Regular feedback handling for non-terminal states
             logger.info("[FSMTools] Providing feedback")
             await self.fsm_app.provide_feedback(feedback, component_name)
             new_state = self.fsm_app.current_state

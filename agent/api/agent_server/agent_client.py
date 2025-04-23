@@ -95,22 +95,38 @@ class AgentApiClient:
                 agent_state = event.message.agent_state
                 messages_history = event.message.content
                 break
+                
+        # If we're in a completed or failed state, don't use agent_state to allow starting fresh
+        if agent_state and "fsm_state" in agent_state:
+            fsm_state = agent_state.get("fsm_state", {})
+            if isinstance(fsm_state, dict) and fsm_state.get("stack_path", []):
+                stack_path = fsm_state.get("stack_path", [])
+                if "complete" in stack_path or "failure" in stack_path:
+                    logger.info(f"FSM is in terminal state: {stack_path}, clearing agent state")
+                    agent_state = None
 
         # Use the same trace ID for continuity
         trace_id = previous_request.trace_id
         application_id = previous_request.application_id
 
         messages_history_casted = []
-        for m in [Message.from_dict(x) for x in json.loads(messages_history or "[]")]:
-            role = m.role if m.role == "user" else "assistant"
-            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content 
+        try:
+            # Parse message history if available
+            if messages_history:
+                parsed_history = json.loads(messages_history)
+                for m in [Message.from_dict(x) for x in parsed_history]:
+                    role = m.role if m.role == "user" else "assistant"
+                    content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content 
 
-            if role == "user":
-                msg = UserMessage(role=role, content=content)
-            else:
-                msg = AgentMessage(role="assistant", content=content, agentState=None, unifiedDiff=None, kind=MessageKind.STAGE_RESULT)
+                    if role == "user":
+                        msg = UserMessage(role=role, content=content)
+                    else:
+                        msg = AgentMessage(role="assistant", content=content, agentState=None, unifiedDiff=None, kind=MessageKind.STAGE_RESULT)
 
-            messages_history_casted.append(msg)
+                    messages_history_casted.append(msg)
+        except (json.JSONDecodeError, TypeError, AttributeError) as e:
+            logger.warning(f"Failed to parse message history, starting fresh conversation: {e}")
+            # If FSM completed or there was an error parsing history, just use the latest message
 
         events, request = await self.send_message(
             message=message,

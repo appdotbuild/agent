@@ -324,7 +324,16 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             try:
                 print("\033[92mBot> \033[0m", end="", flush=True)
                 auth_token = os.environ.get("BUILDER_TOKEN")
-                if request is None:
+                # Check if the FSM has completed in the previous state
+                is_fsm_completed = False
+                if request and request.agent_state and "fsm_state" in request.agent_state:
+                    # Check if we reached COMPLETE state
+                    fsm_state = request.agent_state.get("fsm_state", {})
+                    if isinstance(fsm_state, dict) and fsm_state.get("stack_path", []) and "complete" in fsm_state.get("stack_path", []):
+                        logger.info("FSM is in COMPLETE state, starting a new session")
+                        is_fsm_completed = True
+                
+                if request is None or is_fsm_completed:
                     logger.warning("Sending new message")
                     events, request = await client.send_message(content, settings=settings_dict, auth_token=auth_token)
                 else:
