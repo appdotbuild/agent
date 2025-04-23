@@ -26,7 +26,7 @@ class MessageKind(str, Enum):
     """Defines the type of message being sent from the Agent Server."""
     STAGE_RESULT = "StageResult"
     RUNTIME_ERROR = "RuntimeError"
-    FEEDBACK_RESPONSE = "FeedbackResponse"
+    REFINEMENT_REQUEST = "RefinementRequest"
 
 
 class UserMessage(BaseModel):
