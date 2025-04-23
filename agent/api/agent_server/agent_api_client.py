@@ -48,6 +48,22 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                         target_path = target_path[2:]
                     file_paths.append(target_path)
         
+        # If the diff references the default template layout (client/ or server/),
+        # pre-populate the target directory with the template files so the patch
+        # can apply cleanly against existing context.
+        try:
+            if any(p.startswith(("client/", "server/")) for p in file_paths):
+                template_root = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "../../trpc_agent/template")
+                )
+                if os.path.isdir(template_root):
+                    import shutil
+                    print(f"Copying template from {template_root} to {target_dir}")
+                    shutil.copytree(template_root, target_dir, dirs_exist_ok=True)
+        except Exception as copy_err:
+            # Non-fatal – patch may still succeed without template
+            print(f"Warning: could not pre-copy template: {copy_err}")
+        
         original_dir = os.getcwd()
         try:
             os.chdir(target_dir)
@@ -65,7 +81,12 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
             print("Applying patch using python-patch-ng")
             with open(tmp_path, 'rb') as patch_file:
                 patch_set = PatchSet(patch_file)
-                success = patch_set.apply(strip=1)  # Use strip=1 to remove 'a/' and 'b/' prefixes
+                # We use strip=0 because patch_ng already handles the removal of
+                # leading "a/" and "b/" prefixes from the diff paths. Using strip=1
+                # erroneously strips the first real directory (e.g. "client"), which
+                # causes the patch to look for files in non-existent locations like
+                # "src/App.css" instead of "client/src/App.css".
+                success = patch_set.apply(strip=0)
             
             # Check if any files ended up in the wrong place and move them if needed
             for filepath in file_paths:
