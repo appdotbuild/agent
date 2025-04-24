@@ -1,4 +1,5 @@
 import os
+import re
 import anyio
 import logging
 from core.base_node import Node
@@ -35,7 +36,7 @@ class SillyActor(BaseActor, LLMActor):
                 break
 
             logger.info(f"Iteration {iteration}: Running LLM on {len(candidates)} candidates")
-            nodes = await self.run_llm(candidates, tools=self.tools, max_tokens=8192)
+            nodes = await self.run_llm(candidates, tools=self.tools, max_tokens=8192)#, force_tool_use=True)
             logger.info(f"Received {len(nodes)} nodes from LLM")
 
             for i, new_node in enumerate(nodes):
@@ -96,6 +97,20 @@ class SillyActor(BaseActor, LLMActor):
                     },
                     "required": ["path"],
                 }
+            },
+            {
+                "name": "mark_complete",
+                "description": "Call to run type checks and / or tell the task is completed",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "is_complete": {
+                            "type": "boolean",
+                            "description": "True if task is completed false if just running type checks"
+                        }
+                    },
+                    "required": ["is_complete"],
+                }
             }
         ]
 
@@ -111,8 +126,8 @@ class SillyActor(BaseActor, LLMActor):
             return
         self.root = await self.load_node(data)
 
-    async def run_tools(self, node: Node[BaseData]) -> list[ToolUseResult]:
-        result = []
+    async def run_tools(self, node: Node[BaseData]) -> tuple[list[ToolUseResult], bool]:
+        result, is_complete = [], False
         for block in node.data.head().content:
             if not isinstance(block, ToolUse):
                 continue
@@ -126,7 +141,12 @@ class SillyActor(BaseActor, LLMActor):
                         result.append(ToolUseResult.from_tool_use(block, "success"))
                         node.data.files[block.input["path"]] = block.input["content"] # pyright: ignore[reportIndexIssue]
                     case "delete_file":
+                        result.append(ToolUseResult.from_tool_use(block, "success"))
                         node.data.workspace.rm(block.input["path"]) # pyright: ignore[reportIndexIssue]
+                    case "mark_complete":
+                        check_err = await self.run_checks(node)
+                        result.append(ToolUseResult.from_tool_use(block, check_err or "success"))
+                        is_complete = block.input["is_complete"] and check_err is None # pyright: ignore[reportIndexIssue]
                     case unknown:
                         raise ValueError(f"Unknown tool: {unknown}")
             except FileNotFoundError as e:
@@ -135,9 +155,18 @@ class SillyActor(BaseActor, LLMActor):
                 result.append(ToolUseResult.from_tool_use(block, str(e), is_error=True))
             except ValueError as e:
                 result.append(ToolUseResult.from_tool_use(block, str(e), is_error=True))
-        return result
+        return result, is_complete
 
     async def eval_node(self, node: Node[BaseData]) -> bool:
+        tool_calls, is_completed = await self.run_tools(node)
+        if tool_calls:
+            node.data.messages.append(Message(role="user", content=tool_calls))
+        else:
+            content = [TextRaw(text="Continue or mark completed.")]
+            node.data.messages.append(Message(role="user", content=content))
+        return is_completed
+
+    async def run_checks(self, node: Node[BaseData]) -> str | None:
         ...
 
 
@@ -198,6 +227,8 @@ class EditActor(SillyActor):
             *self.allowed,
             "Restricted files and directories:",
             *self.protected,
+            "Rules:",
+            "- Must use provided tools to apply changes."
             "TASK:",
             prompt,
         ]))
@@ -209,34 +240,34 @@ class EditActor(SillyActor):
             raise ValueError("No solution found")
         return solution
 
-    async def eval_node(self, node: Node[BaseData]) -> bool:
-        content: list[ContentBlock] = []
-        content.extend(await self.run_tools(node))
-        if node.data.files:
-            logger.info("Running client tsc compile")
-            tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
-            if tsc_result.exit_code != 0:
-                content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
-            logger.info("Running server tsc compile")
-            tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
-            if tsc_result.exit_code != 0:
-                content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
-            if content:
-                node.data.messages.append(Message(role="user", content=content))
-                return False # early out if tool calls or tsc fails
-            if "server/src/db/schema.ts" in node.data.files:
-                logger.info("Running Drizzle database schema push")
-                pg_result = await node.data.workspace.exec_with_pg(["bun", "run", "drizzle-kit", "push", "--force"], cwd="server")
-                if not (pg_result.exit_code == 0 and not pg_result.stderr):
-                    content.append(TextRaw(f"Error running drizzle-kit: {pg_result.stderr}"))
-            logger.info("Running server tests")
-            test_result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
-            if test_result.exit_code != 0:
-                content.append(TextRaw(f"Error running tests: {test_result.stderr}"))
-        if content:
-            node.data.messages.append(Message(role="user", content=content))
-            return False
-        return True
+    async def run_checks(self, node: Node[BaseData]) -> str | None:
+        errors: list[str] = []
+
+        logger.info("Running server tsc compile")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
+        if tsc_result.exit_code != 0:
+            errors.append(f"Error running tsc: {tsc_result.stdout}")
+
+        logger.info("Running client tsc compile")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
+        if tsc_result.exit_code != 0:
+            errors.append(f"Error running tsc: {tsc_result.stdout}")
+
+        if errors:
+            return "\n".join(errors)
+
+        logger.info("Running server tests")
+        test_result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
+        if test_result.exit_code != 0:
+            normalized = self.normalize_tests(test_result.stderr)
+            errors.append(f"Error running tests: {normalized}")
+
+        return "\n".join(errors) if errors else None
+
+    @classmethod
+    def normalize_tests(cls, stderr: str) -> str:
+        pattern = re.compile(r"\[\d+(\.\d+)?ms\]")
+        return pattern.sub("[DURATION]", stderr)
 
     async def dump(self) -> object:
         if self.root is None:
@@ -261,7 +292,7 @@ class EditActor(SillyActor):
         self.visible = data.get("visible", [])
 
 
-async def main(user_prompt="make header say NOICE APPLICATION, WELL DONE!"):
+async def main(user_prompt="Add feature to create plain notes without status."):
     import json
     import dagger
     from llm.gemini import GeminiLLM
@@ -301,6 +332,7 @@ async def main(user_prompt="make header say NOICE APPLICATION, WELL DONE!"):
                 "client/src/lib/utils.ts",
             ],
             ws_visible=["client/src/components/ui/"],
+            max_depth=70,
         )
 
         solution = await edit_actor.execute(files, user_prompt)
