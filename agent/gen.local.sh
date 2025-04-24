@@ -1,0 +1,1 @@
+LLM_VCR_CACHE_MODE=lru AWS_REGION="us-west-2" AWS_PROFILE=dev TEST_EXTERNAL_SERVER=false python api/agent_server/agent_api_client.py
