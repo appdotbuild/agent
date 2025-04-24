@@ -382,5 +382,11 @@ def cli(host: str = "",
     anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
 
 if __name__ == "__main__":
+    try:
+        import coloredlogs
+        coloredlogs.install(level="INFO")
+    except ImportError:
+        pass
+
     from fire import Fire
     Fire(cli)
