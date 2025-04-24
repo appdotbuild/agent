@@ -106,6 +106,25 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
             
+            # Copy template directory to target directory if it exists
+            if os.path.isdir(template_root):
+                print(f"Copying template files from {template_root} to {target_dir}")
+                for root, dirs, files in os.walk(template_root):
+                    # Get the relative path from template_root
+                    rel_path = os.path.relpath(root, template_root)
+                    # Create the corresponding directory in target_dir
+                    target_path = os.path.join(target_dir, rel_path) if rel_path != '.' else target_dir
+                    os.makedirs(target_path, exist_ok=True)
+                    
+                    # Copy each file
+                    for file in files:
+                        src_file = os.path.join(root, file)
+                        dst_file = os.path.join(target_path, file)
+                        # Only copy if the file doesn't already exist
+                        if not os.path.exists(dst_file):
+                            shutil.copy2(src_file, dst_file)
+                            print(f"  ↳ copied {os.path.relpath(src_file, template_root)}")
+            
             # Pre-create all the directories needed for files
             for filepath in file_paths:
                 if '/' in filepath:
