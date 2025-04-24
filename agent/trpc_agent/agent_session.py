@@ -59,20 +59,6 @@ class TrpcAgentSession(AgentInterface):
             fsm_app.current_state,
         )
 
-                # We intentionally generate the diff against an *empty* snapshot.
-                # Passing the current files as the snapshot results in an empty diff
-                # (because the snapshot and the final state are identical).
-                # Using an empty snapshot correctly produces a diff that contains
-                # all files that have been generated or modified in the current
-                # FSM state.
-                snapshot: dict[str, str] = {}
-
-        logger.info(
-            "Generating diff with %s files in state %s compared to empty snapshot",
-            len(fsm_app.get_files_at_root(fsm_app.fsm.context)),
-            fsm_app.current_state,
-        )
-
         try:
             diff = await fsm_app.get_diff_with(snapshot)
             # Log the diff length to help diagnose issues
