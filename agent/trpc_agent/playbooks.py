@@ -247,3 +247,21 @@ On errors, modify only relevant files and return code within <file path="...">..
 Task:
 {{{{user_prompt}}}}
 """.strip()
+
+
+SILLY_PROMPT = """
+Files:
+{% for file in files_ctx %}{{ file }}{% endfor %}
+{% for file in workspace_ctx %}{{ file }}{% endfor %}
+Relevant files:
+{% for file in workspace_visible_ctx %}{{ file }}{% endfor %}
+Allowed files and directories:
+{% for file in allowed %}{{ file }}{% endfor %}
+Restricted files and directories:
+{% for file in protected %}{{ file }}{% endfor %}
+Rules:
+- Must write small but meaningful tests for newly created handlers.
+- Must not modify existing code unless necessary.
+TASK:
+{{ user_prompt }}
+""".strip()

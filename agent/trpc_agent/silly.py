@@ -1,6 +1,7 @@
 import os
 import re
 import anyio
+import jinja2
 import logging
 from core.base_node import Node
 from core.workspace import Workspace
@@ -181,6 +182,7 @@ class EditActor(SillyActor):
         self,
         llm: AsyncLLM,
         workspace: Workspace,
+        prompt_template: str,
         beam_width: int = 1,
         max_depth: int = 10,
         ws_allowed: list[str] = [],
@@ -189,6 +191,7 @@ class EditActor(SillyActor):
         ws_visible: list[str] = [],
     ):
         super().__init__(llm, workspace, beam_width, max_depth)
+        self.prompt_template = prompt_template
         self.allowed = ws_allowed
         self.protected = ws_protected
         self.injected = ws_injected
@@ -197,7 +200,7 @@ class EditActor(SillyActor):
     async def execute(
         self,
         files: dict[str, str],
-        prompt: str,
+        user_prompt: str,
     ) -> Node[BaseData]:
         workspace = self.workspace.clone()
         for file_path, content in files.items():
@@ -217,22 +220,16 @@ class EditActor(SillyActor):
                 workspace_visible_ctx.extend([f"{name}{file}" for file in file_list])
             else:
                 workspace_visible_ctx.append(name)
-        content = TextRaw("\n".join([
-            "Files:",
-            *files_ctx,
-            *workspace_files_ctx,
-            "Relevant files:",
-            *workspace_visible_ctx,
-            "Allowed files and directories:",
-            *self.allowed,
-            "Restricted files and directories:",
-            *self.protected,
-            "Rules:",
-            "- Must use provided tools to apply changes."
-            "TASK:",
-            prompt,
-        ]))
-        message = Message(role="user", content=[content])
+        jinja_env = jinja2.Environment()
+        text = jinja_env.from_string(self.prompt_template).render(
+            files_ctx=files_ctx,
+            workspace_ctx=workspace_files_ctx,
+            workspace_visible_ctx=workspace_visible_ctx,
+            allowed=self.allowed,
+            protected=self.protected,
+            user_prompt=user_prompt,
+        )
+        message = Message(role="user", content=[TextRaw(text=text)])
         self.root = Node(BaseData(workspace, [message], {}))
 
         solution = await self.search(self.root)
@@ -296,6 +293,7 @@ async def main(user_prompt="Add feature to create plain notes without status."):
     import json
     import dagger
     from llm.gemini import GeminiLLM
+    from trpc_agent.playbooks import SILLY_PROMPT
 
     with open("./trpc_agent/todo_app_snapshot.json", "r") as f:
         files = json.load(f)
@@ -312,6 +310,7 @@ async def main(user_prompt="Add feature to create plain notes without status."):
         edit_actor = EditActor(
             llm,
             workspace.clone(),
+            SILLY_PROMPT,
             ws_allowed=[
                 "server/src/schema.ts",
                 "server/src/db/schema.ts",
