@@ -2,7 +2,6 @@
 Tests for the Config class from the rusty extension.
 """
 import os
-import pytest
 
 from rusty import Config
 
