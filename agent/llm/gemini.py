@@ -1,6 +1,7 @@
 from typing import Literal, List
 
 from google import genai
+from google.genai.errors import ClientError
 from google.genai import types as genai_types
 import os
 from llm import common
@@ -42,11 +43,10 @@ class GeminiLLM(common.AsyncLLM):
         tools: list[common.Tool] | None = None,
         tool_choice: str | None = None,
         system_prompt: str | None = None,
+        force_tool_use: bool = False,
         *args, # consume unused args passed down
         **kwargs, # consume unused kwargs passed down
     ) -> common.Completion:
-        if tool_choice:
-            logger.error(f"Ignoring tool_choice={tool_choice}. Unsupported.")
         config = genai_types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=temperature,
@@ -61,11 +61,25 @@ class GeminiLLM(common.AsyncLLM):
                 ) for tool in tools
             ]
             config.tools = [genai_types.Tool(function_declarations=declarations)]
-        response = await self._async_client.models.generate_content(
-            model=self.model_name,
-            contents=self._messages_into(messages),
-            config=config,
-        )
+            if force_tool_use:
+                config.tool_config = genai_types.ToolConfig(
+                    function_calling_config=genai_types.FunctionCallingConfig(
+                        mode=genai_types.FunctionCallingConfigMode.ANY,
+                        allowed_function_names=[tool_choice] if tool_choice else None,
+                    )
+                )
+        while True:
+            response = await self._async_client.models.generate_content(
+                model=self.model_name,
+                contents=self._messages_into(messages),
+                config=config,
+            )
+            try:
+                return self._completion_from(response)
+            except Exception as e:
+                if self.should_retry(response):
+                    continue
+                raise e
         return self._completion_from(response)
 
     @staticmethod
@@ -113,6 +127,16 @@ class GeminiLLM(common.AsyncLLM):
             stop_reason=stop_reason,
             thinking_tokens=usage[2],
         )
+
+    @classmethod
+    def should_retry(cls, completion: genai_types.GenerateContentResponse) -> bool:
+        if completion.candidates:
+            match completion.candidates[0].finish_reason:
+                case genai_types.FinishReason.MALFORMED_FUNCTION_CALL:
+                    return True
+                case _:
+                    return False
+        return False
 
     @staticmethod
     def _messages_into(messages: list[common.Message]) -> List[genai_types.Content]:
