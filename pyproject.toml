@@ -3,13 +3,14 @@ name = "appdotbuild-server"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["fullstack-agent"]
+dependencies = ["fullstack-agent", "rusty"]
 
 [tool.uv.sources]
 fullstack-agent = { workspace = true }
+rusty = { workspace = true }
 
 [tool.uv.workspace]
-members = ["agent/"]
+members = ["agent/", "rusty/"]
 
 [tool.ruff]
 exclude = [
@@ -54,4 +55,4 @@ line-ending = "auto"
 
 # FixMe: how to pull dev dependencies from the children workspace?
 [dependency-groups]
-dev = ["ruff>=0.11.5", "pdbpp>=0.10.3", "pytest>=8.3.5"]
+dev = ["ruff>=0.11.5", "pdbpp>=0.10.3", "pytest>=8.3.5", "coloredlogs>=15.0.1"]
