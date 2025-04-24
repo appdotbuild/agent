@@ -40,10 +40,6 @@ def _init_logging():
     # Set log levels for noisy loggers
     for package in ['urllib3', 'httpx', 'google_genai.models', "anthropic._base_client"]:
         logging.getLogger(package).setLevel(logging.WARNING)
-        
-    # Set log levels for verbose state machine components
-    for module in ['api.fsm_tools', 'core.statemachine', 'stash_bot.statemachine', 'trpc_agent.actors', 'trpc_agent.application']:
-        logging.getLogger(module).setLevel(logging.WARNING)
 
     return handlers
 
