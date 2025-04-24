@@ -34,8 +34,6 @@ from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
-from llm.utils import get_llm_client
-from llm.common import Message, TextRaw
 
 from log import get_logger, init_sentry, configure_uvicorn_logging
 
@@ -250,31 +248,6 @@ async def dagger_healthcheck():
             "alpine_version": version.strip()
         }
 
-@app.get("/health/bedrock")
-async def bedrock_healthcheck():
-    llm_client = get_llm_client()
-    try:
-        result = await llm_client.completion(
-            messages=[
-            Message(role='user',
-                content=[TextRaw(text="hello what are you?")]
-            )
-            ],
-        max_tokens=100
-        )
-        text = result.to_dict()["content"]
-        return {
-            "status": "healthy",
-            "bedrock_response": text
-        }
-
-
-    except Exception as e:
-        logger.error(f"Error during Bedrock health check: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Bedrock service is not healthy"
-        )
 
 def main(
     host: str = "0.0.0.0",

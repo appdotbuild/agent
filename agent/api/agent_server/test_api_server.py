@@ -32,15 +32,6 @@ async def test_health(client):
     assert resp.json() == {"status": "healthy"}
 
 
-@pytest.mark.skip  # Skip this test for now, @arseni to fix
-async def test_health_bedrock(client):
-    resp = await client.client.get("http://test/health/bedrock")
-    assert resp.status_code == 200
-    json_resp = resp.json()
-    assert json_resp["status"] == "healthy"
-    assert json_resp["bedrock_response"]
-
-
 async def test_invalid_token(client):
     with pytest.raises(ValueError, match="Request failed with status code 403"):
         await client.send_message("Hello", auth_token="invalid_token")
