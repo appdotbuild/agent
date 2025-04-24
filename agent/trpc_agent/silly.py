@@ -5,7 +5,7 @@ import logging
 from core.base_node import Node
 from core.workspace import Workspace
 from core.actors import BaseData, BaseActor, LLMActor
-from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
+from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
 
 logger = logging.getLogger(__name__)
 

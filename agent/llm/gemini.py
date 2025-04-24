@@ -1,7 +1,6 @@
 from typing import Literal, List
 
 from google import genai
-from google.genai.errors import ClientError
 from google.genai import types as genai_types
 import os
 from llm import common
