@@ -64,7 +64,6 @@ def get_llm_client(
     backend: Literal["auto"] | LLMBackend = "auto",
     model_name: Literal["sonnet", "haiku", "gemini-flash", "gemini-pro"] = "sonnet",
     cache_mode: CacheMode = "auto",
-    cache_path: str = os.path.join(os.path.dirname(__file__), "llm_cache.json"),
     client_params: dict | None = None,
 ) -> AsyncLLM:
     """Get a configured LLM client for the fullstack application.
@@ -90,7 +89,7 @@ def get_llm_client(
         backend = _guess_llm_backend(model_name)
         logger.info(f"Auto-detected backend: {backend}")
 
-    cache_key = _cache_key_from_seq((backend, model_name, cache_mode, cache_path, params_key))
+    cache_key = _cache_key_from_seq((backend, model_name, cache_mode, params_key))
 
     # Return existing client if one exists with the same configuration
     if cache_key in _llm_clients:

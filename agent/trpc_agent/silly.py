@@ -292,14 +292,14 @@ class EditActor(SillyActor):
 async def main(user_prompt="Add feature to create plain notes without status."):
     import json
     import dagger
-    from llm.gemini import GeminiLLM
+    from llm.utils import get_llm_client
     from trpc_agent.playbooks import SILLY_PROMPT
 
     with open("./trpc_agent/todo_app_snapshot.json", "r") as f:
         files = json.load(f)
 
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        llm = GeminiLLM()
+        llm = get_llm_client(model_name="gemini-flash")
 
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
