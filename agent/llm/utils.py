@@ -1,6 +1,6 @@
 import itertools
 import os
-from typing import Literal, Dict, Sequence, Tuple
+from typing import Literal, Dict, Sequence
 from anthropic import AsyncAnthropic, AsyncAnthropicBedrock
 from llm.common import AsyncLLM, Message, TextRaw, ContentBlock
 from llm.anthropic_client import AnthropicLLM

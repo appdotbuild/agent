@@ -1,4 +1,4 @@
-from typing import Literal, List
+from typing import List
 
 from google import genai
 from google.genai import types as genai_types
