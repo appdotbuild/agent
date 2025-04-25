@@ -10,6 +10,8 @@ from core.actors import BaseData
 from core.base_node import Node
 from core.statemachine import MachineCheckpoint
 from core.workspace import Workspace
+from trpc_agent import playbooks
+from trpc_agent.silly import EditActor
 from trpc_agent.actors import DraftActor, HandlersActor, IndexActor, FrontendActor
 import dagger
 
@@ -30,6 +32,7 @@ class FSMState(str, enum.Enum):
     REVIEW_INDEX = "review_index"
     FRONTEND = "frontend"
     REVIEW_FRONTEND = "review_frontend"
+    APPLY_FEEDBACK = "apply_feedback"
     COMPLETE = "complete"
     FAILURE = "failure"
 
@@ -153,6 +156,7 @@ class FSMApplication:
 
         llm = get_llm_client()
         model_params = settings or {}
+        g_llm = get_llm_client(model_name="gemini-pro")
 
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
@@ -169,10 +173,38 @@ class FSMApplication:
         index_actor = IndexActor(llm, backend_workspace.clone(), model_params, beam_width=beam_width)
         front_actor = FrontendActor(llm, frontend_workspace.clone(), model_params, beam_width=1, max_depth=20)
 
+        edit_actor = EditActor(
+            llm,
+            workspace.clone(),
+            playbooks.SILLY_PROMPT,
+            ws_allowed=[
+                "server/src/schema.ts",
+                "server/src/db/schema.ts",
+                "server/src/handlers/",
+                "server/src/tests/",
+                "server/src/index.ts",
+                "client/src/App.tsx",
+                "client/src/components/",
+                "client/src/App.css",
+            ],
+            ws_protected=[
+                "server/src/db/index.ts",
+                "client/src/utils/trpc.ts",
+                "client/src/components/ui",
+            ],
+            ws_injected=[
+                "client/src/utils/trpc.ts",
+                "client/src/lib/utils.ts",
+            ],
+            ws_visible=["client/src/components/ui/"],
+            max_depth=70,
+        )
+
         # Define state machine states
         states = State[ApplicationContext, FSMEvent](
             on={
-                FSMEvent("CONFIRM"): FSMState.DRAFT
+                FSMEvent("CONFIRM"): FSMState.DRAFT,
+                FSMEvent("FEEDBACK"): FSMState.APPLY_FEEDBACK,
             },
             states={
                 FSMState.DRAFT: State(
@@ -346,19 +378,19 @@ class FSMApplication:
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
         # Start with the template directory
         context = dagger.dag.host().directory("./trpc_agent/template")
-        
+
         # Write snapshot (initial) files
         for key, value in snapshot.items():
             context = context.with_new_file(key, value)
-        
+
         # Create workspace with git
         workspace = await Workspace.create(base_image="alpine/git", context=context)
-        
+
         # Write current (final) files
         final_files = self.get_files_at_root(self.fsm.context)
         for key, value in final_files.items():
             workspace.write_file(key, value)
-        
+
         # If we're in the COMPLETE state, ensure we return a diff even if empty
         if self.current_state == FSMState.COMPLETE:
             diff = await workspace.diff()
@@ -367,7 +399,7 @@ class FSMApplication:
                 # Return empty string, but with special note that the system can recognize
                 return "# Note: This is a valid empty diff (means no changes from template)"
             return diff
-        
+
         return await workspace.diff()
 
 
