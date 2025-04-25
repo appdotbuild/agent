@@ -1,0 +1,1 @@
+ LLM_VCR_CACHE_MODE=lru AWS_REGION="us-west-2" AWS_PROFILE=stage TEST_EXTERNAL_SERVER=true EXTERNAL_SERVER_URL=http://staging-agent-service-alb-684520559.us-west-2.elb.amazonaws.com python api/agent_server/agent_api_client.py --host="staging-agent-service-alb-684520559.us-west-2.elb.amazonaws.com" --port=80

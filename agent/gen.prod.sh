@@ -1,0 +1,1 @@
+TEST_EXTERNAL_SERVER=true EXTERNAL_SERVER_URL=http://prod-agent-service-alb-999031216.us-west-2.elb.amazonaws.com python api/agent_server/agent_api_client.py --host="prod-agent-service-alb-999031216.us-west-2.elb.amazonaws.com" --port=80
