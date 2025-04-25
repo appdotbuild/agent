@@ -18,7 +18,7 @@ DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a sing
 # Default project directory for generated files
 # Use environment variable or create a temp directory
 DEFAULT_PROJECT_DIR = os.environ.get(
-    "AGENT_PROJECT_DIR", 
+    "AGENT_PROJECT_DIR",
     os.path.join(tempfile.gettempdir(), "agent_projects")
 )
 os.makedirs(DEFAULT_PROJECT_DIR, exist_ok=True)
@@ -30,13 +30,13 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
         print(f"Preparing to apply patch to directory: '{target_dir}'")
         target_dir = os.path.abspath(target_dir)
         os.makedirs(target_dir, exist_ok=True)
-        
+
         # Parse the diff to extract file information first
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
             print(f"Wrote patch to temporary file: {tmp_path}")
-        
+
         # First detect all target paths from the patch
         file_paths = []
         with open(tmp_path, 'rb') as patch_file:
@@ -48,7 +48,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                     if target_path.startswith('b/'):  # Remove prefix from git style patches
                         target_path = target_path[2:]
                     file_paths.append(target_path)
-        
+
         # Optimisation: instead of copying the full template into the working
         # directory (which can be slow for large trees), create *symlinks* only
         # for the files that the diff is going to touch.  This gives patch_ng
@@ -63,6 +63,47 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                 if os.path.isdir(template_root):
                     print(f"Creating symlinks from template ({template_root})")
 
+                    # Copy all template files except specific excluded directories and hidden files
+                    excluded_dirs = ["node_modules", "dist"]
+
+                    def copy_template_files(base_dir, target_base):
+                        """
+                        Copy all template files recursively, except those in excluded directories
+                        and hidden files (starting with a dot).
+                        """
+                        for root, dirs, files in os.walk(base_dir):
+                            # Remove excluded directories and hidden directories from dirs to prevent recursion into them
+                            dirs[:] = [d for d in dirs if d not in excluded_dirs and not d.startswith('.')]
+
+                            # Get relative path from template root
+                            rel_path = os.path.relpath(root, base_dir)
+                            if rel_path == ".":
+                                rel_path = ""
+
+                            for file in files:
+                                # Skip hidden files
+                                if file.startswith('.') or file.endswith('.md'):
+                                    continue
+
+                                src_file = os.path.join(root, file)
+                                # Create relative path within target directory
+                                rel_file_path = os.path.join(rel_path, file)
+                                dest_file = os.path.join(target_base, rel_file_path)
+                                dest_dir = os.path.dirname(dest_file)
+
+                                os.makedirs(dest_dir, exist_ok=True)
+                                if not os.path.lexists(dest_file):
+                                    try:
+                                        # Directly copy the file (no symlink)
+                                        shutil.copy2(src_file, dest_file)
+                                        print(f"  ↳ copied file {rel_file_path}")
+                                    except Exception as cp_err:
+                                        print(f"Warning: could not copy file {rel_file_path}: {cp_err}")
+
+                    # Copy all template files recursively (except excluded dirs)
+                    copy_template_files(template_root, target_dir)
+
+                    # Then handle the files from the diff patch
                     for rel_path in file_paths:
                         template_file = os.path.join(template_root, rel_path)
 
@@ -100,12 +141,12 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
         except Exception as link_copy_err:
             # Non-fatal – the patch may still succeed without template files
             print(f"Warning: could not prepare template symlinks: {link_copy_err}")
-        
+
         original_dir = os.getcwd()
         try:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
-            
+
             # Pre-create all the directories needed for files
             for filepath in file_paths:
                 if '/' in filepath:
@@ -113,7 +154,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                     if directory:
                         os.makedirs(directory, exist_ok=True)
                         print(f"Created directory: {directory}")
-            
+
             # Apply the patch
             print("Applying patch using python-patch-ng")
             with open(tmp_path, 'rb') as patch_file:
@@ -124,7 +165,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                 # causes the patch to look for files in non-existent locations like
                 # "src/App.css" instead of "client/src/App.css".
                 success = patch_set.apply(strip=0)
-            
+
             # Check if any files ended up in the wrong place and move them if needed
             for filepath in file_paths:
                 if '/' in filepath:
@@ -135,7 +176,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                         print(f"Moving {basename} to correct location {filepath}")
                         os.makedirs(dirname, exist_ok=True)
                         os.rename(basename, filepath)
-            
+
             if success:
                 return True, f"Successfully applied the patch to the directory '{target_dir}'"
             else:
@@ -268,8 +309,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         # Check if we're in a COMPLETE state - if so, this is unexpected
                         for evt in reversed(previous_events):
                             try:
-                                if (evt.message and evt.message.agent_state and 
-                                    "fsm_state" in evt.message.agent_state and 
+                                if (evt.message and evt.message.agent_state and
+                                    "fsm_state" in evt.message.agent_state and
                                     "current_state" in evt.message.agent_state["fsm_state"] and
                                     evt.message.agent_state["fsm_state"]["current_state"] == "complete"):
                                     print("\nWARNING: Application is in COMPLETE state but no diff is available.")
@@ -287,16 +328,16 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         # Create a timestamp-based project directory name
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         project_name = f"project_{timestamp}"
-                        
+
                         if rest and rest[0]:
                             base_dir = rest[0]
                         else:
                             base_dir = DEFAULT_PROJECT_DIR
                             print(f"Using default project directory: {base_dir}")
-                        
+
                         # Create the full project directory path
                         target_dir = os.path.join(base_dir, project_name)
-                        
+
                         # Apply the patch
                         success, message = apply_patch(diff, target_dir)
                         print(message)
