@@ -15,7 +15,60 @@ env:
   AWS_REGION: us-west-2
 
 jobs:
-  build-and-test:
+  build-template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Start Docker Compose services
+        working-directory: ./agent/trpc_agent/template/
+        run: docker compose up -d --build
+
+      - name: Check Container Health
+        run: |
+          sleep 10
+          # List of containers to check
+          containers_to_check="app-backend postgres"
+          all_healthy=true
+          failed_containers=""
+
+          for container_name in $containers_to_check; do
+            echo "Checking health of container: $container_name"
+            status=$(docker inspect --format='{{.State.Health.Status}}' $container_name)
+
+            if [ "$status" = "healthy" ]; then
+              echo "Container $container_name is healthy!"
+            else
+              echo "Container $container_name is not healthy (status: $status)."
+              all_healthy=false
+              failed_containers="$failed_containers $container_name" # Add to the list of failed containers
+            fi
+          done
+
+          if [ "$all_healthy" = "true" ]; then
+            echo "All specified containers are healthy!"
+            exit 0
+          else
+            echo "Error: One or more containers are not healthy. Failing workflow."
+            echo "--- Logs for failed containers: ---"
+            # Loop through failed containers and print logs
+            for failed_container in $failed_containers; do
+              echo "--- Logs for $failed_container ---"
+              docker logs --tail 50 $failed_container || echo "Could not retrieve container logs for $failed_container."
+              echo "------------------------------------"
+            done
+            exit 1
+          fi
+
+  build-and-test-codegen:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

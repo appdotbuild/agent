@@ -1,23 +1,56 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
       dockerfile: server/server.Dockerfile
     ports:
-      - '2022:2022'
+      - "2022:2022"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres}
     container_name: app-backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2022/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
       context: .
       dockerfile: client/client.Dockerfile
     ports:
-      - '80:80'
+      - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       - BACKEND_URL=http://app-backend:2022 # Reference the backend by container name
+
+  postgres:
+    container_name: ${POSTGRES_CONTAINER_NAME:-postgres}
+    image: postgres:17-alpine3.21
+    hostname: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 1s
+      timeout: 20s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: ${NETWORK_NAME:-app_network}
+    driver: bridge

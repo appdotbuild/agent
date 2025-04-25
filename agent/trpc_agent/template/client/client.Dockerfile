@@ -1,11 +1,11 @@
 # Build stage
-FROM oven/bun:1 as builder
+FROM oven/bun:1.2.2-alpine AS builder
 
 # Set working directory
 WORKDIR /app
 
 # Copy package.json and lockfile
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Create directories for client and server
 RUN mkdir -p client server

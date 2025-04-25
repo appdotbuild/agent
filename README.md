@@ -31,13 +31,8 @@ In case of access issues, make sure you have access to the AWS sandbox account.
 3. For local development:
 ```bash
 export AWS_PROFILE=dev
+export AWS_REGION="us-west-2"
 ```
-
-4. For running compilation in containers, first run:
-```bash
-./agent/prepare_containers.sh
-```
-DockerSandboxTest python notebook contains sample usage.
 
 ## Basic Usage
 
@@ -68,13 +63,17 @@ The framework exposes four high-level tools for LLM-guided application generatio
    Input: {}
    ```
 
-## Environment Variables
+### Testing with debug client on prod servers
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-AWS_PROFILE=dev
-AWS_REGION=us-west-2
-```
+1. Make sure you have the `uv` package installed (https://docs.astral.sh/uv/getting-started/installation/)
+2. `uv run agent/api/agent_server/agent_api_client.py --host prod-agent-service-alb-999031216.us-west-2.elb.amazonaws.com --port 80` (or change the host if needed);
+3. In the client, prompt for your app.
+4. Waste some time, get some tea.
+5. After getting a large output, use `/apply`
+6. There will be a new dir in the output, open new tab and `cd` there.
+7. `docker compose up`. Optionally you can use your other DB: set env variable `DATABASE_URL=<your_db_url>`; otherwise we use postgres in docker.
+8. Go to `localhost:80`
+
 
 ### VCR Testing
 
