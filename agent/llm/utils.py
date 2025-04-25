@@ -50,7 +50,7 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
         case ("gemini-flash" | "gemini-pro"):
             if os.getenv("GEMINI_API_KEY"):
                 return "gemini"
-            raise ValueError("Gemini backend requires GOOGLE_API_KEY to be set")
+            raise ValueError("Gemini backend requires GEMINI_API_KEY to be set")
         case _:
             raise ValueError(f"Unknown model name: {model_name}")
 
