@@ -1,18 +1,20 @@
 import itertools
 import os
-from typing import Literal, Dict, Tuple
+from typing import Literal, Dict, Sequence, Tuple
 from anthropic import AsyncAnthropic, AsyncAnthropicBedrock
 from llm.common import AsyncLLM, Message, TextRaw, ContentBlock
 from llm.anthropic_client import AnthropicLLM
 from llm.cached import CachedLLM, CacheMode
+from llm.gemini import GeminiLLM
 from log import get_logger
+from hashlib import md5
 
 logger = get_logger(__name__)
 
 # Cache for LLM clients
-_llm_clients: Dict[Tuple[str, str, CacheMode, str, frozenset], AsyncLLM] = {}
+_llm_clients: Dict[str, AsyncLLM] = {}
 
-LLMBackend = Literal["bedrock", "anthropic"]
+LLMBackend = Literal["bedrock", "anthropic", "gemini"]
 
 
 def merge_text(content: list[ContentBlock]) -> list[ContentBlock]:
@@ -45,13 +47,22 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
                 return "anthropic"
             # that is rare case, but may be non-trivial AWS config, try Bedrock again
             return "bedrock"
+        case ("gemini-flash" | "gemini-pro"):
+            if os.getenv("GEMINI_API_KEY"):
+                return "gemini"
+            raise ValueError("Gemini backend requires GOOGLE_API_KEY to be set")
         case _:
             raise ValueError(f"Unknown model name: {model_name}")
 
 
+def _cache_key_from_seq(key: Sequence) -> str:
+    s = "/".join(map(str, key))
+    return md5(s.encode()).hexdigest()
+
+
 def get_llm_client(
     backend: Literal["auto"] | LLMBackend = "auto",
-    model_name: Literal["sonnet", "haiku"] = "sonnet",
+    model_name: Literal["sonnet", "haiku", "gemini-flash", "gemini-pro"] = "sonnet",
     cache_mode: CacheMode = "auto",
     cache_path: str = os.path.join(os.path.dirname(__file__), "llm_cache.json"),
     client_params: dict | None = None,
@@ -79,8 +90,7 @@ def get_llm_client(
         backend = _guess_llm_backend(model_name)
         logger.info(f"Auto-detected backend: {backend}")
 
-    # Create a unique key for this client configuration
-    cache_key = (backend, model_name, cache_mode, cache_path, params_key)
+    cache_key = _cache_key_from_seq((backend, model_name, cache_mode, cache_path, params_key))
 
     # Return existing client if one exists with the same configuration
     if cache_key in _llm_clients:
@@ -97,21 +107,33 @@ def get_llm_client(
             "bedrock": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
             "anthropic": "claude-3-5-haiku-20241022"
         },
+        "gemini-pro":
+            {
+                "gemini": "gemini-2.5-pro-preview-03-25",
+            },
+        "gemini-flash":
+            {
+                "gemini": "gemini-2.5-flash-preview-04-17",
+            },
     }
 
     chosen_model = models_map[model_name][backend]
 
     match backend:
-        case "bedrock":
-            base_client = AsyncAnthropicBedrock(**client_params)
-        case "anthropic":
-            base_client = AsyncAnthropic(**client_params)
+        case "bedrock" | "anthropic":
+            base_client = AsyncAnthropicBedrock(**client_params) if backend == "bedrock" else AsyncAnthropic(**client_params)
+            client = AnthropicLLM(base_client, default_model=chosen_model)
+        case "gemini":
+            client_params["model_name"] = chosen_model
+            client = GeminiLLM(**client_params)
         case _:
             raise ValueError(f"Unknown backend: {backend}")
 
-    client = AnthropicLLM(base_client, default_model=chosen_model)
     if cache_mode != "off":
-        client = CachedLLM(client, cache_mode, cache_path)
+        current_dir = os.path.dirname(__file__)
+        cache_path = os.path.join(current_dir, "caches", f"{cache_key}.json")
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        client = CachedLLM(client, cache_mode=cache_mode, cache_path=cache_path, max_cache_size=256)
 
     # Store the client in the cache
     _llm_clients[cache_key] = client

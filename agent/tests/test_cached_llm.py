@@ -2,6 +2,7 @@ import pytest
 import tempfile
 from llm.cached import CachedLLM, AsyncLLM
 from llm.common import Message, TextRaw, Completion, Tool
+from llm.utils import get_llm_client, merge_text
 import uuid
 import ujson as json
 
@@ -110,3 +111,17 @@ async def test_cached_lru():
         new_resp = await record_llm.completion(**requests["first"])
         assert json.dumps(new_resp.to_dict()) != responses["first"], "First request should not hit the cache"
         assert base_llm.calls == 4, "Base LLM should still be called four times"
+
+
+async def test_gemini():
+    client = get_llm_client(model_name="gemini-flash")
+    resp = await client.completion(
+        messages=[Message(role="user", content=[TextRaw("Hello, what are you?")])],
+        max_tokens=256,
+    )
+    text, = merge_text(resp.content)
+    match text:
+        case TextRaw(text=text):
+            assert text != "", "Gemini should return a non-empty response"
+        case _:
+            raise ValueError(f"Unexpected content type: {type(text)}")

@@ -1,0 +1,15 @@
+{
+  "475a28ceb1f9d46d64415e7dc79b9857": {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I am a large language model, trained by Google."
+      }
+    ],
+    "input_tokens": 7,
+    "output_tokens": 128,
+    "stop_reason": "end_turn",
+    "thinking_tokens": null
+  }
+}

@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 class GeminiLLM(common.AsyncLLM):
     def __init__(self,
-                 model_name: Literal["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-thinking", "gemma-3-27b-it"] = "gemini-2.0-flash",
+                 model_name: str,
                  api_key: str | None = None,
                  client_params: dict = {}
                  ):
@@ -21,17 +21,7 @@ class GeminiLLM(common.AsyncLLM):
         _client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"], **(client_params or {}))
         self._async_client = _client.aio
 
-        # Map friendly model names to actual model identifiers
-        self.models_map = {
-            "gemini-2.5-pro": "gemini-2.5-pro-exp-03-25",  # Using the experimental version from example
-            "gemini-2.0-flash": "gemini-2.0-flash",
-            "gemini-2.0-flash-thinking": "gemini-2.0-flash-thinking-exp-01-21"
-        }
-
-        if model_name in self.models_map:
-            self.model_name = self.models_map[model_name]
-        else:
-            self.model_name = model_name
+        self.model_name = model_name
 
     async def completion(
         self,

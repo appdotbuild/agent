@@ -1,5 +1,5 @@
 from typing import Literal, Dict, Any, List
-import json
+import ujson as json
 import hashlib
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool
@@ -24,8 +24,8 @@ class CachedLLM(AsyncLLM):
     def __init__(
         self,
         client: AsyncLLM,
+        cache_path: str,
         cache_mode: CacheMode = "off",
-        cache_path: str = "llm_cache.json",
         max_cache_size: int = 256,
     ):
         self.client = client
