@@ -1,10 +1,10 @@
-FROM oven/bun:1
+FROM oven/bun:1.2.2
 
 # Set working directory
 WORKDIR /app
 
 # Copy package.json and lockfile
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Create directories for client and server
 RUN mkdir -p client server
