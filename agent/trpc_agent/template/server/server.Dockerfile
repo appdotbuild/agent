@@ -1,7 +1,10 @@
-FROM oven/bun:1.2.2
+FROM oven/bun:1.2.2-alpine
 
 # Set working directory
 WORKDIR /app
+
+# Install curl for health checks
+RUN apk add --no-cache curl
 
 # Copy package.json and lockfile
 COPY package.json bun.lock ./
@@ -19,11 +22,8 @@ RUN bun install --frozen-lockfile
 # Copy the entire project
 COPY . .
 
-# Build the server
-RUN cd server && bun run build
-
-# Expose the server port
+WORKDIR /app/server
+RUN bun run build
 EXPOSE 2022
 
-# Run the server (adjust the path if needed)
-CMD ["node", "server/dist/src/index.js"]
+CMD ["bun", "run", "src/index.ts"]
