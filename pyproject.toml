@@ -54,4 +54,9 @@ line-ending = "auto"
 
 # FixMe: how to pull dev dependencies from the children workspace?
 [dependency-groups]
-dev = ["ruff>=0.11.5", "pdbpp>=0.10.3", "pytest>=8.3.5"]
+dev = [
+    "ruff>=0.11.5",
+ "pdbpp>=0.10.3",
+ "pytest>=8.3.5",
+ "pytest-xdist>=3.6.1",
+]

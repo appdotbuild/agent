@@ -16,7 +16,6 @@ const appRouter = router({
   healthcheck: publicProcedure.query(() => {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }),
-  // define other API endpoints here
 });
 
 export type AppRouter = typeof appRouter;
