@@ -15,7 +15,40 @@ env:
   AWS_REGION: us-west-2
 
 jobs:
-  build-and-test:
+  build-template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Start Docker Compose services
+        working-directory: ./agent/trpc_agent/template/
+        run: docker compose up -d --build
+
+      - name: Check Container Health
+        run: |
+          sleep 10
+          echo "Checking health of container: app-backend"
+          status=$(docker inspect --format='{{.State.Health.Status}}' app-backend)
+
+          if [ "$status" = "healthy" ]; then
+            echo "Container is healthy!"
+            exit 0
+          else
+            echo "Error: Container is not healthy (status: $status). Failing workflow."
+            echo "--- Recent container logs: ---"
+            docker logs --tail 50 app-backend || echo "Could not retrieve container logs."
+            exit 1
+          fi
+
+  build-and-test-codegen:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
