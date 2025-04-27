@@ -163,3 +163,4 @@ cython_debug/
 node_modules
 tsp-output/
 .aider*
+.opencode
