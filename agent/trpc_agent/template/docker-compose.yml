@@ -28,6 +28,12 @@ services:
         condition: service_healthy
     environment:
       - BACKEND_URL=http://app-backend:2022 # Reference the backend by container name
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   postgres:
     container_name: ${POSTGRES_CONTAINER_NAME:-postgres}
