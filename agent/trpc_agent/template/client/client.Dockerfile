@@ -26,6 +26,9 @@ RUN cd client && bun run build
 # Production stage for frontend
 FROM caddy:alpine
 
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
 WORKDIR /srv
 
 # Copy the built client files
