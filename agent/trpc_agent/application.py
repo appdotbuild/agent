@@ -154,7 +154,7 @@ class FSMApplication:
         index_actor = IndexActor(llm, workspace.clone(), model_params, beam_width=3)
         front_actor = FrontendActor(llm, workspace.clone(), model_params, beam_width=1, max_depth=20)
         edit_actor = EditActor(
-            llm,
+            g_llm,
             workspace.clone(),
             playbooks.SILLY_PROMPT,
             ws_allowed=[
