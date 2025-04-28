@@ -268,7 +268,7 @@ class EditActor(SillyActor):
 
     async def dump(self) -> object:
         if self.root is None:
-            return []
+            return {}
         return {
             "root": await self.dump_node(self.root),
             "allowed": self.allowed,
