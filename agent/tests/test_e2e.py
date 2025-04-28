@@ -1,9 +1,7 @@
 import os
 import pytest
 import subprocess
-import time
 import tempfile
-import httpx
 import anyio
 from datetime import datetime
 import docker
@@ -22,9 +20,9 @@ def anyio_backend():
     return 'asyncio'
 
 def generate_random_name(prefix):
-    return f"{prefix}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    return f"{prefix}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-async def test_automated_e2e():
+async def test_e2e_generation():
     async with AgentApiClient() as client:
         events, request = await client.send_message(DEFAULT_APP_REQUEST)
         assert events, "No response received from agent"
@@ -35,9 +33,9 @@ async def test_automated_e2e():
             success, message = apply_patch(diff, temp_dir)
             assert success, f"Failed to apply patch: {message}"
 
-            db_container_name = generate_random_name("db_")
-            app_container_name = generate_random_name("app_")
-            frontend_container_name = generate_random_name("frontend_")
+            db_container_name = generate_random_name("db")
+            app_container_name = generate_random_name("app")
+            frontend_container_name = generate_random_name("frontend")
 
             os.environ["POSTGRES_CONTAINER_NAME"] = db_container_name
             os.environ["BACKEND_CONTAINER_NAME"] = app_container_name
@@ -50,7 +48,7 @@ async def test_automated_e2e():
                 os.chdir(temp_dir)
 
                 logger.info(f"Starting Docker containers in {temp_dir}")
-                docker_result = subprocess.run(
+                _ = subprocess.run(
                     ["docker", "compose", "up", "-d"],
                     check=True,
                     capture_output=True,
@@ -61,7 +59,6 @@ async def test_automated_e2e():
                 await anyio.sleep(5)
 
                 # check if the containers are healthy
-
                 for name, kind in zip(
                     [db_container_name, app_container_name, frontend_container_name],
                     ["db", "app", "frontend"]

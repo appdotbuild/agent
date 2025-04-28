@@ -2,7 +2,7 @@ import uuid
 import pytest
 from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
-from api.agent_server.agent_api_client import AgentApiClient
+from api.agent_server.agent_api_client import AgentApiClient, DEFAULT_APP_REQUEST
 
 
 logger = get_logger(__name__)
@@ -26,7 +26,6 @@ def template_diff(monkeypatch):
     yield
 
 
-DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a single button"
 
 @pytest.mark.parametrize("agent_type", [trpc_agent, template_diff])
 async def test_async_agent_message_endpoint(agent_type):
