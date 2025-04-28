@@ -169,26 +169,49 @@ export default App;
 """.strip()
 
 
+TRPC_INDEX_SHIM = """
+...
+import { myHandlerInputSchema } from './schema';
+import { myHandler } from './handlers/my_handler';
+...
+const appRouter = router({
+  myHandler: publicProcedure
+    .input(myHandlerInputSchema)
+    .query(({ input }) => myHandler(input)),
+});
+...
+""".strip()
+
+
 BACKEND_DRAFT_PROMPT = f"""
-- Define all types using zod in a single file src/schema.ts
+- Define all types using zod in a single file server/src/schema.ts
 - Always define schema and corresponding type using z.infer<typeof typeSchemaName>
 Example:
 {BASE_TYPESCRIPT_SCHEMA}
 
-- Define all database tables using drizzle-orm in src/db/schema.ts
+- Define all database tables using drizzle-orm in server/src/db/schema.ts
 Example:
 {BASE_DRIZZLE_SCHEMA}
 
-- For each handler write its declaration in corresponding file in src/handlers/
+- For each handler write its declaration in corresponding file in server/src/handlers/
 Example:
 {BASE_HANDLER_DECLARATION}
+
+- Generate root TRPC index file in server/src/index.ts
+Example:
+{BASE_SERVER_INDEX}
+
+# Relevant parts to modify:
+- Imports of handlers and schema types
+- Registering TRPC routes
+{TRPC_INDEX_SHIM}
 
 Key project files:
 {{{{project_context}}}}
 
 Generate typescript schema, database schema and handlers declarations.
-Return code within <file path="src/handlers/handler_name.ts">...</file> tags.
-On errors, modify only relevant files and return code within <file path="src/handlers/handler_name.ts">...</file> tags.
+Return code within <file path="server/src/handlers/handler_name.ts">...</file> tags.
+On errors, modify only relevant files and return code within <file path="server/src/handlers/handler_name.ts">...</file> tags.
 
 Task:
 {{{{user_prompt}}}}
@@ -207,39 +230,6 @@ Key project files:
 
 Return the handler implementation within <file path="server/src/handlers/{{{{handler_name}}}}.ts">...</file> tags.
 Return the test code within <file path="server/src/tests/{{{{handler_name}}}}.test.ts">...</file> tags.
-""".strip()
-
-
-TRPC_INDEX_SHIM = """
-...
-import { myHandlerInputSchema } from './schema';
-import { myHandler } from './handlers/my_handler';
-...
-const appRouter = router({
-  myHandler: publicProcedure
-    .input(myHandlerInputSchema)
-    .query(({ input }) => myHandler(input)),
-});
-...
-""".strip()
-
-
-BACKEND_INDEX_PROMPT = f"""
-- Generate root TRPC index file in src/index.ts
-Relevant parts to modify:
-- Imports of handlers and schema types
-- Registering TRPC routes
-{TRPC_INDEX_SHIM}
-
-- Rest should be repeated verbatim from the example
-Example:
-{BASE_SERVER_INDEX}
-
-Key project files:
-{{{{project_context}}}}
-
-Generate ONLY root TRPC index file. Return code within <file path="server/src/index.ts">...</file> tags.
-On errors, modify only index files and return code within <file path="server/src/index.ts">...</file> tags.
 """.strip()
 
 

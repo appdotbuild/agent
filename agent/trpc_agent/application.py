@@ -12,7 +12,7 @@ from core.statemachine import MachineCheckpoint
 from core.workspace import Workspace
 from trpc_agent import playbooks
 from trpc_agent.silly import EditActor
-from trpc_agent.actors import DraftActor, HandlersActor, IndexActor, FrontendActor
+from trpc_agent.actors import DraftActor, HandlersActor, FrontendActor, ConcurrentActor
 import dagger
 
 # Set up logging
@@ -26,12 +26,8 @@ for package in ['urllib3', 'httpx', 'google_genai.models']:
 class FSMState(str, enum.Enum):
     DRAFT = "draft"
     REVIEW_DRAFT = "review_draft"
-    HANDLERS = "handlers"
-    REVIEW_HANDLERS = "review_handlers"
-    INDEX = "index"
-    REVIEW_INDEX = "review_index"
-    FRONTEND = "frontend"
-    REVIEW_FRONTEND = "review_frontend"
+    APPLICATION = "application"
+    REVIEW_APPLICATION = "review_application"
     APPLY_FEEDBACK = "apply_feedback"
     COMPLETE = "complete"
     FAILURE = "failure"
@@ -150,9 +146,10 @@ class FSMApplication:
         )
 
         draft_actor = DraftActor(llm, workspace.clone(), model_params)
-        handlers_actor = HandlersActor(llm, workspace.clone(), model_params, beam_width=3)
-        index_actor = IndexActor(llm, workspace.clone(), model_params, beam_width=3)
-        front_actor = FrontendActor(llm, workspace.clone(), model_params, beam_width=1, max_depth=20)
+        application_actor = ConcurrentActor(
+            handlers=HandlersActor(llm, workspace.clone(), model_params, beam_width=3),
+            frontend=FrontendActor(llm, workspace.clone(), model_params, beam_width=1, max_depth=20)
+        )
         edit_actor = EditActor(
             g_llm,
             workspace.clone(),
@@ -203,56 +200,16 @@ class FSMApplication:
                 ),
                 FSMState.REVIEW_DRAFT: State(
                     on={
-                        FSMEvent("CONFIRM"): FSMState.HANDLERS,
+                        FSMEvent("CONFIRM"): FSMState.APPLICATION,
                         FSMEvent("FEEDBACK"): FSMState.DRAFT,
                     },
                 ),
-                FSMState.HANDLERS: State(
+                FSMState.APPLICATION: State(
                     invoke={
-                        "src": handlers_actor,
-                        "input_fn": lambda ctx: (ctx.files,),
-                        "on_done": {
-                            "target": FSMState.REVIEW_HANDLERS,
-                            "actions": [update_node_files],
-                        },
-                        "on_error": {
-                            "target": FSMState.FAILURE,
-                            "actions": [set_error],
-                        },
-                    },
-                ),
-                FSMState.REVIEW_HANDLERS: State(
-                    on={
-                        FSMEvent("CONFIRM"): FSMState.INDEX,
-                        FSMEvent("FEEDBACK"): FSMState.HANDLERS,
-                    },
-                ),
-                FSMState.INDEX: State(
-                    invoke={
-                        "src": index_actor,
-                        "input_fn": lambda ctx: (ctx.files,),
-                        "on_done": {
-                            "target": FSMState.REVIEW_INDEX,
-                            "actions": [update_node_files],
-                        },
-                        "on_error": {
-                            "target": FSMState.FAILURE,
-                            "actions": [set_error],
-                        },
-                    }
-                ),
-                FSMState.REVIEW_INDEX: State(
-                    on={
-                        FSMEvent("CONFIRM"): FSMState.FRONTEND,
-                        FSMEvent("FEEDBACK"): FSMState.INDEX,
-                    },
-                ),
-                FSMState.FRONTEND: State(
-                    invoke={
-                        "src": front_actor,
+                        "src": application_actor,
                         "input_fn": lambda ctx: (ctx.user_prompt, ctx.files),
                         "on_done": {
-                            "target": FSMState.REVIEW_FRONTEND,
+                            "target": FSMState.REVIEW_APPLICATION,
                             "actions": [update_node_files],
                         },
                         "on_error": {
@@ -261,10 +218,10 @@ class FSMApplication:
                         },
                     },
                 ),
-                FSMState.REVIEW_FRONTEND: State(
+                FSMState.REVIEW_APPLICATION: State(
                     on={
                         FSMEvent("CONFIRM"): FSMState.COMPLETE,
-                        FSMEvent("FEEDBACK"): FSMState.FRONTEND,
+                        FSMEvent("FEEDBACK"): FSMState.APPLICATION,
                     },
                 ),
                 FSMState.APPLY_FEEDBACK: State(
@@ -318,20 +275,8 @@ class FSMApplication:
         match self.current_state:
             case FSMState.REVIEW_DRAFT:
                 return {"draft": self.fsm.context.files}
-            case FSMState.REVIEW_HANDLERS:
-                handler_files = {
-                    filename: content for filename, content in self.fsm.context.files.items()
-                    if filename.startswith("server/src/handlers/")
-                }
-                return {"handlers": handler_files}
-            case FSMState.REVIEW_INDEX:
-                return {"index": self.fsm.context.files["server/src/index.ts"]}
-            case FSMState.REVIEW_FRONTEND:
-                frontent_files =  {
-                    filename: content for filename, content in self.fsm.context.files.items()
-                    if filename.startswith("client/src/")
-                }
-                return {"frontend": frontent_files}
+            case FSMState.REVIEW_APPLICATION:
+                return {"application": self.fsm.context.files}
             case FSMState.COMPLETE:
                 return {"application": self.fsm.context.files}
             case FSMState.FAILURE:
@@ -344,7 +289,7 @@ class FSMApplication:
     def available_actions(self) -> dict[str, str]:
         actions = {}
         match self.current_state:
-            case FSMState.REVIEW_DRAFT | FSMState.REVIEW_HANDLERS | FSMState.REVIEW_INDEX | FSMState.REVIEW_FRONTEND:
+            case FSMState.REVIEW_DRAFT | FSMState.REVIEW_APPLICATION:
                 actions = {"confirm": "Accept current output and continue"}
                 logger.debug(f"Review state detected: {self.current_state}, offering confirm action")
             case FSMState.COMPLETE:
