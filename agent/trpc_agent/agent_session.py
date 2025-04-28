@@ -55,7 +55,7 @@ class TrpcAgentSession(AgentInterface):
 
         logger.info(
             "Generating diff with %s files in state %s compared to empty snapshot",
-            len(fsm_app.get_files_at_root(fsm_app.fsm.context)),
+            len(fsm_app.fsm.context.files),
             fsm_app.current_state,
         )
 
@@ -147,16 +147,16 @@ class TrpcAgentSession(AgentInterface):
                         # This is the final state - make sure we produce a proper diff
                         if self.processor_instance.fsm_app and self.processor_instance.fsm_app.current_state == FSMState.COMPLETE:
                             logger.info(f"Sending final state diff for trace {self.trace_id}")
-                            
+
                             # We purposely generate diff against an empty snapshot to ensure
                             # that *all* generated files are included in the final diff. Using
                             # the current files as the snapshot would yield an empty diff.
                             final_diff = await self.processor_instance.fsm_app.get_diff_with({})
-                            
+
                             # Always include a diff in the final state, even if empty
                             if not final_diff:
                                 final_diff = "# Note: This is a valid empty diff (means no changes from template)"
-                            
+
                             completion_event = AgentSseEvent(
                                 status=AgentStatus.IDLE,
                                 traceId=self.trace_id,
