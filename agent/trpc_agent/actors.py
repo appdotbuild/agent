@@ -49,7 +49,7 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
 
 async def run_tsc_compile(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
     logger.info("Running TypeScript compilation")
-    result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"])
+    result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
     if result.exit_code == 0:
         logger.info("TypeScript compilation succeeded")
         return result, None
@@ -60,7 +60,7 @@ async def run_tsc_compile(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | N
 
 async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
     logger.info("Running Drizzle database schema push")
-    result = await node.data.workspace.exec_with_pg(["bun", "run", "drizzle-kit", "push", "--force"])
+    result = await node.data.workspace.exec_with_pg(["bun", "run", "drizzle-kit", "push", "--force"], cwd="server")
     if result.exit_code == 0 and not result.stderr:
         logger.info("Drizzle schema push succeeded")
         return result, None
@@ -74,7 +74,7 @@ class RunTests:
         self.test_output_normalizer = re.compile(r"\[\d+(\.\d+)?ms\]")
 
     async def __call__(self, node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
-        result = await node.data.workspace.exec_with_pg(["bun", "test"])
+        result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
         if result.exit_code == 0:
             return result, None
 
@@ -214,11 +214,11 @@ class DraftActor(BaseTRPCActor):
 
     @property
     def files_relevant(self) -> list[str]:
-        return ["src/db/index.ts", "package.json"]
+        return ["server/src/db/index.ts", "server/package.json"]
 
     @property
     def files_allowed(self) -> list[str]:
-        return ["src/schema.ts", "src/db/schema.ts", "src/handlers/"]
+        return ["server/src/schema.ts", "server/src/db/schema.ts", "server/src/handlers/"]
 
     async def dump(self) -> object:
         if self.root is None:
@@ -290,14 +290,14 @@ class HandlersActor(BaseTRPCActor):
         # Process handler files
         handler_count = 0
         for file, content in files.items():
-            if not file.startswith("src/handlers/") or not file.endswith(".ts"):
+            if not file.startswith("server/src/handlers/") or not file.endswith(".ts"):
                 continue
 
             handler_name, _ = os.path.splitext(os.path.basename(file))
             logger.info(f"Processing handler: {handler_name}")
 
             # Create workspace with permissions
-            allowed = [file, f"src/tests/{handler_name}.test.ts"]
+            allowed = [file, f"server/src/tests/{handler_name}.test.ts"]
             handler_ws = workspace.clone().permissions(allowed=allowed).write_file(file, content)
 
             # Build context with relevant files
@@ -349,11 +349,11 @@ class HandlersActor(BaseTRPCActor):
 
     @property
     def files_inherit(self) -> list[str]:
-        return ["src/db/schema.ts", "src/schema.ts"]
+        return ["server/src/db/schema.ts", "server/src/schema.ts"]
 
     @property
     def files_relevant(self) -> list[str]:
-        return ["src/helpers/index.ts", "src/schema.ts", "src/db/schema.ts"]
+        return ["server/src/helpers/index.ts", "server/src/schema.ts", "server/src/db/schema.ts"]
 
     async def dump(self) -> object:
         if not self.handlers:
@@ -389,7 +389,7 @@ class IndexActor(BaseTRPCActor):
             workspace.write_file(file, content)
         workspace = workspace.permissions(allowed=self.files_allowed)
         context = []
-        files_relevant = [key for key in files.keys() if key.startswith("src/handlers/")]
+        files_relevant = [key for key in files.keys() if key.startswith("server/src/handlers/")]
         for path in files_relevant:
             content = await workspace.read_file(path)
             context.append(f"\n<file path=\"{path}\">\n{content.strip()}\n</file>\n")
@@ -415,7 +415,7 @@ class IndexActor(BaseTRPCActor):
 
     @property
     def files_allowed(self) -> list[str]:
-        return ["src/index.ts"]
+        return ["server/src/index.ts"]
 
     async def dump(self) -> object:
         if self.root is None:
@@ -447,15 +447,15 @@ class FrontendActor(BaseTRPCActor):
     async def cmd_create(self, user_prompt: str, server_files: dict[str, str]):
         workspace = self.workspace.clone()
         for file, content in server_files.items():
-            workspace.write_file("/app/server/" + file, content)
+            workspace.write_file(file, content)
         workspace = workspace.permissions(protected=self.files_protected, allowed=self.files_allowed)
         context = []
         for path in self.files_relevant:
             content = await workspace.read_file(path)
             context.append(f"\n<file path=\"{path}\">\n{content.strip()}\n</file>\n")
-        ui_files = await self.workspace.ls("src/components/ui")
+        ui_files = await self.workspace.ls("client/src/components/ui")
         context.extend([
-            f"UI components in src/components/ui: {ui_files}",
+            f"UI components in client/src/components/ui: {ui_files}",
             f"Allowed paths and directories: {self.files_allowed}",
             f"Protected paths and directories: {self.files_protected}",
         ])
@@ -475,7 +475,7 @@ class FrontendActor(BaseTRPCActor):
         if files_err:
             content.append(files_err)
         if node.data.files:
-            tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"])
+            tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
             if tsc_result.exit_code != 0:
                 content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
         if content:
@@ -501,15 +501,15 @@ class FrontendActor(BaseTRPCActor):
 
     @property
     def files_relevant(self) -> list[str]:
-        return ["/app/server/src/schema.ts", "/app/server/src/index.ts", "src/utils/trpc.ts"]
+        return ["server/src/schema.ts", "server/src/index.ts", "client/src/utils/trpc.ts"]
 
     @property
     def files_protected(self) -> list[str]:
-        return ["src/components/ui"]
+        return ["client/src/components/ui/"]
 
     @property
     def files_allowed(self) -> list[str]:
-        return ["src/App.tsx", "src/components/", "src/App.css"]
+        return ["client/src/App.tsx", "client/src/components/", "client/src/App.css"]
 
     @property
     def tools(self) -> list[Tool]:

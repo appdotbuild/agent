@@ -1,5 +1,5 @@
 BASE_TYPESCRIPT_SCHEMA = """
-<file path="src/schema.ts">
+<file path="server/src/schema.ts">
 import { z } from 'zod';
 
 export const myHandlerInputSchema = z.object({
@@ -12,7 +12,7 @@ export type myHandlerInput = z.infer<typeof myHandlerInputSchema>;
 
 
 BASE_DRIZZLE_SCHEMA = """
-<file path="src/db/schema.ts">
+<file path="server/src/db/schema.ts">
 import { serial, text, pgTable, timestamp } from "drizzle-orm/pg-core";
 
 export const greetingsTable = pgTable("greetings", {
@@ -25,7 +25,7 @@ export const greetingsTable = pgTable("greetings", {
 
 
 BASE_HANDLER_DECLARATION = """
-<file path="src/handlers/my_handler.ts">
+<file path="server/src/handlers/my_handler.ts">
 import { type myHandlerInput } from "../schema";
 
 export declare function myHandler(input: myHandlerInput): Promise<{ message: string }>;
@@ -34,7 +34,7 @@ export declare function myHandler(input: myHandlerInput): Promise<{ message: str
 
 
 BASE_HANDLER_IMPLEMENTATION = """
-<file path="src/handlers/my_handler.ts">
+<file path="server/src/handlers/my_handler.ts">
 import { db } from '../db';
 import { greetingsTable } from '../db/schema';
 import { type myHandlerInput } from "../schema";
@@ -49,7 +49,7 @@ export const myHandler = async (input: myHandlerInput) => {
 
 
 BASE_HANDLER_TEST = """
-<file path="src/handlers/my_handler.test.ts">
+<file path="server/src/handlers/my_handler.test.ts">
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetDB, createDB } from "../helpers";
 import { db } from "../db";
@@ -81,7 +81,7 @@ describe("greet", () => {
 
 
 BASE_SERVER_INDEX = """
-<file path="src/index.ts">
+<file path="server/src/index.ts">
 import { initTRPC } from '@trpc/server';
 import { createHTTPServer } from '@trpc/server/adapters/standalone';
 import 'dotenv/config';
@@ -136,7 +136,7 @@ start();
 
 
 BASE_APP_TSX = """
-<file path="src/App.tsx">
+<file path="client/src/App.tsx">
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/utils/trpc';
 import { useState } from 'react';
@@ -205,8 +205,8 @@ Example:
 Key project files:
 {{{{project_context}}}}
 
-Return the handler implementation within <file path="src/handlers/{{{{handler_name}}}}.ts">...</file> tags.
-Return the test code within <file path="src/tests/{{{{handler_name}}}}.test.ts">...</file> tags.
+Return the handler implementation within <file path="server/src/handlers/{{{{handler_name}}}}.ts">...</file> tags.
+Return the test code within <file path="server/src/tests/{{{{handler_name}}}}.test.ts">...</file> tags.
 """.strip()
 
 
@@ -238,8 +238,8 @@ Example:
 Key project files:
 {{{{project_context}}}}
 
-Generate ONLY root TRPC index file. Return code within <file path="src/index.ts">...</file> tags.
-On errors, modify only index files and return code within <file path="src/index.ts">...</file> tags.
+Generate ONLY root TRPC index file. Return code within <file path="server/src/index.ts">...</file> tags.
+On errors, modify only index files and return code within <file path="server/src/index.ts">...</file> tags.
 """.strip()
 
 
@@ -253,7 +253,7 @@ Example:
 Key project files:
 {{{{project_context}}}}
 
-Return code within <file path="src/components/component_name.tsx">...</file> tags.
+Return code within <file path="client/src/components/component_name.tsx">...</file> tags.
 On errors, modify only relevant files and return code within <file path="...">...</file> tags.
 
 Task:

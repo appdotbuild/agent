@@ -48,9 +48,11 @@ class CachedLLM(AsyncLLM):
             case ("replay", file):
                 logger.info(f"cache file found: {file}")
                 self._cache = self._load_cache()
-            case ("record", file) if file.exists():
-                logger.info(f"cache file already exists: {file}; wiping")
-                file.unlink()
+            case ("record", file):
+                if file.exists():
+                    logger.info(f"cache file already exists: {file}; wiping")
+                    file.unlink()
+                self._save_cache()
             case ("lru", file) if file.exists():
                 logger.info(f"loading lru cache from: {file}")
                 self._cache = self._load_cache()

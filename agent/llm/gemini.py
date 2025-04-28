@@ -143,12 +143,15 @@ class GeminiLLM(common.AsyncLLM):
                         theirs_parts.append(genai_types.Part.from_function_response(name=tool_use.name, response={"result": tool_result.content}))
                     case _:
                         raise ValueError(f"Unknown block type {type(block)} for {block}")
-            theirs_messages.append(genai_types.Content(parts=theirs_parts, role=message.role))
+            theirs_messages.append(genai_types.Content(
+                parts=theirs_parts,
+                role=message.role if message.role == "user" else "model"
+            ))
         return theirs_messages
 
 
 async def main():
-    gemini_llm = GeminiLLM()
+    gemini_llm = GeminiLLM("gemini-2.5-flash-preview-04-17")
     messages = [
         common.Message(role="user", content=[common.TextRaw("Hello, how are you?")]),
     ]
