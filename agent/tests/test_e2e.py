@@ -56,22 +56,37 @@ async def test_e2e_generation():
                 )
 
                 docker_cli = docker.from_env()
-                await anyio.sleep(5)
 
-                # check if the containers are healthy
-                for name, kind in zip(
-                    [db_container_name, app_container_name, frontend_container_name],
-                    ["db", "app", "frontend"]
-                ):
-                    container = docker_cli.containers.get(name)
-                    if container.status != "running":
-                        logger.error(f"{kind} container is not running: {container.status}")
-                        raise RuntimeError(f"{kind} container is not running")
+                timeout = 30  # seconds
+                interval = 1 # seconds
+                start_time = anyio.current_time()
 
-                    health_status = container.attrs['State'].get('Health', {}).get('Status')
-                    if health_status != 'healthy':
-                        logger.error(f"{kind} container is not healthy: {health_status}")
-                        raise RuntimeError(f"{kind} container is not healthy")
+                while anyio.current_time() - start_time < timeout:
+                    all_healthy = True
+                    for name, kind in zip([db_container_name, app_container_name, frontend_container_name],                    ["db", "app", "frontend"]
+                    ):
+                        container = docker_cli.containers.get(name)
+                        if container.status != "running":
+                            logger.warning(f"{kind} container is not running yet: {container.status}")
+                            all_healthy = False
+                            break
+
+                        health_status = container.attrs.get('State', {}).get('Health', {}).get('Status')
+                        if health_status != 'healthy':
+                            logger.warning(f"{kind} container is not healthy yet: {health_status}")
+                            all_healthy = False
+                            break
+                        logger.info(f"{kind} container is healthy.")
+
+                    if all_healthy:
+                        logger.info("All containers are healthy.")
+                        break
+
+                    await anyio.sleep(interval)
+
+                if anyio.current_time() - start_time >= timeout:
+                    raise RuntimeError(f"Containers did not become healthy within {timeout} seconds")
+
 
             finally:
                 # Restore original directory
