@@ -8,12 +8,27 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres}
     container_name: app-backend
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2022/health"]
       interval: 5s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  db-push:
+    build:
+      context: .
+      dockerfile: server/server.Dockerfile
+    container_name: app-db-push
+    command: ["bun", "run", "drizzle-kit", "push", "--force"]
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
