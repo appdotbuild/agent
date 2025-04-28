@@ -101,9 +101,14 @@ Additional evaluation tools:
 
 (both are rotten and need to be updated)
 
-## Linting and Formatting
+## Commands
 
-CI requires code to be formatted and linted. Use `ruff` for linting and formatting:
+All the commands are run using `uv` from `agent` directory.
+
 ```
-uv run ruff check . --fix
+uv run test  # run all tests
+uv run test_e2e  # only run e2e test
+uv run lint   # lint and format the code
+uv run update_cache  # update the LLM cache, required for new prompts or generation logic changes
+uv run generate "my app description" # generate an app from scratch using full pipeline, similar to e2e test
 ```

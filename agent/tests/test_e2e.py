@@ -6,6 +6,7 @@ import anyio
 from datetime import datetime
 import docker
 
+from fire import Fire
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST
 from log import get_logger
@@ -22,9 +23,9 @@ def anyio_backend():
 def generate_random_name(prefix):
     return f"{prefix}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-async def test_e2e_generation():
+async def run_e2e(prompt: str, standalone: bool):
     async with AgentApiClient() as client:
-        events, request = await client.send_message(DEFAULT_APP_REQUEST)
+        events, request = await client.send_message(prompt)
         assert events, "No response received from agent"
         diff = latest_unified_diff(events)
         assert diff, "No diff was generated in the agent response"
@@ -48,7 +49,7 @@ async def test_e2e_generation():
                 os.chdir(temp_dir)
 
                 logger.info(f"Starting Docker containers in {temp_dir}")
-                _ = subprocess.run(
+                _= subprocess.run(
                     ["docker", "compose", "up", "-d"],
                     check=True,
                     capture_output=True,
@@ -63,17 +64,19 @@ async def test_e2e_generation():
 
                 while anyio.current_time() - start_time < timeout:
                     all_healthy = True
-                    for name, kind in zip([db_container_name, app_container_name, frontend_container_name],                    ["db", "app", "frontend"]
+                    for name, kind in zip(
+                        [db_container_name, app_container_name, frontend_container_name],
+                        ["db", "app", "frontend"]
                     ):
                         container = docker_cli.containers.get(name)
                         if container.status != "running":
-                            logger.warning(f"{kind} container is not running yet: {container.status}")
+                            logger.info(f"{kind} container is not running yet: {container.status}")
                             all_healthy = False
                             break
 
                         health_status = container.attrs.get('State', {}).get('Health', {}).get('Status')
                         if health_status != 'healthy':
-                            logger.warning(f"{kind} container is not healthy yet: {health_status}")
+                            logger.info(f"{kind} container is not healthy yet: {health_status}")
                             all_healthy = False
                             break
                         logger.info(f"{kind} container is healthy.")
@@ -81,11 +84,13 @@ async def test_e2e_generation():
                     if all_healthy:
                         logger.info("All containers are healthy.")
                         break
-
                     await anyio.sleep(interval)
 
                 if anyio.current_time() - start_time >= timeout:
                     raise RuntimeError(f"Containers did not become healthy within {timeout} seconds")
+
+                if standalone:
+                    input(f"App is running on http://localhost:80/, app dir is {temp_dir}; Press Enter to continue and tear down...")
 
 
             finally:
@@ -103,3 +108,16 @@ async def test_e2e_generation():
                     )
                 except Exception as e:
                     logger.exception(f"Error cleaning up Docker: {e}")
+
+async def test_e2e_generation():
+    await run_e2e(standalone=False, prompt=DEFAULT_APP_REQUEST)
+
+def create_app(prompt):
+    import coloredlogs
+
+    coloredlogs.install(level="INFO")
+    anyio.run(run_e2e, prompt, True)
+
+
+if __name__ == "__main__":
+    Fire(create_app)
