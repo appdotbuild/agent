@@ -89,7 +89,7 @@ def get_llm_client(
         backend = _guess_llm_backend(model_name)
         logger.info(f"Auto-detected backend: {backend}")
 
-    cache_key = _cache_key_from_seq((backend, model_name, cache_mode, params_key))
+    cache_key = _cache_key_from_seq((model_name, cache_mode, params_key))
 
     # Return existing client if one exists with the same configuration
     if cache_key in _llm_clients:

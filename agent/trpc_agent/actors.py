@@ -218,7 +218,7 @@ class DraftActor(BaseTRPCActor):
 
     @property
     def files_allowed(self) -> list[str]:
-        return ["server/src/schema.ts", "server/src/db/schema.ts", "server/src/handlers/"]
+        return ["server/src/schema.ts", "server/src/db/schema.ts", "server/src/handlers/", "server/src/index.ts"]
 
     async def dump(self) -> object:
         if self.root is None:
@@ -369,67 +369,6 @@ class HandlersActor(BaseTRPCActor):
             self.handlers[name] = node
 
 
-class IndexActor(BaseTRPCActor):
-    root: Node[BaseData] | None = None
-
-    def __init__(self, llm: AsyncLLM, workspace: Workspace, model_params: dict, beam_width: int = 1, max_depth: int = 5):
-        super().__init__(llm, workspace, model_params, beam_width=beam_width, max_depth=max_depth)
-        self.root = None
-
-    async def execute(self, files: dict[str, str]) -> Node[BaseData]:
-        await self.cmd_create(files)
-        solution = await self.search(self.root)
-        if solution is None:
-            raise ValueError("No solution found")
-        return solution
-
-    async def cmd_create(self, files: dict[str, str]):
-        workspace = self.workspace.clone()
-        for file, content in files.items():
-            workspace.write_file(file, content)
-        workspace = workspace.permissions(allowed=self.files_allowed)
-        context = []
-        files_relevant = [key for key in files.keys() if key.startswith("server/src/handlers/")]
-        for path in files_relevant:
-            content = await workspace.read_file(path)
-            context.append(f"\n<file path=\"{path}\">\n{content.strip()}\n</file>\n")
-        context.append(f"Allowed paths and directories: {self.files_allowed}")
-        jinja_env = jinja2.Environment()
-        prompt_template = jinja_env.from_string(playbooks.BACKEND_INDEX_PROMPT)
-        prompt = prompt_template.render(
-            project_context="\n".join(context),
-        )
-        message = Message(role="user", content=[TextRaw(prompt)])
-        self.root = Node(BaseData(workspace, [message], {}))
-
-    async def eval_node(self, node: Node[BaseData]) -> bool:
-        files_err = await run_write_files(node)
-        if files_err:
-            node.data.messages.append(Message(role="user", content=[files_err]))
-            return False
-        _, tsc_err = await run_tsc_compile(node)
-        if tsc_err:
-            node.data.messages.append(Message(role="user", content=[tsc_err]))
-            return False
-        return True
-
-    @property
-    def files_allowed(self) -> list[str]:
-        return ["server/src/index.ts"]
-
-    async def dump(self) -> object:
-        if self.root is None:
-            return []
-        return await self.dump_node(self.root)
-
-    async def load(self, data: object):
-        if not isinstance(data, list):
-            raise ValueError(f"Expected list got {type(data)}")
-        if not data:
-            return
-        self.root = await self.load_node(data)
-
-
 class FrontendActor(BaseTRPCActor):
     root: Node[BaseData] | None = None
 
@@ -438,6 +377,7 @@ class FrontendActor(BaseTRPCActor):
         self.root = None
 
     async def execute(self, user_prompt: str, server_files: dict[str, str]) -> Node[BaseData]:
+        logger.info(f"Executing frontend actor with user prompt: {user_prompt}")
         await self.cmd_create(user_prompt, server_files)
         solution = await self.search(self.root)
         if solution is None:
@@ -538,3 +478,38 @@ class FrontendActor(BaseTRPCActor):
         if not data:
             return
         self.root = await self.load_node(data)
+
+
+class ConcurrentActor(BaseTRPCActor):
+    handlers: HandlersActor
+    frontend: FrontendActor
+
+    def __init__(self, handlers: HandlersActor, frontend: FrontendActor):
+        self.handlers = handlers
+        self.frontend = frontend
+
+    async def execute(self, user_prompt: str, server_files: dict[str, str]) -> dict[str, Node[BaseData]]:
+        result: dict[str, Node[BaseData]] = {}
+        async def solve_frontend():
+            result["frontend"] = await self.frontend.execute(user_prompt, server_files)
+        async def solve_handlers():
+            handlers_solution = await self.handlers.execute(server_files)
+            result.update(handlers_solution)
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(solve_frontend)
+            tg.start_soon(solve_handlers)
+        return result
+
+    async def dump(self) -> object:
+        return {
+            "frontend": await self.frontend.dump(),
+            "handlers": await self.handlers.dump(),
+        }
+
+    async def load(self, data: object):
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected dict got {type(data)}")
+        if not data:
+            return
+        await self.handlers.load(data["handlers"])
+        await self.frontend.load(data["frontend"])
