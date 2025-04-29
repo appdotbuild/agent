@@ -32,6 +32,7 @@ test_e2e = "commands:run_e2e_tests"
 update_cache = "commands:update_cache"
 lint = "commands:run_lint"
 generate = "commands:generate"
+interactive = "commands:interactive"
 
 [dependency-groups]
 dev = [

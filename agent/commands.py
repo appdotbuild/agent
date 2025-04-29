@@ -6,6 +6,7 @@ import anyio
 from tests.test_e2e import run_e2e, DEFAULT_APP_REQUEST
 from fire import Fire
 import coloredlogs
+from api.agent_server.agent_api_client import cli as _run_interactive
 
 
 def _current_dir():
@@ -40,3 +41,7 @@ def generate():
 def _generate(prompt=DEFAULT_APP_REQUEST):
     coloredlogs.install(level="INFO")
     anyio.run(run_e2e, prompt, True)
+
+def interactive():
+    os.environ["LLM_VCR_CACHE_MODE"] = "lru"
+    Fire(_run_interactive)

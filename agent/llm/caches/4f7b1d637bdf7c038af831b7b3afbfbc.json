@@ -1,5 +1,5 @@
 {
-  "{\"max_tokens\":256,\"messages\":[{\"content\":[{\"text\":\"Hello, what are you?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":null,\"temperature\":1.0,\"tool_choice\":null,\"tools\":null}": {
+  "475a28ceb1f9d46d64415e7dc79b9857": {
     "role": "assistant",
     "content": [
       {
