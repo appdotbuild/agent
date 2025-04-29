@@ -6,6 +6,7 @@ import tempfile
 import shutil
 import subprocess
 import signal
+import readline
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -26,8 +27,28 @@ DEFAULT_PROJECT_DIR = os.environ.get(
 os.makedirs(DEFAULT_PROJECT_DIR, exist_ok=True)
 logger.info(f"Using project directory: {DEFAULT_PROJECT_DIR}")
 
-# Global variable to store the currently running server process
 current_server_process = None
+
+HISTORY_FILE = os.path.expanduser("~/.agent_chat_history")
+HISTORY_SIZE = 1000  # Maximum number of history entries to save
+
+def setup_readline():
+    """Configure readline for command history"""
+    try:
+        if not os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'w') as f:
+                pass
+                
+        readline.read_history_file(HISTORY_FILE)
+        readline.set_history_length(HISTORY_SIZE)
+
+        import atexit
+        atexit.register(readline.write_history_file, HISTORY_FILE)
+        
+        return True
+    except Exception as e:
+        print(f"Warning: Could not configure readline history: {e}")
+        return False
 
 def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
     try:
@@ -215,20 +236,31 @@ def get_multiline_input(prompt: str) -> str:
     Get multi-line input from the user.
     Input is terminated when the user enters an empty line.
     Command inputs (starting with '/') are processed immediately without requiring empty line.
+    Supports up/down arrow keys for navigating through command history.
     """
     print(prompt, end="", flush=True)
     
     try:
         first_line = input()
+        # Add non-empty, non-command inputs to history
+        if first_line.strip() and not first_line.strip().startswith('/'):
+            # Add to readline history if not already the last item
+            if readline.get_current_history_length() == 0 or readline.get_history_item(readline.get_current_history_length()) != first_line:
+                readline.add_history(first_line)
+        
         if first_line.strip().startswith('/'):
             return first_line
+            
         lines = [first_line]
+        
     except (EOFError, KeyboardInterrupt):
         print("\nInput terminated.")
         return ""
-
+    
+    # Continue collecting lines for multi-line input
     while True:
         try:
+            # Show continuation prompt for subsequent lines
             print("\033[94m... \033[0m", end="", flush=True)
             line = input()
             
@@ -242,7 +274,12 @@ def get_multiline_input(prompt: str) -> str:
             print("\nInput terminated.")
             break
     
-    return "\n".join(lines)
+    full_input = "\n".join(lines)
+    
+    if len(lines) > 1:
+        readline.add_history(full_input.replace('\n', ' '))
+    
+    return full_input
 
 
 def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
@@ -303,6 +340,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     previous_events: List[AgentSseEvent] = []
     previous_messages: List[str] = []
     request = None
+    
+    history_enabled = setup_readline()
 
     # Parse settings if provided
     settings_dict = {}
@@ -334,6 +373,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     print("Interactive Agent CLI Chat")
     print("Type '/help' for commands.")
     print("Use an empty line to finish multi-line input.")
+    if history_enabled:
+        print("Use up/down arrow keys to navigate through command history.")
     print(divider)
 
     if host:
