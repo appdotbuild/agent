@@ -91,7 +91,7 @@ async def run_e2e(prompt: str, standalone: bool):
 
                 if standalone:
                     input(f"App is running on http://localhost:80/, app dir is {temp_dir}; Press Enter to continue and tear down...")
-
+                    print("🧹Tearing down containers... ")
 
             finally:
                 # Restore original directory

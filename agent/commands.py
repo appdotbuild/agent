@@ -5,6 +5,8 @@ import subprocess
 import anyio
 import sys
 from tests.test_e2e import run_e2e, DEFAULT_APP_REQUEST
+from fire import Fire
+import coloredlogs
 
 
 def _current_dir():
@@ -33,11 +35,9 @@ def run_lint():
 def run_e2e_tests():
     run_tests_with_cache("tests/test_e2e.py", n_workers="0")
 
-
 def generate():
-    import coloredlogs
+    return Fire(_generate)
 
+def _generate(prompt=DEFAULT_APP_REQUEST):
     coloredlogs.install(level="INFO")
-
-    prompt = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_APP_REQUEST
     anyio.run(run_e2e, prompt, True)
