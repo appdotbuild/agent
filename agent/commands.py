@@ -21,7 +21,7 @@ def run_tests_with_cache(dest=".", n_workers=_n_workers()):
     pytest.main(["-v", "-n", n_workers, dest])
 
 
-def update_cache(dest):
+def update_cache(dest="."):
     os.environ["LLM_VCR_CACHE_MODE"] = "record"
     os.chdir(_current_dir())
     pytest.main(["-v", "-n", "0", dest])
