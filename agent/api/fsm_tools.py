@@ -302,7 +302,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     from trpc_agent.application import FSMApplication
     from llm.utils import get_llm_client
     logger.info("Initializing FSM tools...")
-    client = get_llm_client(model_name="gemini-flash")
+    client = get_llm_client()
     model_params = {"max_tokens": 8192 }
 
     # Create processor without FSM instance - it will be created in start_fsm tool
