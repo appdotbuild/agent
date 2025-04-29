@@ -115,11 +115,11 @@ class FSMToolProcessor[T: FSMInterface]:
     async def tool_start_fsm(self, app_description: str) -> CommonToolResult:
         """Tool implementation for starting a new FSM session"""
         try:
-            logger.info(f"[FSMTools] Starting new FSM session with description: {app_description}")
+            logger.info(f"Starting new FSM session with description: {app_description}")
 
             # Check if there's an active session first
             if self.fsm_app:
-                logger.warning("[FSMTools] There's an active FSM session already. Completing it before starting a new one.")
+                logger.warning("There's an active FSM session already. Completing it before starting a new one.")
                 return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one", is_error=True)
 
             self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description, settings=self.settings)
@@ -130,26 +130,26 @@ class FSMToolProcessor[T: FSMInterface]:
 
             # Prepare the result
             result = self.fsm_as_result()
-            logger.info("[FSMTools] Started FSM session")
+            logger.info("Started FSM session")
             return CommonToolResult(content=str(result))
 
         except Exception as e:
-            logger.exception(f"[FSMTools] Error starting FSM: {str(e)}")
+            logger.exception(f"Error starting FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to start FSM: {str(e)}", is_error=True)
 
     async def tool_confirm_state(self) -> CommonToolResult:
         """Tool implementation for confirming the current state"""
         try:
             if not self.fsm_app:
-                logger.error("[FSMTools] No active FSM session")
+                logger.error("No active FSM session")
                 return CommonToolResult(content="No active FSM session", is_error=True)
 
             # Store previous state for comparison
             previous_state = self.fsm_app.current_state
-            logger.info(f"[FSMTools] Current state before confirmation: {previous_state}")
+            logger.info(f"Current state before confirmation: {previous_state}")
 
             # Send confirm event
-            logger.info("[FSMTools] Confirming current state")
+            logger.info("Confirming current state")
             await self.fsm_app.confirm_state()
             current_state = self.fsm_app.current_state
 
@@ -159,26 +159,26 @@ class FSMToolProcessor[T: FSMInterface]:
 
             # Prepare result
             result = self.fsm_as_result()
-            logger.info(f"[FSMTools] FSM advanced to state {current_state}")
+            logger.info(f"FSM advanced to state {current_state}")
             return CommonToolResult(content=str(result))
 
         except Exception as e:
-            logger.exception(f"[FSMTools] Error confirming state: {str(e)}")
+            logger.exception(f"Error confirming state: {str(e)}")
             return CommonToolResult(content=f"Failed to confirm state: {str(e)}", is_error=True)
 
     async def tool_provide_feedback(self, feedback: str, component_name: str) -> CommonToolResult:
         """Tool implementation for providing feedback"""
         try:
             if not self.fsm_app:
-                logger.error("[FSMTools] No active FSM session")
+                logger.error("No active FSM session")
                 return CommonToolResult(content="No active FSM session", is_error=True)
 
             # Determine current state and feedback event type
             current_state = self.fsm_app.current_state
-            logger.info(f"[FSMTools] Current state: {current_state}")
+            logger.info(f"Current state: {current_state}")
 
             # Handle feedback
-            logger.info("[FSMTools] Providing feedback")
+            logger.info("Providing feedback")
             await self.fsm_app.provide_feedback(feedback, component_name)
             new_state = self.fsm_app.current_state
 
@@ -188,21 +188,21 @@ class FSMToolProcessor[T: FSMInterface]:
 
             # Prepare result
             result = self.fsm_as_result()
-            logger.info(f"[FSMTools] FSM updated with feedback, now in state {new_state}")
+            logger.info(f"FSM updated with feedback, now in state {new_state}")
             return CommonToolResult(content=str(result))
 
         except Exception as e:
-            logger.exception(f"[FSMTools] Error providing feedback: {str(e)}")
+            logger.exception(f"Error providing feedback: {str(e)}")
             return CommonToolResult(content=f"Failed to provide feedback: {str(e)}", is_error=True)
 
     async def tool_complete_fsm(self) -> CommonToolResult:
         """Tool implementation for completing the FSM and getting all artifacts"""
         try:
             if not self.fsm_app:
-                logger.error("[FSMTools] No active FSM session")
+                logger.error("No active FSM session")
                 return CommonToolResult(content="No active FSM session", is_error=True)
 
-            logger.info("[FSMTools] Completing FSM session")
+            logger.info("Completing FSM session")
 
             # Check for errors
             if (error_msg := self.fsm_app.maybe_error()):
@@ -210,11 +210,11 @@ class FSMToolProcessor[T: FSMInterface]:
 
             # Prepare result based on state
             result = self.fsm_as_result()
-            logger.info(f"[FSMTools] FSM completed in state: {self.fsm_app.current_state}")
+            logger.info(f"FSM completed in state: {self.fsm_app.current_state}")
             return CommonToolResult(content=str(result))
 
         except Exception as e:
-            logger.exception(f"[FSMTools] Error completing FSM: {str(e)}")
+            logger.exception(f"Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
     async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> list[Message]:
@@ -228,7 +228,7 @@ class FSMToolProcessor[T: FSMInterface]:
         for block in response.content:
             match block:
                 case TextRaw(text):
-                    logger.info(f"[Claude Response] Message: {text}")
+                    logger.info(f"LLM Message: {text}")
                 case ToolUse(name):
                     match self.tool_mapping.get(name):
                         case None:
@@ -239,7 +239,7 @@ class FSMToolProcessor[T: FSMInterface]:
                             ))
                         case tool_method if isinstance(block.input, dict):
                             result = await tool_method(**block.input)
-                            logger.info(f"[Claude Response] Tool result: {result.content}")
+                            logger.info(f"Tool result: {result.content}")
                             tool_results.append(ToolUseResult.from_tool_use(
                                 tool_use=block,
                                 content=result.content
@@ -265,7 +265,7 @@ class FSMToolProcessor[T: FSMInterface]:
 
     @property
     def system_prompt(self) -> str:
-        return f"""You are a software engineering expert who can generate application code using a code generation framework based on Typescript, TRPC and Drizzle. This framework uses a Finite State Machine (FSM) to guide the generation process.
+        return f"""You are a software engineering expert who can generate application code using a code generation framework based on Typescript, tRPC and Drizzle. This framework uses a Finite State Machine (FSM) to guide the generation process.
 
 Your task is to control the FSM through the following stages of code generation:
 {self.fsm_class.base_execution_plan()}
@@ -286,7 +286,7 @@ During your review process, consider the following questions:
 - Could anything be improved or clarified?
 - Does it match other requirements mentioned in the dialogue?
 
-When providing feedback, be specific and actionable. If you're unsure about any aspect, ask for clarification before proceeding.
+When providing feedback, be specific and actionable. If you're unsure about any aspect, always ask for clarification before proceeding.
 FSM is an internal API, you don't need to know how it works under the hood or expose its details to the user.
 
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
@@ -295,23 +295,22 @@ Do not consider the work complete until all components have been generated and t
 async def main(initial_prompt: str = "A simple greeting app that says hello in five languages"):
     """
     Main entry point for the FSM tools module.
-    Initializes an FSM tool processor and interacts with Claude.
+    Initializes an FSM tool processor and interacts with top-level agent.
     """
     import os
     import dagger
     from trpc_agent.application import FSMApplication
     from llm.utils import get_llm_client
-    logger.info("[Main] Initializing FSM tools...")
-    client = get_llm_client()
+    logger.info("Initializing FSM tools...")
+    client = get_llm_client(model_name="gemini-flash")
     model_params = {"max_tokens": 8192 }
 
     # Create processor without FSM instance - it will be created in start_fsm tool
-    #fsm_app = await FSMApplication.start
     processor = FSMToolProcessor(FSMApplication)
-    logger.info("[Main] FSM tools initialized successfully")
+    logger.info("FSM tools initialized successfully")
 
     # Create the initial prompt for the AI agent
-    logger.info("[Main] Sending request to Claude...")
+    logger.info("Sending request to LLM...")
     current_messages = [
         Message(role="user", content=[TextRaw(initial_prompt)]),
     ]
@@ -321,15 +320,15 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
         while True:
             new_messages = await processor.step(current_messages, client, model_params)
 
-            logger.info(f"[Main] New messages: {new_messages}")
+            logger.info(f"New messages: {new_messages}")
             if new_messages:
                 current_messages += new_messages
 
-            logger.info(f"[Main] Iteration completed: {len(current_messages) - 1}")
+            logger.info(f"Iteration completed: {len(current_messages) - 1}")
 
             break # Early out until feedback is wired to component name
 
-    logger.info("[Main] FSM interaction completed successfully")
+    logger.info("FSM interaction completed successfully")
     return new_messages
 
 def run_main(initial_prompt: str = "A simple greeting app that says hello in five languages and stores history of greetings"):

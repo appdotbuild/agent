@@ -26,7 +26,7 @@ class GeminiLLM(common.AsyncLLM):
     async def completion(
         self,
         messages: list[common.Message],
-        max_tokens: int,
+        max_tokens: int | None = 8192,
         model: str | None = None,
         temperature: float = 1.0,
         tools: list[common.Tool] | None = None,
@@ -41,6 +41,7 @@ class GeminiLLM(common.AsyncLLM):
             temperature=temperature,
             response_mime_type="text/plain",
             system_instruction=system_prompt,
+            candidate_count=1,
         )
         if tools:
             declarations = [
@@ -87,12 +88,13 @@ class GeminiLLM(common.AsyncLLM):
                     ours_content.append(common.ThinkingBlock(thinking=block.text))
                 else:
                     ours_content.append(common.TextRaw(text=block.text))
-            if block.function_call and block.function_call.name and block.function_call.args:
+            if block.function_call and block.function_call.name:
                 ours_content.append(common.ToolUse(
                     id=block.function_call.id,
                     name=block.function_call.name,
                     input=block.function_call.args
                 ))
+
         match completion.usage_metadata:
             case genai_types.GenerateContentResponseUsageMetadata(prompt_token_count=input_tokens, candidates_token_count=output_tokens, thoughts_token_count=thinking_tokens):
                 usage = (input_tokens, output_tokens, thinking_tokens)
@@ -109,6 +111,7 @@ class GeminiLLM(common.AsyncLLM):
                 stop_reason = "end_turn"
             case _:
                 stop_reason = "unknown"
+
         return common.Completion(
             role="assistant",
             content=ours_content,
@@ -155,7 +158,7 @@ async def main():
     messages = [
         common.Message(role="user", content=[common.TextRaw("Hello, how are you?")]),
     ]
-    response = await gemini_llm.completion(messages, max_tokens=50)
+    response = await gemini_llm.completion(messages, max_tokens=1024)
     print(response)
 
 if __name__ == "__main__":

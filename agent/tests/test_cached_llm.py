@@ -117,7 +117,7 @@ async def test_gemini():
     client = get_llm_client(model_name="gemini-flash")
     resp = await client.completion(
         messages=[Message(role="user", content=[TextRaw("Hello, what are you?")])],
-        max_tokens=256,
+        max_tokens=512,
     )
     text, = merge_text(resp.content)
     match text:
