@@ -206,6 +206,41 @@ def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
     return None
 
 
+def get_multiline_input(prompt: str) -> str:
+    """
+    Get multi-line input from the user.
+    Input is terminated when the user enters an empty line.
+    Command inputs (starting with '/') are processed immediately without requiring empty line.
+    """
+    print(prompt, end="", flush=True)
+    
+    try:
+        first_line = input()
+        if first_line.strip().startswith('/'):
+            return first_line
+        lines = [first_line]
+    except (EOFError, KeyboardInterrupt):
+        print("\nInput terminated.")
+        return ""
+
+    while True:
+        try:
+            print("\033[94m... \033[0m", end="", flush=True)
+            line = input()
+            
+            if not line.strip():  # Empty line terminates input
+                if not lines or (len(lines) == 1 and not lines[0].strip()):  # Don't allow empty input
+                    continue
+                break
+                
+            lines.append(line)
+        except (EOFError, KeyboardInterrupt):
+            print("\nInput terminated.")
+            break
+    
+    return "\n".join(lines)
+
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
@@ -246,6 +281,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     print(divider)
     print("Interactive Agent CLI Chat")
     print("Type '/help' for commands.")
+    print("Use an empty line to finish multi-line input.")
     print(divider)
 
     if host:
@@ -256,7 +292,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     async with AgentApiClient(base_url=base_url) as client:
         while True:
             try:
-                ui = input("\033[94mYou> \033[0m")
+                ui = get_multiline_input("\033[94mYou> \033[0m")
                 if ui.startswith("+"):
                     ui = DEFAULT_APP_REQUEST
             except (EOFError, KeyboardInterrupt):
@@ -266,8 +302,16 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             cmd = ui.strip()
             if not cmd:
                 continue
-            action, *rest = cmd.split(None, 1)
-            match action.lower().strip():
+
+            first_line = cmd.split('\n', 1)[0].strip()
+            if first_line.startswith('/'):
+                action, *rest = first_line.split(None, 1)
+                # For commands, only use the first line
+                cmd = first_line
+            else:
+                action = None
+                
+            match action.lower().strip() if action else None:
                 case "/exit" | "/quit":
                     print("Goodbye!")
                     return
@@ -358,6 +402,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     except Exception as e:
                         print(f"Error exporting diff: {e}")
                     continue
+                case None:
+                    # For non-command input, use the entire text including multiple lines
+                    content = ui
                 case _:
                     content = cmd
 
