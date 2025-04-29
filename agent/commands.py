@@ -3,7 +3,6 @@ import pytest
 import subprocess
 
 import anyio
-import sys
 from tests.test_e2e import run_e2e, DEFAULT_APP_REQUEST
 from fire import Fire
 import coloredlogs
