@@ -49,12 +49,15 @@ async def run_e2e(prompt: str, standalone: bool):
                 os.chdir(temp_dir)
 
                 logger.info(f"Starting Docker containers in {temp_dir}")
-                _= subprocess.run(
+                res = subprocess.run(
                     ["docker", "compose", "up", "-d"],
-                    check=True,
+                    check=False,
                     capture_output=True,
                     text=True
                 )
+                if res.returncode != 0:
+                    logger.error(f"Error starting Docker containers: {res.stderr}")
+                    raise RuntimeError(f"Failed to start Docker containers: return code {res.returncode}")
 
                 docker_cli = docker.from_env()
 
