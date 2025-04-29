@@ -4,6 +4,8 @@ import os
 import traceback
 import tempfile
 import shutil
+import subprocess
+import signal
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -24,6 +26,8 @@ DEFAULT_PROJECT_DIR = os.environ.get(
 os.makedirs(DEFAULT_PROJECT_DIR, exist_ok=True)
 logger.info(f"Using project directory: {DEFAULT_PROJECT_DIR}")
 
+# Global variable to store the currently running server process
+current_server_process = None
 
 def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
     try:
@@ -241,10 +245,58 @@ def get_multiline_input(prompt: str) -> str:
     return "\n".join(lines)
 
 
+def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
+    """
+    Apply the latest diff to a directory.
+    
+    Args:
+        events: List of AgentSseEvent objects
+        custom_dir: Optional custom base directory path
+    
+    Returns:
+        Tuple containing:
+            - Success status (boolean)
+            - Result message (string)
+            - Target directory where diff was applied (string, or None if failed)
+    """
+    diff = latest_unified_diff(events)
+    if not diff:
+        return False, "No diff available to apply", None
+
+    try:
+        # Create a timestamp-based project directory name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        project_name = f"project_{timestamp}"
+
+        if custom_dir:
+            base_dir = custom_dir
+        else:
+            base_dir = DEFAULT_PROJECT_DIR
+            print(f"Using default project directory: {base_dir}")
+
+        # Create the full project directory path
+        target_dir = os.path.join(base_dir, project_name)
+
+        # Apply the patch
+        success, message = apply_patch(diff, target_dir)
+        
+        if success:
+            return True, message, target_dir
+        else:
+            return False, message, target_dir
+            
+    except Exception as e:
+        error_msg = f"Error applying diff: {e}"
+        traceback.print_exc()
+        return False, error_msg, None
+
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
+    # Make server process accessible globally
+    global current_server_process
 
     # Prepare state and settings
     state_file = os.path.expanduser(state_file)
@@ -325,7 +377,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         "\n"
                         "/diff       Show the latest unified diff\n"
                         f"/apply [dir] Apply the latest diff to directory (default: {DEFAULT_PROJECT_DIR})\n"
-                        "/export     Export the latest diff to a patchfile"
+                        "/export     Export the latest diff to a patchfile\n"
+                        "/run [dir]  Apply diff, install deps, and start dev server\n"
+                        "/stop       Stop the currently running server"
                     )
                     continue
                 case "/clear":
@@ -364,30 +418,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 continue
                     continue
                 case "/apply":
-                    diff = latest_unified_diff(previous_events)
-                    if not diff:
-                        print("No diff available to apply")
-                        continue
-                    try:
-                        # Create a timestamp-based project directory name
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        project_name = f"project_{timestamp}"
-
-                        if rest and rest[0]:
-                            base_dir = rest[0]
-                        else:
-                            base_dir = DEFAULT_PROJECT_DIR
-                            print(f"Using default project directory: {base_dir}")
-
-                        # Create the full project directory path
-                        target_dir = os.path.join(base_dir, project_name)
-
-                        # Apply the patch
-                        success, message = apply_patch(diff, target_dir)
-                        print(message)
-                    except Exception as e:
-                        print(f"Error applying diff: {e}")
-                        traceback.print_exc()
+                    custom_dir = rest[0] if rest else None
+                    success, message, target_dir = apply_latest_diff(previous_events, custom_dir)
+                    print(message)
                     continue
                 case "/export":
                     diff = latest_unified_diff(previous_events)
@@ -401,6 +434,87 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print(f"Successfully exported diff to {patch_file}")
                     except Exception as e:
                         print(f"Error exporting diff: {e}")
+                    continue
+                case "/run":
+                    # First, stop any running server
+                    if current_server_process and current_server_process.poll() is None:
+                        print("Stopping currently running server...")
+                        try:
+                            current_server_process.terminate()
+                            current_server_process.wait(timeout=5)
+                        except Exception as e:
+                            print(f"Warning: Error stopping previous server: {e}")
+                            try:
+                                current_server_process.kill()
+                            except:
+                                pass
+                        current_server_process = None
+                        
+                    # Apply the diff to create a new project
+                    custom_dir = rest[0] if rest else None
+                    success, message, target_dir = apply_latest_diff(previous_events, custom_dir)
+                    print(message)
+                    
+                    if success and target_dir:
+                        print(f"\nSetting up project in {target_dir}...")
+                        print("Installing dependencies with 'bun i'...")
+                        try:
+                            # Run 'bun i' to install dependencies
+                            subprocess.run(["bun", "i"], cwd=target_dir, check=True)
+                            print("Dependencies installed successfully.")
+                            
+                            print("\nStarting development server with 'bun run dev:all'...")
+                            # Use Popen to start the server in the background
+                            current_server_process = subprocess.Popen(
+                                ["bun", "run", "dev:all"], 
+                                cwd=target_dir,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True
+                            )
+                            
+                            # Wait briefly and then print a few lines of output
+                            print("Server starting, initial output:")
+                            for _ in range(10):  # Print up to 10 lines of output
+                                line = current_server_process.stdout.readline()
+                                if not line:
+                                    break
+                                print(f"  {line.rstrip()}")
+                                
+                            print(f"\nServer running in {target_dir}")
+                            print("Use /stop command to stop the server when done.")
+                            
+                        except subprocess.CalledProcessError as e:
+                            print(f"Error during project setup: {e}")
+                        except FileNotFoundError:
+                            print("Error: 'bun' command not found. Please make sure Bun is installed.")
+                    continue
+                case "/stop":
+                    if not current_server_process:
+                        print("No server is currently running.")
+                        continue
+                        
+                    if current_server_process.poll() is not None:
+                        print("Server has already terminated.")
+                        current_server_process = None
+                        continue
+                        
+                    print("Stopping the server...")
+                    try:
+                        current_server_process.terminate()
+                        try:
+                            # Wait for up to 5 seconds for the server to terminate
+                            current_server_process.wait(timeout=5)
+                            print("Server stopped successfully.")
+                        except subprocess.TimeoutExpired:
+                            print("Server did not terminate gracefully. Forcing shutdown...")
+                            current_server_process.kill()
+                            current_server_process.wait()
+                            print("Server forcefully terminated.")
+                    except Exception as e:
+                        print(f"Error stopping server: {e}")
+                    
+                    current_server_process = None
                     continue
                 case None:
                     # For non-command input, use the entire text including multiple lines
