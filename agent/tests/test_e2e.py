@@ -62,7 +62,7 @@ async def run_e2e(prompt: str, standalone: bool):
                             status = docker_cli.containers.get(container).status
                             logs = docker_cli.containers.get(container).logs()
                             logger.error(f"Container {container} status: {status}, logs: {logs.decode('utf-8')}")
-                        except:
+                        except Exception:
                             logger.error(f"Failed to get status for container {container}")
 
                     logger.error(f"Error starting Docker containers: {res.stderr}")
