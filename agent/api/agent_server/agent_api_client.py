@@ -10,6 +10,7 @@ from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
 from datetime import datetime
 from patch_ng import PatchSet
+import subprocess
 import contextlib
 
 logger = get_logger(__name__)
@@ -416,7 +417,27 @@ def cli(host: str = "",
         port: int = 8001,
         state_file: str = "/tmp/agent_chat_state.json",
         ):
-    anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
+    codegen_proc = None
+
+    try:
+        if not host:
+            codegen_proc = subprocess.Popen(
+                ["uv", "run", "server"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            host = "localhost"
+            port = 8001
+            print(f"Local server started, pid {codegen_proc.pid}")
+
+        anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
+    finally:
+        if codegen_proc:
+            codegen_proc.terminate()
+            codegen_proc.wait()
+            print("Terminated local server process")
+
 
 if __name__ == "__main__":
     from fire import Fire
