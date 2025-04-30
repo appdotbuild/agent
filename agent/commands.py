@@ -38,7 +38,9 @@ def update_cache(dest="."):
 
 def run_lint():
     os.chdir(_current_dir())
-    subprocess.run("ruff check . --fix".split())
+    code = subprocess.run("ruff check . --fix".split())
+    if code.returncode != 0:
+        raise RuntimeError(f"ruff failed with code {code.returncode}")
 
 def run_e2e_tests():
     _run_tests_with_cache("tests/test_e2e.py", n_workers="0")

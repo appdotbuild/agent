@@ -7,6 +7,7 @@ from llm.utils import AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
 from log import get_logger
+import ujson as json
 
 logger = get_logger(__name__)
 
@@ -131,7 +132,7 @@ class FSMToolProcessor[T: FSMInterface]:
             # Prepare the result
             result = self.fsm_as_result()
             logger.info("Started FSM session")
-            return CommonToolResult(content=str(result))
+            return CommonToolResult(content=json.dumps(result, sort_keys=True))
 
         except Exception as e:
             logger.exception(f"Error starting FSM: {str(e)}")
@@ -160,7 +161,7 @@ class FSMToolProcessor[T: FSMInterface]:
             # Prepare result
             result = self.fsm_as_result()
             logger.info(f"FSM advanced to state {current_state}")
-            return CommonToolResult(content=str(result))
+            return CommonToolResult(content=json.dumps(result, sort_keys=True))
 
         except Exception as e:
             logger.exception(f"Error confirming state: {str(e)}")
@@ -189,7 +190,7 @@ class FSMToolProcessor[T: FSMInterface]:
             # Prepare result
             result = self.fsm_as_result()
             logger.info(f"FSM updated with feedback, now in state {new_state}")
-            return CommonToolResult(content=str(result))
+            return CommonToolResult(content=json.dumps(result, sort_keys=True))
 
         except Exception as e:
             logger.exception(f"Error providing feedback: {str(e)}")
@@ -211,7 +212,7 @@ class FSMToolProcessor[T: FSMInterface]:
             # Prepare result based on state
             result = self.fsm_as_result()
             logger.info(f"FSM completed in state: {self.fsm_app.current_state}")
-            return CommonToolResult(content=str(result))
+            return CommonToolResult(content=json.dumps(result, sort_keys=True))
 
         except Exception as e:
             logger.exception(f"Error completing FSM: {str(e)}")
@@ -257,6 +258,7 @@ class FSMToolProcessor[T: FSMInterface]:
     def fsm_as_result(self) -> dict:
         if self.fsm_app is None:
             raise RuntimeError("Attempt to get result with uninitialized fsm application.")
+
         return {
             "current_state": self.fsm_app.current_state,
             "output": self.fsm_app.state_output,
