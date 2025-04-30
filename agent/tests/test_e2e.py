@@ -35,9 +35,12 @@ async def run_e2e(prompt: str, standalone: bool):
                 mock_data = json.load(f)
                 mock_response = mock_data.get("mock_key", {})
                 
+                unified_diff = mock_response.get("unified_diff", "")
+                logger.info(f"Mock unified_diff length: {len(unified_diff)}")
+                
                 mock_message = AgentMessage(
                     content="Mock response for testing",
-                    unified_diff=mock_response.get("unified_diff", ""),
+                    unified_diff=unified_diff,
                     kind=MessageKind.STAGE_RESULT
                 )
                 mock_event = AgentSseEvent(
@@ -48,6 +51,11 @@ async def run_e2e(prompt: str, standalone: bool):
                 events = [mock_event]
                 diff = latest_unified_diff(events)
                 assert diff, "No diff was generated in the mock response"
+                
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    success, message = apply_patch(diff, temp_dir)
+                    assert success, f"Failed to apply patch: {message}"
+                    return  # Skip the Docker container setup for mock tests
         else:
             raise FileNotFoundError(f"Mock cache file not found at {mock_cache_path}")
     else:
@@ -57,9 +65,9 @@ async def run_e2e(prompt: str, standalone: bool):
             diff = latest_unified_diff(events)
             assert diff, "No diff was generated in the agent response"
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            success, message = apply_patch(diff, temp_dir)
-            assert success, f"Failed to apply patch: {message}"
+            with tempfile.TemporaryDirectory() as temp_dir:
+                success, message = apply_patch(diff, temp_dir)
+                assert success, f"Failed to apply patch: {message}"
 
             db_container_name = generate_random_name("db")
             app_container_name = generate_random_name("app")
