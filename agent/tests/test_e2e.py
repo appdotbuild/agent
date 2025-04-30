@@ -11,7 +11,7 @@ from pathlib import Path
 from fire import Fire
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST
-from api.agent_server.models import AgentSseEvent, AgentMessage, AgentStatus
+from api.agent_server.models import AgentSseEvent, AgentMessage, AgentStatus, MessageKind
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +37,8 @@ async def run_e2e(prompt: str, standalone: bool):
                 
                 mock_message = AgentMessage(
                     content="Mock response for testing",
-                    unified_diff=mock_response.get("unified_diff", "")
+                    unified_diff=mock_response.get("unified_diff", ""),
+                    kind=MessageKind.STAGE_RESULT
                 )
                 mock_event = AgentSseEvent(
                     status=AgentStatus.IDLE,
