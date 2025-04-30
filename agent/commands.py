@@ -20,7 +20,10 @@ def _run_tests_with_cache(dest=".", n_workers=_n_workers(), verbose=False):
     os.environ["LLM_VCR_CACHE_MODE"] = "replay"
     os.chdir(_current_dir())
     flag = "-vs" if verbose else "-v"
-    pytest.main([flag, "-n", str(n_workers), dest])
+    code = pytest.main([flag, "-n", str(n_workers), dest])
+    if code != 0:
+        raise RuntimeError(f"pytest failed with code {code}")
+
 
 def run_tests_with_cache():
     Fire(_run_tests_with_cache)
@@ -28,7 +31,9 @@ def run_tests_with_cache():
 def update_cache(dest="."):
     os.environ["LLM_VCR_CACHE_MODE"] = "record"
     os.chdir(_current_dir())
-    pytest.main(["-v", "-n", "0", dest])
+    code = pytest.main(["-v", "-n", "0", dest])
+    if code != 0:
+        raise RuntimeError(f"pytest failed with code {code}")
 
 
 def run_lint():
@@ -36,7 +41,7 @@ def run_lint():
     subprocess.run("ruff check . --fix".split())
 
 def run_e2e_tests():
-    run_tests_with_cache("tests/test_e2e.py", n_workers="0")
+    _run_tests_with_cache("tests/test_e2e.py", n_workers="0")
 
 def generate():
     return Fire(_generate)
