@@ -498,16 +498,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     
                     if success and target_dir:
                         print(f"\nSetting up project in {target_dir}...")
-                        print("Installing dependencies with 'bun i'...")
+                        print("Building services with 'docker compose build'...")
                         try:
-                            # Run 'bun i' to install dependencies
-                            subprocess.run(["bun", "i"], cwd=target_dir, check=True)
+                            subprocess.run(["docker", "compose", "build"], cwd=target_dir, check=True)
                             print("Dependencies installed successfully.")
                             
-                            print("\nStarting development server with 'bun run dev:all'...")
+                            print("\nStarting development server with 'docker compose run'...")
                             # Use Popen to start the server in the background
                             current_server_process = subprocess.Popen(
-                                ["bun", "run", "dev:all"], 
+                                ["docker", "compose", "up", "-d"], 
                                 cwd=target_dir,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
@@ -528,7 +527,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         except subprocess.CalledProcessError as e:
                             print(f"Error during project setup: {e}")
                         except FileNotFoundError:
-                            print("Error: 'bun' command not found. Please make sure Bun is installed.")
+                            print("Error: 'docker' command not found. Please make sure Docker is installed.")
                     continue
                 case "/stop":
                     if not current_server_process:
