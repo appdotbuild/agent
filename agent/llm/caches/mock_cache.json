@@ -1,5 +1,16 @@
 {
   "mock_key": {
-    "unified_diff": "diff --git a/index.html b/index.html\nnew file mode 100644\nindex 0000000..e69de29\n--- /dev/null\n+++ b/index.html\n@@ -0,0 +1,25 @@\n+<!DOCTYPE html>\n+<html lang=\"en\">\n+<head>\n+    <meta charset=\"UTF-8\">\n+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n+    <title>Click Counter</title>\n+    <style>\n+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }\n+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }\n+        #counter { font-size: 24px; margin: 20px 0; }\n+    </style>\n+</head>\n+<body>\n+    <h1>Button Click Counter</h1>\n+    <div id=\"counter\">0</div>\n+    <button id=\"clickButton\">Click Me!</button>\n+\n+    <script>\n+        document.addEventListener(\"DOMContentLoaded\", () => {\n+            const counterElement = document.getElementById(\"counter\");\n+            const button = document.getElementById(\"clickButton\");\n+            let count = 0;\n+            \n+            button.addEventListener(\"click\", () => {\n+                count++;\n+                counterElement.textContent = count;\n+            });\n+        });\n+    </script>\n+</body>\n+</html>"
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Here is a simple app with a counter of clicks on a single button."
+      }
+    ],
+    "input_tokens": 10,
+    "output_tokens": 20,
+    "stop_reason": "end_turn",
+    "thinking_tokens": 0,
+    "unified_diff": "diff --git a/index.html b/index.html\nnew file mode 100644\nindex 0000000..e69de29\n--- /dev/null\n+++ b/index.html\n@@ -0,0 +1,25 @@\n+<!DOCTYPE html>\n+<html lang=\"en\">\n+<head>\n+    <meta charset=\"UTF-8\">\n+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n+    <title>Click Counter</title>\n+    <style>\n+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }\n+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }\n+        #counter { font-size: 24px; margin: 20px 0; }\n+    </style>\n+</head>\n+<body>\n+    <h1>Button Click Counter</h1>\n+    <div id=\"counter\">0</div>\n+    <button id=\"clickButton\">Click Me!</button>\n+\n+    <script>\n+        document.addEventListener('DOMContentLoaded', () => {\n+            const counterElement = document.getElementById('counter');\n+            const button = document.getElementById('clickButton');\n+            let count = 0;\n+            \n+            button.addEventListener('click', () => {\n+                count++;\n+                counterElement.textContent = count;\n+            });\n+        });\n+    </script>\n+</body>\n+</html>"
   }
 }

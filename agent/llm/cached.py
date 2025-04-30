@@ -2,7 +2,7 @@ from typing import Literal, Dict, Any, List
 import ujson as json
 import hashlib
 from pathlib import Path
-from llm.common import AsyncLLM, Completion, Message, Tool, TextRaw
+from llm.common import AsyncLLM, Completion, Message, Tool
 import os
 import anyio
 from collections import OrderedDict
@@ -209,60 +209,9 @@ class CachedLLM(AsyncLLM):
                     cached_response = self._cache[cache_key]
                     return Completion.from_dict(cached_response)
                 else:
-                    # In test environments, return a mock response instead of failing
-                    if "PYTEST_CURRENT_TEST" in os.environ or os.getenv("CI"):
-                        logger.warning(f"No cache found for key {cache_key} in replay mode. Using mock response for tests.")
-                        # Create a mock completion with a unified diff for testing
-                        mock_diff = """diff --git a/index.html b/index.html
-new file mode 100644
-index 0000000..e69de29
---- /dev/null
-+++ b/index.html
-@@ -0,0 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Click Counter</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-        #counter { font-size: 24px; margin: 20px 0; }
-    </style>
-</head>
-<body>
-    <h1>Button Click Counter</h1>
-    <div id="counter">0</div>
-    <button id="clickButton">Click Me!</button>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const counterElement = document.getElementById('counter');
-            const button = document.getElementById('clickButton');
-            let count = 0;
-            
-            button.addEventListener('click', () => {
-                count++;
-                counterElement.textContent = count;
-            });
-        });
-    </script>
-</body>
-</html>"""
-                        # Create a mock completion without the unified_diff parameter
-                        return Completion(
-                            role="assistant",
-                            content=[TextRaw(text=f"Mock response for testing with diff:\n{mock_diff}")],
-                            input_tokens=10,
-                            output_tokens=20,
-                            stop_reason="end_turn",
-                            thinking_tokens=0
-                        )
-                    else:
-                        raise ValueError(
-                            "no cached response found for this request in replay mode; "
-                            f"run in record mode first to populate the cache. cache_key: {cache_key}"
-                        )
+                    raise ValueError(
+                        "no cached response found for this request in replay mode; "
+                        f"run in record mode first to populate the cache. cache_key: {cache_key}"
+                    )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")
