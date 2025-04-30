@@ -118,6 +118,7 @@ class CachedLLM(AsyncLLM):
         """generate a consistent cache key from request parameters."""
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
+        return key_str
         return hashlib.md5(key_str.encode()).hexdigest()
 
     async def completion(
@@ -209,10 +210,10 @@ class CachedLLM(AsyncLLM):
                     cached_response = self._cache[cache_key]
                     return Completion.from_dict(cached_response)
                 else:
-                    print(normalize(messages))
+                    print("CACHE FAILURE", normalize(messages))
                     raise ValueError(
                         f"No cached response by {self.client.__class__} found for this request in replay mode; "
-                        f"run in record mode first to populate the cache. Cache_key: {cache_key}, last message: {normalize(messages)}"
+                        f"run in record mode first to populate the cache. Cache_key: {cache_key}"
                     )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")
