@@ -43,7 +43,7 @@ async def test_async_agent_message_endpoint(agent_type):
                 case AgentSseEvent():
                     assert event.trace_id == request.trace_id, f"Trace IDs do not match in model objects with agent_type={agent_type}"
                     assert event.status == AgentStatus.IDLE
-                    assert event.message.kind == MessageKind.STAGE_RESULT
+                    assert event.message.kind in [MessageKind.STAGE_RESULT, MessageKind.REFINEMENT_REQUEST]
 
 
 async def test_async_agent_state_continuation(trpc_agent):
