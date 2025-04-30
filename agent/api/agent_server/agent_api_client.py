@@ -248,20 +248,22 @@ def get_multiline_input(prompt: str) -> str:
     """
     Get multi-line input from the user.
     Input is terminated when the user enters an empty line.
-    Command inputs (starting with '/') are processed immediately without requiring empty line.
+    Command inputs (starting with '/' or '+') are processed immediately without requiring empty line.
     Supports up/down arrow keys for navigating through command history.
     """
     print(prompt, end="", flush=True)
     
     try:
         first_line = input()
+        
         # Add non-empty, non-command inputs to history
         if first_line.strip() and not first_line.strip().startswith('/'):
             # Add to readline history if not already the last item
             if readline.get_current_history_length() == 0 or readline.get_history_item(readline.get_current_history_length()) != first_line:
                 readline.add_history(first_line)
         
-        if first_line.strip().startswith('/'):
+        # If it's a command (starts with '/' or '+'), return it immediately
+        if first_line.strip().startswith('/') or first_line.strip().startswith('+'):
             return first_line
             
         lines = [first_line]
