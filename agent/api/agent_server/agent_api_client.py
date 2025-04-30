@@ -6,6 +6,9 @@ import tempfile
 import shutil
 import subprocess
 import readline
+import random
+import string
+import atexit
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -343,6 +346,33 @@ def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = N
         return False, error_msg, None
 
 
+docker_cleanup_dirs = []
+
+def generate_random_name(prefix: str, length: int = 8) -> str:
+    """Generate a random name with a prefix for Docker resources"""
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+    return f"{prefix}-{suffix}"
+
+def cleanup_docker_projects():
+    """Clean up any Docker projects that weren't properly shut down"""
+    global docker_cleanup_dirs
+    
+    for project_dir in docker_cleanup_dirs:
+        if os.path.exists(project_dir):
+            print(f"Cleaning up Docker resources in {project_dir}")
+            try:
+                subprocess.run(
+                    ["docker", "compose", "down", "-v"],
+                    cwd=project_dir,
+                    check=False,
+                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL
+                )
+            except Exception as e:
+                print(f"Error during cleanup of {project_dir}: {e}")
+
+atexit.register(cleanup_docker_projects)
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
@@ -534,15 +564,67 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         
                         if success and target_dir:
                             print(f"\nSetting up project in {target_dir}...")
-                            print("Building services with 'docker compose build'...")
+                            
+                            # Generate random names for containers to avoid conflicts
+                            db_container = generate_random_name("postgres")
+                            app_container = generate_random_name("app")
+                            frontend_container = generate_random_name("frontend")
+                            network_name = generate_random_name("network")
+                            db_push_container = generate_random_name("db-push")
+                            
+                            # Set environment variables instead of using .env file
+                            # These will be picked up by docker-compose
+                            os.environ["POSTGRES_CONTAINER_NAME"] = db_container
+                            os.environ["BACKEND_CONTAINER_NAME"] = app_container 
+                            os.environ["FRONTEND_CONTAINER_NAME"] = frontend_container
+                            os.environ["DB_PUSH_CONTAINER_NAME"] = db_push_container
+                            os.environ["NETWORK_NAME"] = network_name
+                            
+                            # Common database configuration
+                            os.environ["POSTGRES_USER"] = "postgres"
+                            os.environ["POSTGRES_PASSWORD"] = "postgres"
+                            os.environ["POSTGRES_DB"] = "postgres"
+                            
+                            # Add to cleanup list
+                            if target_dir not in docker_cleanup_dirs:
+                                docker_cleanup_dirs.append(target_dir)
+                            
+                            print("Building services with Docker Compose...")
                             try:
+                                # Build the services
                                 subprocess.run(["docker", "compose", "build"], cwd=target_dir, check=True)
                                 print("Dependencies installed successfully.")
                                 
-                                print("\nStarting development server with 'docker compose run'...")
-                                # Use Popen to start the server in the background
+                                print("\nStarting development server with Docker Compose...")
+                                # Ensure clean environment with down before starting
+                                subprocess.run(
+                                    ["docker", "compose", "down", "-v", "--remove-orphans"],
+                                    cwd=target_dir,
+                                    check=False
+                                )
+                                
+                                # Start the services with the environment variables set
+                                result = subprocess.run(
+                                    ["docker", "compose", "up", "-d"],
+                                    cwd=target_dir,
+                                    capture_output=True,
+                                    text=True,
+                                    check=False
+                                )
+                                
+                                if result.returncode != 0:
+                                    print(f"Warning: Docker Compose returned non-zero exit code: {result.returncode}")
+                                    print(f"Error output: {result.stderr}")
+                                else:
+                                    print("All services started successfully.")
+                                
+                                # Simple message about web access
+                                print("\n🌐 Web UI is available at:")
+                                print("   http://localhost:80 (for web servers, default HTTP port)")
+                                
+                                # Use Popen to follow the logs
                                 current_server_process = subprocess.Popen(
-                                    ["docker", "compose", "up", "-d"], 
+                                    ["docker", "compose", "logs", "-f"],
                                     cwd=target_dir,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
@@ -550,7 +632,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 )
                                 
                                 # Wait briefly and then print a few lines of output
-                                print("Server starting, initial output:")
+                                print("\nServer starting, initial output:")
                                 for _ in range(10):  # Print up to 10 lines of output
                                     line = current_server_process.stdout.readline()
                                     if not line:
@@ -575,18 +657,45 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             current_server_process = None
                             continue
                             
+                        # Get the directory where the server is running
+                        server_dir = None
+                        for dir_path in docker_cleanup_dirs:
+                            try:
+                                # Check if this matches the current_server_process working directory
+                                if os.path.exists(dir_path) and current_server_process:
+                                    server_dir = dir_path
+                                    break
+                            except:
+                                pass
+                        
                         print("Stopping the server...")
                         try:
+                            # First terminate the log process
                             current_server_process.terminate()
                             try:
-                                # Wait for up to 5 seconds for the server to terminate
+                                # Wait for up to 5 seconds for the process to terminate
                                 current_server_process.wait(timeout=5)
-                                print("Server stopped successfully.")
                             except subprocess.TimeoutExpired:
-                                print("Server did not terminate gracefully. Forcing shutdown...")
+                                print("Logs process did not terminate gracefully. Forcing shutdown...")
                                 current_server_process.kill()
                                 current_server_process.wait()
-                                print("Server forcefully terminated.")
+                                
+                            # Then shut down the Docker containers if we found the directory
+                            if server_dir and os.path.exists(server_dir):
+                                print(f"Stopping Docker containers in {server_dir}...")
+                                try:
+                                    subprocess.run(
+                                        ["docker", "compose", "down", "-v"],
+                                        cwd=server_dir,
+                                        check=False
+                                    )
+                                    # Remove from cleanup list
+                                    if server_dir in docker_cleanup_dirs:
+                                        docker_cleanup_dirs.remove(server_dir)
+                                except Exception as e:
+                                    print(f"Error stopping containers: {e}")
+                                
+                            print("Server stopped successfully.")
                         except Exception as e:
                             print(f"Error stopping server: {e}")
                         
