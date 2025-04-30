@@ -138,7 +138,6 @@ class FSMApplication:
         llm = get_llm_client()
         model_params = settings or {}
         g_llm = get_llm_client(model_name="gemini-pro")
-
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
             context=dagger.dag.host().directory("./trpc_agent/template"),

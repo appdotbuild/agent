@@ -1,7 +1,7 @@
 from typing import Self
+import uuid
 import dagger
 from dagger import dag, function, object_type, Container, Directory, ReturnType
-
 
 class ExecResult:
     exit_code: int
@@ -132,6 +132,7 @@ class Workspace:
             .with_env_variable("POSTGRES_USER", "postgres")
             .with_env_variable("POSTGRES_PASSWORD", "postgres")
             .with_env_variable("POSTGRES_DB", "postgres")
+            .with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
             .as_service(use_entrypoint=True)
         )
 

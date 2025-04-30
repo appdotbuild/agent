@@ -12,6 +12,23 @@ logger = get_logger(__name__)
 
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
 
+def normalize(obj):
+    match obj:
+        case list() | tuple():
+            return [normalize(item) for item in obj]
+        case dict():
+            # Replace 'id' values with a placeholder
+            normalized_dict = {}
+            for k, v in sorted(obj.items()):
+                if k == "id":
+                    normalized_dict[k] = "__ID_PLACEHOLDER__"
+                else:
+                    normalized_dict[k] = normalize(v)
+            return normalized_dict
+        case _ if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
+            return normalize(obj.to_dict())
+        case _:
+            return obj
 
 class CachedLLM(AsyncLLM):
     """A wrapper around AsyncLLM that provides caching functionality with four modes:
@@ -95,27 +112,10 @@ class CachedLLM(AsyncLLM):
             self._cache.pop(oldest_key, None)
             logger.debug(f"Evicted oldest cache entry: {oldest_key}")
 
-    def _get_cache_key(self, **kwargs) -> str:
-        """generate a consistent cache key from request parameters."""
-        # Convert objects to dictionaries and sort recursively for consistent ordering
-        def normalize(obj):
-            match obj:
-                case list() | tuple():
-                    return [normalize(item) for item in obj]
-                case dict():
-                    # Replace 'id' values with a placeholder
-                    normalized_dict = {}
-                    for k, v in sorted(obj.items()):
-                        if k == "id":
-                            normalized_dict[k] = "__ID_PLACEHOLDER__"
-                        else:
-                            normalized_dict[k] = normalize(v)
-                    return normalized_dict
-                case _ if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
-                    return normalize(obj.to_dict())
-                case _:
-                    return obj
 
+    @staticmethod
+    def _get_cache_key(**kwargs) -> str:
+        """generate a consistent cache key from request parameters."""
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
         return hashlib.md5(key_str.encode()).hexdigest()
@@ -209,9 +209,10 @@ class CachedLLM(AsyncLLM):
                     cached_response = self._cache[cache_key]
                     return Completion.from_dict(cached_response)
                 else:
+                    logger.error(f"CACHE FAILURE: {normalize(messages)}")
                     raise ValueError(
-                        "no cached response found for this request in replay mode; "
-                        f"run in record mode first to populate the cache. cache_key: {cache_key}"
+                        f"No cached response by {self.client.__class__} found for this request in replay mode; "
+                        f"run in record mode first to populate the cache. Cache_key: {cache_key}"
                     )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")

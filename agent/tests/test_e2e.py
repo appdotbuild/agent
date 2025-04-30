@@ -55,11 +55,18 @@ async def run_e2e(prompt: str, standalone: bool):
                     capture_output=True,
                     text=True
                 )
+                docker_cli = docker.from_env()
                 if res.returncode != 0:
+                    for container in (db_container_name, app_container_name, frontend_container_name):
+                        try:
+                            status = docker_cli.containers.get(container).status
+                            logs = docker_cli.containers.get(container).logs()
+                            logger.error(f"Container {container} status: {status}, logs: {logs.decode('utf-8')}")
+                        except Exception:
+                            logger.error(f"Failed to get status for container {container}")
+
                     logger.error(f"Error starting Docker containers: {res.stderr}")
                     raise RuntimeError(f"Failed to start Docker containers: return code {res.returncode}")
-
-                docker_cli = docker.from_env()
 
                 timeout = 30  # seconds
                 interval = 1 # seconds

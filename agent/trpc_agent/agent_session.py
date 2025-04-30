@@ -127,7 +127,7 @@ class TrpcAgentSession(AgentInterface):
                     message=AgentMessage(
                         role="assistant",
                         kind=MessageKind.STAGE_RESULT if self.user_answered(messages) else MessageKind.REFINEMENT_REQUEST,
-                        content=json.dumps([x.to_dict() for x in messages] ),
+                        content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
                         unifiedDiff=app_diff
                     )
@@ -163,7 +163,7 @@ class TrpcAgentSession(AgentInterface):
                                 message=AgentMessage(
                                     role="assistant",
                                     kind=MessageKind.STAGE_RESULT,
-                                    content=json.dumps([x.to_dict() for x in messages]),
+                                    content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                     agentState={"fsm_state": fsm_state} if fsm_state else None,
                                     unifiedDiff=final_diff
                                 )

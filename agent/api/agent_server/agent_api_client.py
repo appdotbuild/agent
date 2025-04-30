@@ -4,6 +4,11 @@ import os
 import traceback
 import tempfile
 import shutil
+import subprocess
+import readline
+import random
+import string
+import atexit
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -39,6 +44,28 @@ def project_dir_context():
 
 
 
+current_server_process = None
+
+HISTORY_FILE = os.path.expanduser("~/.agent_chat_history")
+HISTORY_SIZE = 1000  # Maximum number of history entries to save
+
+def setup_readline():
+    """Configure readline for command history"""
+    try:
+        if not os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'w') as _:
+                pass
+                
+        readline.read_history_file(HISTORY_FILE)
+        readline.set_history_length(HISTORY_SIZE)
+
+        import atexit
+        atexit.register(readline.write_history_file, HISTORY_FILE)
+        
+        return True
+    except Exception as e:
+        print(f"Warning: Could not configure readline history: {e}")
+        return False
 
 def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
     try:
@@ -221,16 +248,146 @@ def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
     return None
 
 
+def get_multiline_input(prompt: str) -> str:
+    """
+    Get multi-line input from the user.
+    Input is terminated when the user enters an empty line.
+    Command inputs (starting with '/' or '+') are processed immediately without requiring empty line.
+    Supports up/down arrow keys for navigating through command history.
+    """
+    print(prompt, end="", flush=True)
+    
+    try:
+        first_line = input()
+        
+        # Add non-empty, non-command inputs to history
+        if first_line.strip() and not first_line.strip().startswith('/'):
+            # Add to readline history if not already the last item
+            if readline.get_current_history_length() == 0 or readline.get_history_item(readline.get_current_history_length()) != first_line:
+                readline.add_history(first_line)
+        
+        # If it's a command (starts with '/' or '+'), return it immediately
+        if first_line.strip().startswith('/') or first_line.strip().startswith('+'):
+            return first_line
+            
+        lines = [first_line]
+        
+    except (EOFError, KeyboardInterrupt):
+        print("\nInput terminated.")
+        return ""
+    
+    # Continue collecting lines for multi-line input
+    while True:
+        try:
+            # Show continuation prompt for subsequent lines
+            print("\033[94m... \033[0m", end="", flush=True)
+            line = input()
+            
+            if not line.strip():  # Empty line terminates input
+                if not lines or (len(lines) == 1 and not lines[0].strip()):  # Don't allow empty input
+                    continue
+                break
+                
+            lines.append(line)
+        except (EOFError, KeyboardInterrupt):
+            print("\nInput terminated.")
+            break
+    
+    full_input = "\n".join(lines)
+    
+    if len(lines) > 1:
+        readline.add_history(full_input.replace('\n', ' '))
+    
+    return full_input
+
+
+def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
+    """
+    Apply the latest diff to a directory.
+    
+    Args:
+        events: List of AgentSseEvent objects
+        custom_dir: Optional custom base directory path
+    
+    Returns:
+        Tuple containing:
+            - Success status (boolean)
+            - Result message (string)
+            - Target directory where diff was applied (string, or None if failed)
+    """
+    diff = latest_unified_diff(events)
+    if not diff:
+        return False, "No diff available to apply", None
+
+    try:
+        # Create a timestamp-based project directory name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        project_name = f"project_{timestamp}"
+
+        if custom_dir:
+            base_dir = custom_dir
+        else:
+            base_dir = os.path.expanduser("~/projects")
+            print(f"Using default project directory: {base_dir}")
+
+        # Create the full project directory path
+        target_dir = os.path.join(base_dir, project_name)
+
+        # Apply the patch
+        success, message = apply_patch(diff, target_dir)
+        
+        if success:
+            return True, message, target_dir
+        else:
+            return False, message, target_dir
+            
+    except Exception as e:
+        error_msg = f"Error applying diff: {e}"
+        traceback.print_exc()
+        return False, error_msg, None
+
+
+docker_cleanup_dirs = []
+
+def generate_random_name(prefix: str, length: int = 8) -> str:
+    """Generate a random name with a prefix for Docker resources"""
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+    return f"{prefix}-{suffix}"
+
+def cleanup_docker_projects():
+    """Clean up any Docker projects that weren't properly shut down"""
+    global docker_cleanup_dirs
+    
+    for project_dir in docker_cleanup_dirs:
+        if os.path.exists(project_dir):
+            print(f"Cleaning up Docker resources in {project_dir}")
+            try:
+                subprocess.run(
+                    ["docker", "compose", "down", "-v"],
+                    cwd=project_dir,
+                    check=False,
+                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL
+                )
+            except Exception as e:
+                print(f"Error during cleanup of {project_dir}: {e}")
+
+atexit.register(cleanup_docker_projects)
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
+    # Make server process accessible globally
+    global current_server_process
 
     # Prepare state and settings
     state_file = os.path.expanduser(state_file)
     previous_events: List[AgentSseEvent] = []
     previous_messages: List[str] = []
     request = None
+    
+    history_enabled = setup_readline()
 
     # Parse settings if provided
     settings_dict = {}
@@ -261,6 +418,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     print(divider)
     print("Interactive Agent CLI Chat")
     print("Type '/help' for commands.")
+    print("Use an empty line to finish multi-line input.")
+    if history_enabled:
+        print("Use up/down arrow keys to navigate through command history.")
     print(divider)
 
     if host:
@@ -272,7 +432,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         with project_dir_context() as project_dir:
             while True:
                 try:
-                    ui = input("\033[94mYou> \033[0m")
+                    ui = get_multiline_input("\033[94mYou> \033[0m")
                     if ui.startswith("+"):
                         ui = DEFAULT_APP_REQUEST
                 except (EOFError, KeyboardInterrupt):
@@ -282,8 +442,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 cmd = ui.strip()
                 if not cmd:
                     continue
-                action, *rest = cmd.split(None, 1)
-                match action.lower().strip():
+
+                first_line = cmd.split('\n', 1)[0].strip()
+                if first_line.startswith('/'):
+                    action, *rest = first_line.split(None, 1)
+                    cmd = first_line
+                else:
+                    action = None
+                    
+                match action.lower().strip() if action else None:
                     case "/exit" | "/quit":
                         print("Goodbye!")
                         return
@@ -297,7 +464,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             "\n"
                             "/diff       Show the latest unified diff\n"
                             f"/apply [dir] Apply the latest diff to directory (default: {project_dir})\n"
-                            "/export     Export the latest diff to a patchfile"
+                            "/export     Export the latest diff to a patchfile\n"
+                            "/run [dir]  Apply diff, install deps, and start dev server\n"
+                            "/stop       Stop the currently running server"
                         )
                         continue
                     case "/clear":
@@ -374,6 +543,169 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         except Exception as e:
                             print(f"Error exporting diff: {e}")
                         continue
+                    case "/run":
+                        # First, stop any running server
+                        if current_server_process and current_server_process.poll() is None:
+                            print("Stopping currently running server...")
+                            try:
+                                current_server_process.terminate()
+                                current_server_process.wait(timeout=5)
+                            except Exception as e:
+                                print(f"Warning: Error stopping previous server: {e}")
+                                try:
+                                    current_server_process.kill()
+                                except (ProcessLookupError, OSError):
+                                    pass
+                            current_server_process = None
+                            
+                        # Apply the diff to create a new project
+                        custom_dir = rest[0] if rest else None
+                        success, message, target_dir = apply_latest_diff(previous_events, custom_dir)
+                        print(message)
+                        
+                        if success and target_dir:
+                            print(f"\nSetting up project in {target_dir}...")
+                            
+                            # Generate random names for containers to avoid conflicts
+                            db_container = generate_random_name("postgres")
+                            app_container = generate_random_name("app")
+                            frontend_container = generate_random_name("frontend")
+                            network_name = generate_random_name("network")
+                            db_push_container = generate_random_name("db-push")
+                            
+                            # Set environment variables instead of using .env file
+                            # These will be picked up by docker-compose
+                            os.environ["POSTGRES_CONTAINER_NAME"] = db_container
+                            os.environ["BACKEND_CONTAINER_NAME"] = app_container 
+                            os.environ["FRONTEND_CONTAINER_NAME"] = frontend_container
+                            os.environ["DB_PUSH_CONTAINER_NAME"] = db_push_container
+                            os.environ["NETWORK_NAME"] = network_name
+                            
+                            # Common database configuration
+                            os.environ["POSTGRES_USER"] = "postgres"
+                            os.environ["POSTGRES_PASSWORD"] = "postgres"
+                            os.environ["POSTGRES_DB"] = "postgres"
+                            
+                            # Add to cleanup list
+                            if target_dir not in docker_cleanup_dirs:
+                                docker_cleanup_dirs.append(target_dir)
+                            
+                            print("Building services with Docker Compose...")
+                            try:
+                                # Build the services
+                                subprocess.run(["docker", "compose", "build"], cwd=target_dir, check=True)
+                                print("Dependencies installed successfully.")
+                                
+                                print("\nStarting development server with Docker Compose...")
+                                # Ensure clean environment with down before starting
+                                subprocess.run(
+                                    ["docker", "compose", "down", "-v", "--remove-orphans"],
+                                    cwd=target_dir,
+                                    check=False
+                                )
+                                
+                                # Start the services with the environment variables set
+                                result = subprocess.run(
+                                    ["docker", "compose", "up", "-d"],
+                                    cwd=target_dir,
+                                    capture_output=True,
+                                    text=True,
+                                    check=False
+                                )
+                                
+                                if result.returncode != 0:
+                                    print(f"Warning: Docker Compose returned non-zero exit code: {result.returncode}")
+                                    print(f"Error output: {result.stderr}")
+                                else:
+                                    print("All services started successfully.")
+                                
+                                # Simple message about web access
+                                print("\n🌐 Web UI is available at:")
+                                print("   http://localhost:80 (for web servers, default HTTP port)")
+                                
+                                # Use Popen to follow the logs
+                                current_server_process = subprocess.Popen(
+                                    ["docker", "compose", "logs", "-f"],
+                                    cwd=target_dir,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
+                                    text=True
+                                )
+                                
+                                # Wait briefly and then print a few lines of output
+                                print("\nServer starting, initial output:")
+                                for _ in range(10):  # Print up to 10 lines of output
+                                    line = current_server_process.stdout.readline()
+                                    if not line:
+                                        break
+                                    print(f"  {line.rstrip()}")
+                                    
+                                print(f"\nServer running in {target_dir}")
+                                print("Use /stop command to stop the server when done.")
+                                
+                            except subprocess.CalledProcessError as e:
+                                print(f"Error during project setup: {e}")
+                            except FileNotFoundError:
+                                print("Error: 'docker' command not found. Please make sure Docker is installed.")
+                        continue
+                    case "/stop":
+                        if not current_server_process:
+                            print("No server is currently running.")
+                            continue
+                            
+                        if current_server_process.poll() is not None:
+                            print("Server has already terminated.")
+                            current_server_process = None
+                            continue
+                            
+                        # Get the directory where the server is running
+                        server_dir = None
+                        for dir_path in docker_cleanup_dirs:
+                            try:
+                                # Check if this matches the current_server_process working directory
+                                if os.path.exists(dir_path) and current_server_process:
+                                    server_dir = dir_path
+                                    break
+                            except (FileNotFoundError, PermissionError, OSError) as e:
+                                logger.debug(f"Error checking directory: {e}")
+                                pass
+                        
+                        print("Stopping the server...")
+                        try:
+                            # First terminate the log process
+                            current_server_process.terminate()
+                            try:
+                                # Wait for up to 5 seconds for the process to terminate
+                                current_server_process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                print("Logs process did not terminate gracefully. Forcing shutdown...")
+                                current_server_process.kill()
+                                current_server_process.wait()
+                                
+                            # Then shut down the Docker containers if we found the directory
+                            if server_dir and os.path.exists(server_dir):
+                                print(f"Stopping Docker containers in {server_dir}...")
+                                try:
+                                    subprocess.run(
+                                        ["docker", "compose", "down", "-v"],
+                                        cwd=server_dir,
+                                        check=False
+                                    )
+                                    # Remove from cleanup list
+                                    if server_dir in docker_cleanup_dirs:
+                                        docker_cleanup_dirs.remove(server_dir)
+                                except Exception as e:
+                                    print(f"Error stopping containers: {e}")
+                                
+                            print("Server stopped successfully.")
+                        except Exception as e:
+                            print(f"Error stopping server: {e}")
+                        
+                        current_server_process = None
+                        continue
+                    case None:
+                        # For non-command input, use the entire text including multiple lines
+                        content = ui
                     case _:
                         content = cmd
 
@@ -440,5 +772,11 @@ def cli(host: str = "",
 
 
 if __name__ == "__main__":
+    try:
+        import coloredlogs
+        coloredlogs.install(level="INFO")
+    except ImportError:
+        pass
+
     from fire import Fire
     Fire(cli)

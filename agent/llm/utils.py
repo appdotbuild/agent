@@ -137,5 +137,4 @@ def get_llm_client(
     # Store the client in the cache
     _llm_clients[cache_key] = client
     logger.debug(f"Created new LLM client for {backend}/{model_name}")
-
     return client
