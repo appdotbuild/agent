@@ -665,7 +665,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 if os.path.exists(dir_path) and current_server_process:
                                     server_dir = dir_path
                                     break
-                            except:
+                            except (FileNotFoundError, PermissionError, OSError) as e:
+                                logger.debug(f"Error checking directory: {e}")
                                 pass
                         
                         print("Stopping the server...")
