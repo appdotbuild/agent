@@ -5,7 +5,6 @@ import traceback
 import tempfile
 import shutil
 import subprocess
-import signal
 import readline
 from typing import List, Optional, Tuple
 from log import get_logger
@@ -50,7 +49,7 @@ def setup_readline():
     """Configure readline for command history"""
     try:
         if not os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, 'w') as f:
+            with open(HISTORY_FILE, 'w') as _:
                 pass
                 
         readline.read_history_file(HISTORY_FILE)
@@ -522,7 +521,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 print(f"Warning: Error stopping previous server: {e}")
                                 try:
                                     current_server_process.kill()
-                                except:
+                                except (ProcessLookupError, OSError):
                                     pass
                             current_server_process = None
                             
