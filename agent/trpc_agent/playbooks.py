@@ -253,14 +253,14 @@ Task:
 
 SILLY_PROMPT = """
 Files:
-{% for file in files_ctx %}{{ file }}{% endfor %}
-{% for file in workspace_ctx %}{{ file }}{% endfor %}
+{% for file in files_ctx %}{{ file }} {% endfor %}
+{% for file in workspace_ctx %}{{ file }} {% endfor %}
 Relevant files:
-{% for file in workspace_visible_ctx %}{{ file }}{% endfor %}
+{% for file in workspace_visible_ctx %}{{ file }} {% endfor %}
 Allowed files and directories:
-{% for file in allowed %}{{ file }}{% endfor %}
+{% for file in allowed %}{{ file }} {% endfor %}
 Restricted files and directories:
-{% for file in protected %}{{ file }}{% endfor %}
+{% for file in protected %}{{ file }} {% endfor %}
 Rules:
 - Must write small but meaningful tests for newly created handlers.
 - Must not modify existing code unless necessary.

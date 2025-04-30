@@ -56,7 +56,8 @@ line-ending = "auto"
 [dependency-groups]
 dev = [
     "ruff>=0.11.5",
- "pdbpp>=0.10.3",
- "pytest>=8.3.5",
- "pytest-xdist>=3.6.1",
+    "pdbpp>=0.10.3",
+    "pytest>=8.3.5",
+    "pytest-xdist>=3.6.1",
+    "docker>=7.1.0",
 ]

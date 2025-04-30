@@ -19,6 +19,7 @@ ENV PYTHONPATH=/app
 ENTRYPOINT ["uv",  "run", "--no-dev", "server"]
 
 FROM prod AS test
+RUN apk add --update --no-cache docker-compose
 ENTRYPOINT []
 RUN uv sync --dev --compile-bytecode
 ENV LLM_VCR_CACHE_MODE=replay

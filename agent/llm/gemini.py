@@ -40,6 +40,7 @@ class GeminiLLM(common.AsyncLLM):
             max_output_tokens=max_tokens,
             temperature=temperature,
             response_mime_type="text/plain",
+            system_instruction=system_prompt,
         )
         if tools:
             declarations = [

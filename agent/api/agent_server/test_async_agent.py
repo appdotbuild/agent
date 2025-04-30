@@ -2,8 +2,9 @@ import uuid
 import pytest
 from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
-from api.agent_server.agent_api_client import AgentApiClient
+from api.agent_server.agent_api_client import AgentApiClient, DEFAULT_APP_REQUEST
 
+DEFAULT_EDIT_REQUEST = "Add message with emojis to the app to make it more fun"
 
 logger = get_logger(__name__)
 
@@ -26,7 +27,6 @@ def template_diff(monkeypatch):
     yield
 
 
-DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a single button"
 
 @pytest.mark.parametrize("agent_type", [trpc_agent, template_diff])
 async def test_async_agent_message_endpoint(agent_type):
@@ -56,7 +56,7 @@ async def test_async_agent_state_continuation(trpc_agent):
         continuation_events, continuation_request = await client.continue_conversation(
             previous_events=initial_events,
             previous_request=initial_request,
-            message="Add message with emojis to the app to make it more fun"
+            message=DEFAULT_EDIT_REQUEST
         )
 
         assert len(continuation_events) > 0, "No continuation events received"
@@ -76,7 +76,7 @@ async def test_sequential_sse_responses(trpc_agent):
         first_continuation_events, first_continuation_request = await client.continue_conversation(
             previous_events=initial_events,
             previous_request=initial_request,
-            message="make one more button to reset the counter"
+            message=DEFAULT_EDIT_REQUEST,
         )
         assert len(first_continuation_events) > 0, "No first continuation events received"
 
@@ -84,7 +84,7 @@ async def test_sequential_sse_responses(trpc_agent):
         second_continuation_events, second_continuation_request = await client.continue_conversation(
             previous_events=first_continuation_events,
             previous_request=first_continuation_request,
-            message="Add message with emojis to the app to make it more fun"
+            message=DEFAULT_EDIT_REQUEST
         )
         assert len(second_continuation_events) > 0, "No second continuation events received"
 

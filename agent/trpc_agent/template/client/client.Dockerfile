@@ -24,16 +24,16 @@ COPY . .
 RUN cd client && bun run build
 
 # Production stage for frontend
-FROM nginx:alpine
+FROM caddy:alpine
 
-WORKDIR /usr/share/nginx/
-RUN rm -rf html
-RUN mkdir html
+# Install curl for healthcheck
+RUN apk add --no-cache curl
 
-# Copy your existing nginx configuration
-COPY ./client/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /srv
 
-# Copy the built client files
-COPY --from=builder /app/client/dist /usr/share/nginx/html
+# Copy only the built client files and Caddyfile
+COPY --from=builder /app/client/dist /srv
+COPY --from=builder /app/client/Caddyfile /srv/Caddyfile
 
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+# Start Caddy with appropriate config
+ENTRYPOINT ["caddy", "run", "--config", "/srv/Caddyfile"]
