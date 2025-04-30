@@ -219,50 +219,50 @@ index 0000000..e69de29
 --- /dev/null
 +++ b/index.html
 @@ -0,0 +1,25 @@
-+<!DOCTYPE html>
-+<html lang="en">
-+<head>
-+    <meta charset="UTF-8">
-+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-+    <title>Click Counter</title>
-+    <style>
-+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-+        #counter { font-size: 24px; margin: 20px 0; }
-+    </style>
-+</head>
-+<body>
-+    <h1>Button Click Counter</h1>
-+    <div id="counter">0</div>
-+    <button id="clickButton">Click Me!</button>
-+
-+    <script>
-+        document.addEventListener('DOMContentLoaded', () => {
-+            const counterElement = document.getElementById('counter');
-+            const button = document.getElementById('clickButton');
-+            let count = 0;
-+            
-+            button.addEventListener('click', () => {
-+                count++;
-+                counterElement.textContent = count;
-+            });
-+        });
-+    </script>
-+</body>
-+</html>"""
-+                        return Completion(
-+                            role="assistant",
-+                            content=[TextRaw(text="Mock response for testing")],
-+                            input_tokens=10,
-+                            output_tokens=20,
-+                            stop_reason="end_turn",
-+                            thinking_tokens=0,
-+                            unified_diff=mock_diff
-+                        )
-+                    else:
-+                        raise ValueError(
-+                            "no cached response found for this request in replay mode; "
-+                            f"run in record mode first to populate the cache. cache_key: {cache_key}"
-+                        )
-+            case _:
-+                raise ValueError(f"unknown cache mode: {self.cache_mode}")
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Click Counter</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #counter { font-size: 24px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>Button Click Counter</h1>
+    <div id="counter">0</div>
+    <button id="clickButton">Click Me!</button>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const counterElement = document.getElementById('counter');
+            const button = document.getElementById('clickButton');
+            let count = 0;
+            
+            button.addEventListener('click', () => {
+                count++;
+                counterElement.textContent = count;
+            });
+        });
+    </script>
+</body>
+</html>"""
+                        return Completion(
+                            role="assistant",
+                            content=[TextRaw(text="Mock response for testing")],
+                            input_tokens=10,
+                            output_tokens=20,
+                            stop_reason="end_turn",
+                            thinking_tokens=0,
+                            unified_diff=mock_diff
+                        )
+                    else:
+                        raise ValueError(
+                            "no cached response found for this request in replay mode; "
+                            f"run in record mode first to populate the cache. cache_key: {cache_key}"
+                        )
+            case _:
+                raise ValueError(f"unknown cache mode: {self.cache_mode}")
