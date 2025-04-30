@@ -16,11 +16,14 @@ def _n_workers():
     return str(min(os.cpu_count() or 1, 4))
 
 
-def run_tests_with_cache(dest=".", n_workers=_n_workers()):
+def _run_tests_with_cache(dest=".", n_workers=_n_workers(), verbose=False):
     os.environ["LLM_VCR_CACHE_MODE"] = "replay"
     os.chdir(_current_dir())
-    pytest.main(["-v", "-n", n_workers, dest])
+    flag = "-vs" if verbose else "-v"
+    pytest.main([flag, "-n", str(n_workers), dest])
 
+def run_tests_with_cache():
+    Fire(_run_tests_with_cache)
 
 def update_cache(dest="."):
     os.environ["LLM_VCR_CACHE_MODE"] = "record"

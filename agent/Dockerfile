@@ -23,4 +23,4 @@ RUN apk add --update --no-cache docker-compose
 ENTRYPOINT []
 RUN uv sync --dev --compile-bytecode
 ENV LLM_VCR_CACHE_MODE=replay
-CMD ["uv", "run", "pytest", "-vs", "-n", "auto", "."]
+CMD ["uv", "run", "test", "--n_workers", "0", "--verbose"]
