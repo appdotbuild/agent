@@ -5,13 +5,10 @@ import tempfile
 import anyio
 from datetime import datetime
 import docker
-import json
-from pathlib import Path
 
 from fire import Fire
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST
-from api.agent_server.models import AgentSseEvent, AgentMessage, AgentStatus
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -27,34 +24,11 @@ def generate_random_name(prefix):
     return f"{prefix}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
 async def run_e2e(prompt: str, standalone: bool):
-    if os.getenv("LLM_VCR_CACHE_MODE") == "replay" and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")):
-        logger.info("Using mock response for e2e test in replay mode without credentials")
-        mock_cache_path = Path(__file__).parent.parent / "llm" / "caches" / "mock_cache.json"
-        if mock_cache_path.exists():
-            with open(mock_cache_path, "r") as f:
-                mock_data = json.load(f)
-                mock_response = mock_data.get("mock_key", {})
-                
-                mock_message = AgentMessage(
-                    content="Mock response for testing",
-                    unified_diff=mock_response.get("unified_diff", "")
-                )
-                mock_event = AgentSseEvent(
-                    status=AgentStatus.IDLE,
-                    trace_id="mock-trace-id",
-                    message=mock_message
-                )
-                events = [mock_event]
-                diff = latest_unified_diff(events)
-                assert diff, "No diff was generated in the mock response"
-        else:
-            raise FileNotFoundError(f"Mock cache file not found at {mock_cache_path}")
-    else:
-        async with AgentApiClient() as client:
-            events, request = await client.send_message(prompt)
-            assert events, "No response received from agent"
-            diff = latest_unified_diff(events)
-            assert diff, "No diff was generated in the agent response"
+    async with AgentApiClient() as client:
+        events, request = await client.send_message(prompt)
+        assert events, "No response received from agent"
+        diff = latest_unified_diff(events)
+        assert diff, "No diff was generated in the agent response"
 
         with tempfile.TemporaryDirectory() as temp_dir:
             success, message = apply_patch(diff, temp_dir)
