@@ -1,6 +1,5 @@
 import pytest
 import tempfile
-import os
 from llm.cached import CachedLLM, AsyncLLM
 from llm.common import Message, TextRaw, Completion, Tool
 from llm.utils import get_llm_client, merge_text
@@ -114,10 +113,6 @@ async def test_cached_lru():
         assert base_llm.calls == 4, "Base LLM should still be called four times"
 
 
-@pytest.mark.skipif(
-    not os.getenv("GEMINI_API_KEY"), 
-    reason="GEMINI_API_KEY environment variable not set"
-)
 async def test_gemini():
     client = get_llm_client(model_name="gemini-flash")
     resp = await client.completion(
