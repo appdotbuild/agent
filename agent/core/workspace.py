@@ -1,7 +1,7 @@
 from typing import Self
+import uuid
 import dagger
 from dagger import dag, function, object_type, Container, Directory, ReturnType
-import uuid
 
 class ExecResult:
     exit_code: int
