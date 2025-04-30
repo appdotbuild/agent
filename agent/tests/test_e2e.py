@@ -38,11 +38,11 @@ async def run_e2e(prompt: str, standalone: bool):
                 unified_diff = mock_response.get("unified_diff", "")
                 logger.info(f"Mock unified_diff length: {len(unified_diff)}")
                 
-                mock_message = AgentMessage.model_validate({
-                    "content": "Mock response for testing",
-                    "unifiedDiff": unified_diff,  # Use the alias "unifiedDiff" instead of "unified_diff"
-                    "kind": MessageKind.STAGE_RESULT
-                })
+                mock_message = AgentMessage(
+                    content="Mock response for testing",
+                    unified_diff=unified_diff,
+                    kind=MessageKind.STAGE_RESULT
+                )
                 mock_event = AgentSseEvent(
                     status=AgentStatus.IDLE,
                     trace_id="mock-trace-id",
