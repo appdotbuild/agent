@@ -118,7 +118,6 @@ class CachedLLM(AsyncLLM):
         """generate a consistent cache key from request parameters."""
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
-        return key_str
         return hashlib.md5(key_str.encode()).hexdigest()
 
     async def completion(
