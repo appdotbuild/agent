@@ -209,6 +209,7 @@ class CachedLLM(AsyncLLM):
                     cached_response = self._cache[cache_key]
                     return Completion.from_dict(cached_response)
                 else:
+                    print(normalize(messages[-1]))
                     raise ValueError(
                         f"No cached response by {self.client.__class__} found for this request in replay mode; "
                         f"run in record mode first to populate the cache. Cache_key: {cache_key}, last message: {normalize(messages[-1])}"
