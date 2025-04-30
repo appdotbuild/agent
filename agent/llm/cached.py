@@ -250,14 +250,14 @@ index 0000000..e69de29
     </script>
 </body>
 </html>"""
+                        # Create a mock completion without the unified_diff parameter
                         return Completion(
                             role="assistant",
-                            content=[TextRaw(text="Mock response for testing")],
+                            content=[TextRaw(text=f"Mock response for testing with diff:\n{mock_diff}")],
                             input_tokens=10,
                             output_tokens=20,
                             stop_reason="end_turn",
-                            thinking_tokens=0,
-                            unified_diff=mock_diff
+                            thinking_tokens=0
                         )
                     else:
                         raise ValueError(
