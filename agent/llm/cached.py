@@ -209,9 +209,9 @@ class CachedLLM(AsyncLLM):
                     cached_response = self._cache[cache_key]
                     return Completion.from_dict(cached_response)
                 else:
-                    logger.error(f"CACHE FAILURE: {normalize(messages)}")
+                    logger.error(f"Cache miss by {self.client.__class__.__name__}: {normalize(messages)}")
                     raise ValueError(
-                        f"No cached response by {self.client.__class__} found for this request in replay mode; "
+                        f"No cached response found for this request in replay mode; "
                         f"run in record mode first to populate the cache. Cache_key: {cache_key}"
                     )
             case _:
