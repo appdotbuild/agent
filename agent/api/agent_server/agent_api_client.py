@@ -511,6 +511,22 @@ async def handle_logs(args, previous_output=None, client=None, **kwargs):
         all_lines = previous_output.lines
         total_lines = len(all_lines)
         print(f"Using {total_lines} lines from previous command")
+        
+        # Apply grep pattern first to all lines
+        if pattern:
+            print(f"\nGrepping for: '{pattern}'")
+            filtered_lines = [line for line in all_lines if pattern.lower() in line.lower()]
+            print(f"Found {len(filtered_lines)} matching lines out of {len(all_lines)}")
+            all_lines = filtered_lines
+            
+        # Then apply mode filtering (head/tail)
+        if mode == "head" and not parsed_args.all:
+            display_lines = all_lines[:count]
+        elif mode == "tail" and not parsed_args.all:
+            display_lines = all_lines[-count:]
+        else:
+            display_lines = all_lines
+            
     else:
         # Count total lines in the file
         with open(current_log_file, "r", encoding="utf-8") as f:
@@ -519,68 +535,75 @@ async def handle_logs(args, previous_output=None, client=None, **kwargs):
         print(f"\nLog file: {current_log_file}")
         print(f"Total lines: {total_lines}")
         
-        # Read the requested portion of the log
-        with open(current_log_file, "r", encoding="utf-8") as f:
-            if mode == "all":
+        # If pattern is specified, we need to grep the entire file first
+        if pattern:
+            # Read all lines from the file
+            with open(current_log_file, "r", encoding="utf-8") as f:
                 all_lines = f.readlines()
-            elif mode == "head":
-                all_lines = [next(f) for _ in range(min(count, total_lines))]
-            else:  # tail mode
-                if count >= total_lines:
-                    f.seek(0)
-                    all_lines = f.readlines()
-                else:
-                    # Skip to the right position for tail
-                    for _ in range(total_lines - count):
-                        next(f)
-                    all_lines = f.readlines()
-
-    # Apply mode filtering if this is a piped command
-    if previous_output:
-        if mode == "head":
-            all_lines = all_lines[:count]
-        elif mode == "tail":
-            all_lines = all_lines[-count:]
             
-    # Filter lines if pattern is specified
-    if pattern:
-        try:
+            print(f"\nGrepping for: '{pattern}'")
+            filtered_lines = [line for line in all_lines if pattern.lower() in line.lower()]
+            print(f"Found {len(filtered_lines)} matching lines out of {total_lines}")
+            
             # Store original line numbers for accurate display
             line_nums = []
-            if mode == "tail" and not previous_output:
-                start_line = max(1, total_lines - len(all_lines) + 1)
-            else:
-                start_line = 1
-                
             for i, line in enumerate(all_lines):
                 if pattern.lower() in line.lower():
-                    line_nums.append(start_line + i)
+                    line_nums.append(i + 1)  # 1-indexed line numbers
             
-            # Filter to matching lines
-            lines = [line for line in all_lines if pattern.lower() in line.lower()]
-            print(f"\nGrepping for: '{pattern}'")
-            print(f"Found {len(lines)} matching lines out of {len(all_lines)}")
-        except Exception as e:
-            print(f"Error in pattern matching: {e}")
-            lines = all_lines
-            line_nums = list(range(start_line, start_line + len(lines)))
-    else:
-        lines = all_lines
-        # Calculate starting line number
-        if mode == "tail" and not previous_output:
-            start_line = max(1, total_lines - len(lines) + 1)
+            # Then apply mode filtering (head/tail)
+            if mode == "head" and not parsed_args.all:
+                display_lines = filtered_lines[:count]
+                display_line_nums = line_nums[:count]
+            elif mode == "tail" and not parsed_args.all:
+                display_lines = filtered_lines[-count:]
+                display_line_nums = line_nums[-count:]
+            else:
+                display_lines = filtered_lines
+                display_line_nums = line_nums
+        
         else:
-            start_line = 1
-        line_nums = list(range(start_line, start_line + len(lines)))
+            # No pattern, just apply mode filtering directly
+            with open(current_log_file, "r", encoding="utf-8") as f:
+                if mode == "all":
+                    display_lines = f.readlines()
+                elif mode == "head":
+                    display_lines = [next(f) for _ in range(min(count, total_lines))]
+                else:  # tail mode
+                    if count >= total_lines:
+                        f.seek(0)
+                        display_lines = f.readlines()
+                    else:
+                        # Skip to the right position for tail
+                        for _ in range(total_lines - count):
+                            next(f)
+                        display_lines = f.readlines()
+                
+            # Generate line numbers for display
+            if mode == "tail" and count < total_lines:
+                start_line = max(1, total_lines - len(display_lines) + 1)
+            else:
+                start_line = 1
+            display_line_nums = list(range(start_line, start_line + len(display_lines)))
     
     # Display the logs with line numbers
-    display_mode = f"{mode} {count if mode != 'all' else 'all'}" if not pattern else f"grep '{pattern}'"
-    print(f"\nShowing {display_mode} lines:")
+    display_mode = "grep" if pattern else mode
+    display_count = len(display_lines)
+    print(f"\nShowing {display_count} lines ({display_mode}{' ' + str(count) if count and mode != 'all' else ''}):")
     print("=" * 80)
     
-    for i, line in enumerate(lines):
-        line_num = line_nums[i] if pattern else (start_line + i)
-        print(f"{line_num:5d}: {line.rstrip()}")
+    if previous_output and pattern:
+        # For piped output with grep, we don't have original line numbers
+        for i, line in enumerate(display_lines):
+            print(f"{i+1:5d}: {line.rstrip()}")
+    else:
+        # Use stored line numbers or calculated line numbers
+        for i, line in enumerate(display_lines):
+            if pattern and not previous_output:
+                line_num = display_line_nums[i]
+            else:
+                line_num = display_line_nums[i]
+            print(f"{line_num:5d}: {line.rstrip()}")
     
     print("=" * 80)
     if not previous_output:
@@ -594,7 +617,7 @@ async def handle_logs(args, previous_output=None, client=None, **kwargs):
         print("  /logs | feedback       - Pipe filtered logs to feedback")
     
     # Return output for piping
-    return CommandOutput(lines=[line.rstrip() for line in lines])
+    return CommandOutput(lines=[line.rstrip() for line in display_lines])
 
 
 async def handle_feedback(args, previous_output=None, client=None, **kwargs):
@@ -1131,9 +1154,36 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                     print("All services started successfully.")
                                     save_log_line(current_log_file, "All services started successfully")
                                 
-                                # Use Popen to follow the logs
+                                # Ensure we capture ALL logs - both historical and new
+                                def collect_historical_logs():
+                                    """Collect all historical logs at startup to ensure nothing is missed"""
+                                    try:
+                                        save_log_line(current_log_file, "Collecting historical Docker logs...")
+                                        # Get all logs without follow flag to capture history
+                                        result = subprocess.run(
+                                            ["docker", "compose", "logs", "--no-color"],
+                                            cwd=target_dir,
+                                            capture_output=True,
+                                            text=True,
+                                            check=False
+                                        )
+                                        if result.stdout:
+                                            # Process and save all historical log lines
+                                            for line in result.stdout.splitlines():
+                                                save_log_line(current_log_file, line)
+                                            
+                                        save_log_line(current_log_file, "Historical logs collection completed")
+                                    except Exception as e:
+                                        save_log_line(current_log_file, f"Error collecting historical logs: {e}")
+                                
+                                # Start historical log collection in a separate thread
+                                # This ensures we don't miss any logs from the beginning
+                                hist_thread = threading.Thread(target=collect_historical_logs, daemon=True)
+                                hist_thread.start()
+                                
+                                # Use Popen to follow the logs (for new logs)
                                 current_server_process = subprocess.Popen(
-                                    ["docker", "compose", "logs", "-f"],
+                                    ["docker", "compose", "logs", "--follow", "--no-color", "--timestamps"],
                                     cwd=target_dir,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
@@ -1142,16 +1192,98 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 
                                 # Start a background thread to read logs
                                 def log_reader():
+                                    # Common error patterns to watch for
+                                    error_patterns = [
+                                        "Error:", "ERROR:", "Exception:", "EXCEPTION:",
+                                        "Failed to", "failed to",
+                                        "Bind for", "port is already allocated",
+                                        "Connection refused",
+                                        "exited with code",
+                                        "Exited with code",
+                                        "OCI runtime",
+                                        "npm ERR!",
+                                        "error Command failed",
+                                        "syntax error",
+                                        "Cannot start service",
+                                        "denied: requested access to the resource is denied",
+                                        "Permission denied"
+                                    ]
+                                    
+                                    critical_errors_shown = set()  # Track errors we've already shown
+                                    last_alert_time = time.time()  # Rate limit error alerts
+                                    last_sync_time = time.time()   # Track last resync time
+                                    
+                                    # Periodically sync logs to catch any logs from restarted containers
+                                    def resync_logs():
+                                        nonlocal last_sync_time
+                                        # Only resync every 30 seconds to avoid performance issues
+                                        current_time = time.time()
+                                        if current_time - last_sync_time < 30:
+                                            return
+                                            
+                                        # Check if we have active containers that might have restarted
+                                        try:
+                                            ps_result = subprocess.run(
+                                                ["docker", "compose", "ps", "--format", "json"],
+                                                cwd=target_dir,
+                                                capture_output=True,
+                                                text=True,
+                                                check=False
+                                            )
+                                            
+                                            # If we got container list, check if any have restarted recently
+                                            if ps_result.returncode == 0 and ps_result.stdout.strip():
+                                                save_log_line(current_log_file, "Resyncing logs to catch any missed entries...")
+                                                # Get latest logs in a single batch (last 100 lines from each container)
+                                                resync_result = subprocess.run(
+                                                    ["docker", "compose", "logs", "--no-color", "--tail=100"],
+                                                    cwd=target_dir,
+                                                    capture_output=True,
+                                                    text=True,
+                                                    check=False
+                                                )
+                                                # Only log info about the resync, not the actual logs
+                                                # as they'll appear in the continuous follow
+                                                if resync_result.returncode == 0:
+                                                    save_log_line(current_log_file, "Log resync completed")
+                                                
+                                            last_sync_time = current_time
+                                        except Exception as e:
+                                            save_log_line(current_log_file, f"Error during log resync: {e}")
+                                    
                                     while current_server_process and current_server_process.poll() is None:
                                         line = current_server_process.stdout.readline()
                                         if not line:
+                                            # When there's no output, check if we need to resync
+                                            # This helps catch logs after container restarts
+                                            resync_logs()
                                             time.sleep(0.1)
                                             continue
                                         
                                         line_str = line.rstrip()
                                         if current_log_file:
                                             save_log_line(current_log_file, line_str)
-                                
+                                        
+                                        # Check for error patterns in the log line
+                                        for pattern in error_patterns:
+                                            if pattern in line_str:
+                                                # Create a hash of the error to avoid duplicates
+                                                error_hash = hash(line_str[:100])
+                                                
+                                                # Only show each unique error once and rate limit
+                                                current_time = time.time()
+                                                if (error_hash not in critical_errors_shown and 
+                                                        current_time - last_alert_time > 2.0):
+                                                    critical_errors_shown.add(error_hash)
+                                                    last_alert_time = current_time
+                                                    
+                                                    # Display the error in the console
+                                                    print(f"\n\033[91m🚨 SERVER ERROR DETECTED: \033[0m")
+                                                    print(f"\033[91m{line_str}\033[0m")
+                                                    print(f"Use '/logs' command to view full logs.")
+                                                    
+                                                break  # Stop checking other patterns for this line
+
                                 # Start the log reader in a separate thread
                                 log_thread = threading.Thread(target=log_reader, daemon=True)
                                 log_thread.start()
@@ -1159,6 +1291,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 print("\nServer starting... Logs are being saved but not displayed.")
                                 print(f"Full logs are saved to: {current_log_file}")
                                 print("Use '/logs' command to view the logs.")
+                                print("Error detection is active - critical errors will be shown automatically.")
                                 
                                 print("\n🌐 Web UI is available at:")
                                 print("   http://localhost:80 (for web servers, default HTTP port)")
