@@ -11,6 +11,8 @@ import string
 import atexit
 import time
 import threading
+import shlex
+import argparse
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -387,20 +389,406 @@ def save_log_line(log_file, line):
     except Exception as e:
         logger.debug(f"Error saving log: {e}")
 
+# Class to capture command output for piping
+class CommandOutput:
+    def __init__(self, text=None, lines=None):
+        if lines is not None:
+            self.lines = lines
+        elif text is not None:
+            self.lines = text.splitlines()
+        else:
+            self.lines = []
+            
+    def __str__(self):
+        return "\n".join(self.lines)
+    
+    def __bool__(self):
+        return bool(self.lines)
+        
+    def append(self, line):
+        self.lines.append(line)
+    
+    def extend(self, lines):
+        self.lines.extend(lines)
+    
+    def grep(self, pattern):
+        """Filter lines by pattern"""
+        return CommandOutput(lines=[line for line in self.lines if pattern.lower() in line.lower()])
+    
+    def head(self, n):
+        """Get first n lines"""
+        return CommandOutput(lines=self.lines[:n])
+    
+    def tail(self, n):
+        """Get last n lines"""
+        return CommandOutput(lines=self.lines[-n:])
+    
+    def count(self):
+        return len(self.lines)
+
+# Custom ArgumentParser that doesn't exit on error
+class CommandArgumentParser(argparse.ArgumentParser):
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message)
+    
+    def error(self, message):
+        self.print_usage()
+        self.print_help()
+        raise ValueError(f"Error: {message}")
+
+    def parse_args_safe(self, args=None, namespace=None):
+        try:
+            return self.parse_args(args, namespace)
+        except Exception as e:
+            print(f"Error parsing arguments: {e}")
+            print(self.format_help())
+            return None
+
+# Create command parsers
+def create_logs_parser():
+    parser = CommandArgumentParser(prog="/logs", description="View server logs with filtering options")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--head", type=int, metavar="N", help="Show first N lines")
+    mode_group.add_argument("--tail", type=int, metavar="N", help="Show last N lines")
+    mode_group.add_argument("--all", action="store_true", help="Show all lines (use with caution)")
+    mode_group.add_argument("-n", "--lines", type=int, default=20, help="Number of lines to show (default: 20)")
+    parser.add_argument("-g", "--grep", metavar="PATTERN", help="Filter lines containing pattern")
+    parser.add_argument("pattern", nargs="*", help="Additional pattern words (combined with --grep)")
+    return parser
+
+def create_feedback_parser():
+    parser = CommandArgumentParser(prog="/feedback", description="Send feedback to the agent with optional logs")
+    parser.add_argument("-n", "--lines", type=int, default=0, metavar="N", 
+                        help="Include last N lines of logs (default: 0, no logs)")
+    parser.add_argument("message", nargs="*", help="Feedback message (optional, will prompt if not provided)")
+    return parser
+
+def create_help_parser():
+    parser = CommandArgumentParser(prog="/help", description="Show help for available commands")
+    parser.add_argument("command", nargs="?", help="Show help for specific command")
+    return parser
+
+# Command handler functions
+async def handle_logs(args, previous_output=None, client=None, **kwargs):
+    """Handle the /logs command, optionally with piped input"""
+    if not current_log_file or not os.path.exists(current_log_file):
+        print("No log file available. Start a server first with /run")
+        return CommandOutput()
+    
+    # Parse arguments with argparse
+    parser = create_logs_parser()
+    parsed_args = parser.parse_args_safe(args)
+    if not parsed_args:
+        return CommandOutput()
+    
+    # Determine mode and count from arguments
+    mode = "tail"  # Default
+    count = parsed_args.lines
+    
+    if parsed_args.head is not None:
+        mode = "head"
+        count = parsed_args.head
+    elif parsed_args.tail is not None:
+        mode = "tail"
+        count = parsed_args.tail
+    elif parsed_args.all:
+        mode = "all"
+        count = 0  # Not used for "all" mode
+    
+    # Combine grep and pattern
+    pattern = None
+    if parsed_args.grep or parsed_args.pattern:
+        pattern_parts = []
+        if parsed_args.grep:
+            pattern_parts.append(parsed_args.grep)
+        if parsed_args.pattern:
+            pattern_parts.extend(parsed_args.pattern)
+        pattern = " ".join(pattern_parts)
+    
+    # If this is a piped command and we have input, use that instead of reading the file
+    if previous_output:
+        all_lines = previous_output.lines
+        total_lines = len(all_lines)
+        print(f"Using {total_lines} lines from previous command")
+    else:
+        # Count total lines in the file
+        with open(current_log_file, "r", encoding="utf-8") as f:
+            total_lines = sum(1 for _ in f)
+        
+        print(f"\nLog file: {current_log_file}")
+        print(f"Total lines: {total_lines}")
+        
+        # Read the requested portion of the log
+        with open(current_log_file, "r", encoding="utf-8") as f:
+            if mode == "all":
+                all_lines = f.readlines()
+            elif mode == "head":
+                all_lines = [next(f) for _ in range(min(count, total_lines))]
+            else:  # tail mode
+                if count >= total_lines:
+                    f.seek(0)
+                    all_lines = f.readlines()
+                else:
+                    # Skip to the right position for tail
+                    for _ in range(total_lines - count):
+                        next(f)
+                    all_lines = f.readlines()
+
+    # Apply mode filtering if this is a piped command
+    if previous_output:
+        if mode == "head":
+            all_lines = all_lines[:count]
+        elif mode == "tail":
+            all_lines = all_lines[-count:]
+            
+    # Filter lines if pattern is specified
+    if pattern:
+        try:
+            # Store original line numbers for accurate display
+            line_nums = []
+            if mode == "tail" and not previous_output:
+                start_line = max(1, total_lines - len(all_lines) + 1)
+            else:
+                start_line = 1
+                
+            for i, line in enumerate(all_lines):
+                if pattern.lower() in line.lower():
+                    line_nums.append(start_line + i)
+            
+            # Filter to matching lines
+            lines = [line for line in all_lines if pattern.lower() in line.lower()]
+            print(f"\nGrepping for: '{pattern}'")
+            print(f"Found {len(lines)} matching lines out of {len(all_lines)}")
+        except Exception as e:
+            print(f"Error in pattern matching: {e}")
+            lines = all_lines
+            line_nums = list(range(start_line, start_line + len(lines)))
+    else:
+        lines = all_lines
+        # Calculate starting line number
+        if mode == "tail" and not previous_output:
+            start_line = max(1, total_lines - len(lines) + 1)
+        else:
+            start_line = 1
+        line_nums = list(range(start_line, start_line + len(lines)))
+    
+    # Display the logs with line numbers
+    display_mode = f"{mode} {count if mode != 'all' else 'all'}" if not pattern else f"grep '{pattern}'"
+    print(f"\nShowing {display_mode} lines:")
+    print("=" * 80)
+    
+    for i, line in enumerate(lines):
+        line_num = line_nums[i] if pattern else (start_line + i)
+        print(f"{line_num:5d}: {line.rstrip()}")
+    
+    print("=" * 80)
+    if not previous_output:
+        print("Examples:")
+        print("  /logs --tail 20        - Show last 20 lines")
+        print("  /logs --head 30        - Show first 30 lines")
+        print("  /logs --all            - Show all lines (use with caution)")
+        print("  /logs -n 50            - Show last 50 lines")
+        print("  /logs --grep error     - Filter lines containing 'error'")
+        print("  /logs error            - Same as above")
+        print("  /logs | feedback       - Pipe filtered logs to feedback")
+    
+    # Return output for piping
+    return CommandOutput(lines=[line.rstrip() for line in lines])
+
+
+async def handle_feedback(args, previous_output=None, client=None, **kwargs):
+    """Handle the /feedback command with optional piped input"""
+    if not client:
+        print("Error: Client not available")
+        return CommandOutput()
+        
+    # Extract necessary parameters from kwargs
+    request = kwargs.get("request")
+    previous_events = kwargs.get("previous_events", [])
+    previous_messages = kwargs.get("previous_messages", [])
+    settings_dict = kwargs.get("settings_dict", {})
+    state_file = kwargs.get("state_file", "")
+    autosave = kwargs.get("autosave", False)
+    
+    # Parse arguments with argparse
+    parser = create_feedback_parser()
+    parsed_args = parser.parse_args_safe(args)
+    if not parsed_args:
+        return CommandOutput()
+    
+    # Get line count and message from arguments
+    log_lines_count = parsed_args.lines
+    feedback_text = " ".join(parsed_args.message) if parsed_args.message else None
+    
+    # If we have piped input, use that instead of reading from file
+    log_section = ""
+    
+    # If we don't have feedback text yet, prompt for it
+    if feedback_text is None:
+        print("\nEnter your feedback (finish with an empty line):")
+        feedback_lines = []
+        while True:
+            line = input()
+            if not line.strip():
+                break
+            feedback_lines.append(line)
+        
+        feedback_text = "\n".join(feedback_lines)
+    
+    if not feedback_text.strip() and not previous_output:
+        print("Feedback message cannot be empty without piped content. Aborting.")
+        return CommandOutput()
+    
+    # Add log section
+    if previous_output:
+        # Use the piped input as our log content
+        log_section = "\n\n## Logs\n```\n{}```".format("\n".join(previous_output.lines))
+    elif log_lines_count > 0 and current_log_file and os.path.exists(current_log_file):
+        # Get logs from file if requested
+        with open(current_log_file, "r", encoding="utf-8") as f:
+            total_lines = sum(1 for _ in f)
+        
+        with open(current_log_file, "r", encoding="utf-8") as f:
+            if log_lines_count >= total_lines:
+                log_lines = f.readlines()
+            else:
+                for _ in range(total_lines - log_lines_count):
+                    next(f)
+                log_lines = f.readlines()
+        
+        log_section = "\n\n## Server Logs (last {} lines)\n```\n{}```".format(
+            len(log_lines), "".join(log_lines)
+        )
+    
+    # Combine feedback with logs
+    if feedback_text.strip():
+        content = f"## Feedback\n{feedback_text}{log_section}"
+    else:
+        content = f"# Log Output{log_section}"
+    
+    # Preview the message
+    print("\nYour message will look like this:")
+    print("-" * 40)
+    
+    # Show a preview (truncated if too long)
+    preview = content
+    if len(preview) > 500:
+        preview = preview[:497] + "..."
+    print(preview)
+    
+    print("-" * 40)
+    confirm = input("Send this to the agent? (Y/n): ")
+    if confirm.lower() in ('n', 'no'):
+        print("Message not sent")
+        return CommandOutput()
+    
+    print("\nSending to agent...\n")
+    
+    try:
+        print("\033[92mBot> \033[0m", end="", flush=True)
+        auth_token = os.environ.get("BUILDER_TOKEN")
+        if request is None:
+            logger.warning("Sending new message")
+            events, new_request = await client.send_message(content, settings=settings_dict, auth_token=auth_token)
+        else:
+            logger.warning("Sending continuation")
+            events, new_request = await client.continue_conversation(previous_events, request, content)
+
+        for evt in events:
+            if evt.message and evt.message.content:
+                print(evt.message.content, end="", flush=True)
+            # Automatically print diffs when they're provided
+            if evt.message and evt.message.unified_diff:
+                print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
+                print(f"\033[36m{evt.message.unified_diff}\033[0m")
+                print("\033[36m--- End of Diff ---\033[0m\n")
+        print()
+
+        previous_messages.append(content)
+        previous_events.extend(events)
+
+        if autosave:
+            with open(state_file, "w") as f:
+                json.dump({
+                    "events": [e.model_dump() for e in previous_events],
+                    "messages": previous_messages,
+                    "agent_state": new_request.agent_state,
+                    "timestamp": datetime.now().isoformat()
+                }, f, indent=2)
+                
+        # Update the request in kwargs for the calling function
+        kwargs["request"] = new_request
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        traceback.print_exc()
+    
+    return CommandOutput()
+
+async def handle_help(args, previous_output=None, **kwargs):
+    """Display help information"""
+    project_dir = kwargs.get("project_dir", "~/projects")
+    
+    # Parse arguments with argparse
+    parser = create_help_parser()
+    parsed_args = parser.parse_args_safe(args)
+    if not parsed_args:
+        return CommandOutput()
+    
+    # If a specific command was requested, show help for just that command
+    if parsed_args.command and parsed_args.command.startswith('/'):
+        cmd = parsed_args.command
+        if cmd == "/logs":
+            create_logs_parser().print_help()
+        elif cmd == "/feedback":
+            create_feedback_parser().print_help()
+        elif cmd == "/help":
+            create_help_parser().print_help()
+        else:
+            print(f"No detailed help available for {cmd}")
+        return CommandOutput()
+    
+    # Otherwise show general help
+    print(
+        "Commands:\n"
+        "/help [command]  Show help for all commands or specific command\n"
+        "/exit, /quit     Exit chat\n"
+        "/clear           Clear conversation\n"
+        "/save            Save state to file"
+        "\n"
+        "/diff            Show the latest unified diff\n"
+        f"/apply [dir]    Apply the latest diff to directory (default: {project_dir})\n"
+        "/export          Export the latest diff to a patchfile\n"
+        "/run [dir]       Apply diff, install deps, and start dev server\n"
+        "/stop            Stop the currently running server\n"
+        "/logs            View server logs with filter (use /help /logs for details)\n"
+        "/feedback        Send feedback to the agent (use /help /feedback for details)\n"
+        "\nPipe Support:\n"
+        "  command1 | command2     Pass output from command1 to command2\n"
+        "  /logs --grep error | feedback  Filter logs and send in feedback\n"
+        "  /logs -n 50 | feedback         Get 50 lines and send in feedback\n"
+    )
+    return CommandOutput()
+
+# Command registry
+commands = {
+    "/help": handle_help,
+    "/logs": handle_logs,
+    "/feedback": handle_feedback,
+}
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
     # Make server process accessible globally
-    global current_server_process, current_log_file
+    global current_server_process
 
     # Prepare state and settings
     state_file = os.path.expanduser(state_file)
     previous_events: List[AgentSseEvent] = []
     previous_messages: List[str] = []
     request = None
-    
-    history_enabled = setup_readline()
 
     # Parse settings if provided
     settings_dict = {}
@@ -432,8 +820,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     print("Interactive Agent CLI Chat")
     print("Type '/help' for commands.")
     print("Use an empty line to finish multi-line input.")
-    if history_enabled:
-        print("Use up/down arrow keys to navigate through command history.")
+    print("Pipes are supported: /logs error | feedback")
     print(divider)
 
     if host:
@@ -455,35 +842,98 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 cmd = ui.strip()
                 if not cmd:
                     continue
-
+                
+                # Handle piping
+                if "|" in cmd:
+                    pipe_segments = cmd.split("|")
+                    previous_output = None
+                    
+                    # Process each command in the pipe
+                    for i, segment in enumerate(pipe_segments):
+                        segment = segment.strip()
+                        if not segment:
+                            print(f"Error: Empty command in pipe segment {i+1}")
+                            previous_output = None
+                            break
+                            
+                        # Extract command and args
+                        parts = shlex.split(segment)
+                        command, *args = parts
+                        
+                        # Skip anything that doesn't look like a command
+                        if not command.startswith('/'):
+                            print(f"Error: Expected command starting with '/' in pipe segment {i+1}")
+                            previous_output = None
+                            break
+                            
+                        # Check if command is registered
+                        handler = commands.get(command)
+                        if not handler:
+                            print(f"Error: Unknown command '{command}' in pipe segment {i+1}")
+                            previous_output = None
+                            break
+                            
+                        try:
+                            # Call the command handler with piped input
+                            previous_output = await handler(
+                                args, 
+                                previous_output=previous_output,
+                                client=client,
+                                request=request,
+                                previous_events=previous_events,
+                                previous_messages=previous_messages,
+                                settings_dict=settings_dict,
+                                state_file=state_file,
+                                autosave=autosave,
+                                project_dir=project_dir
+                            )
+                            
+                            # Update request if it changed
+                            if command == "/feedback":
+                                request = request
+                        except Exception as e:
+                            print(f"Error processing command '{command}': {e}")
+                            traceback.print_exc()
+                            previous_output = None
+                            break
+                    
+                    # Done with pipe processing
+                    continue
+                
+                # Check if the input starts with a command (first line)
                 first_line = cmd.split('\n', 1)[0].strip()
                 if first_line.startswith('/'):
                     action, *rest = first_line.split(None, 1)
+                    # For commands, only use the first line
                     cmd = first_line
                 else:
                     action = None
+                
+                # Handle using the command registry for non-piped commands
+                if action and action in commands:
+                    args = shlex.split(rest[0]) if rest else []
+                    try:
+                        await commands[action](
+                            args,
+                            client=client, 
+                            request=request,
+                            previous_events=previous_events,
+                            previous_messages=previous_messages,
+                            settings_dict=settings_dict,
+                            state_file=state_file,
+                            autosave=autosave,
+                            project_dir=project_dir
+                        )
+                    except Exception as e:
+                        print(f"Error executing command {action}: {e}")
+                        traceback.print_exc()
+                    continue
                     
+                # Fall back to original command handling for commands not in registry
                 match action.lower().strip() if action else None:
                     case "/exit" | "/quit":
                         print("Goodbye!")
                         return
-                    case "/help":
-                        print(
-                            "Commands:\n"
-                            "/help       Show this help\n"
-                            "/exit, /quit Exit chat\n"
-                            "/clear      Clear conversation\n"
-                            "/save       Save state to file"
-                            "\n"
-                            "/diff       Show the latest unified diff\n"
-                            f"/apply [dir] Apply the latest diff to directory (default: {project_dir})\n"
-                            "/export     Export the latest diff to a patchfile\n"
-                            "/run [dir]  Apply diff, install deps, and start dev server\n"
-                            "/stop       Stop the currently running server\n"
-                            "/logs [n|head|tail] [count] View server logs with navigation (default: last 20 lines)\n"
-                            "/feedback [n] Send feedback to the agent with optional log lines"
-                        )
-                        continue
                     case "/clear":
                         previous_events.clear()
                         previous_messages.clear()
@@ -605,19 +1055,55 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             if target_dir not in docker_cleanup_dirs:
                                 docker_cleanup_dirs.append(target_dir)
                             
+                            # Create log file BEFORE starting Docker
+                            # This ensures logs are available even if Docker fails
+                            global current_log_file
+                            logs_dir = os.path.join(target_dir, "logs")
+                            os.makedirs(logs_dir, exist_ok=True)
+                            log_file = os.path.join(logs_dir, f"server_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+                            current_log_file = log_file
+                            
+                            # Log initial setup message
+                            save_log_line(current_log_file, "Starting server setup...")
+                            
                             print("Building services with Docker Compose...")
                             try:
                                 # Build the services
-                                subprocess.run(["docker", "compose", "build"], cwd=target_dir, check=True)
-                                print("Dependencies installed successfully.")
-                                
-                                print("\nStarting development server with Docker Compose...")
-                                # Ensure clean environment with down before starting
-                                subprocess.run(
-                                    ["docker", "compose", "down", "-v", "--remove-orphans"],
-                                    cwd=target_dir,
+                                build_result = subprocess.run(
+                                    ["docker", "compose", "build"], 
+                                    cwd=target_dir, 
+                                    capture_output=True,
+                                    text=True,
                                     check=False
                                 )
+                                
+                                if build_result.returncode != 0:
+                                    error_msg = f"Docker Compose build failed with code {build_result.returncode}"
+                                    print(f"Error: {error_msg}")
+                                    save_log_line(current_log_file, error_msg)
+                                    save_log_line(current_log_file, build_result.stdout)
+                                    save_log_line(current_log_file, build_result.stderr)
+                                    # Continue to start log reader even after error
+                                else:
+                                    print("Dependencies installed successfully.")
+                                    save_log_line(current_log_file, "Build completed successfully")
+                                
+                                print("\nStarting development server with Docker Compose...")
+                                save_log_line(current_log_file, "Starting Docker services...")
+                                
+                                # Ensure clean environment with down before starting
+                                down_result = subprocess.run(
+                                    ["docker", "compose", "down", "-v", "--remove-orphans"],
+                                    cwd=target_dir,
+                                    capture_output=True,
+                                    text=True,
+                                    check=False
+                                )
+                                
+                                if down_result.stdout:
+                                    save_log_line(current_log_file, down_result.stdout)
+                                if down_result.stderr:
+                                    save_log_line(current_log_file, down_result.stderr)
                                 
                                 # Start the services with the environment variables set
                                 result = subprocess.run(
@@ -628,17 +1114,22 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                     check=False
                                 )
                                 
+                                # Log the output regardless of success or failure
+                                if result.stdout:
+                                    save_log_line(current_log_file, result.stdout)
+                                if result.stderr:
+                                    save_log_line(current_log_file, result.stderr)
+                                
                                 if result.returncode != 0:
                                     print(f"Warning: Docker Compose returned non-zero exit code: {result.returncode}")
-                                    print(f"Error output: {result.stderr}")
+                                    error_output = f"Error output: {result.stderr}"
+                                    print(error_output)
+                                    save_log_line(current_log_file, f"Docker Compose error (code {result.returncode})")
+                                    save_log_line(current_log_file, error_output)
+                                    # Continue to start log reader even after error
                                 else:
                                     print("All services started successfully.")
-                                
-                                # Create log file
-                                logs_dir = os.path.join(target_dir, "logs")
-                                os.makedirs(logs_dir, exist_ok=True)
-                                log_file = os.path.join(logs_dir, f"server_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
-                                current_log_file = log_file
+                                    save_log_line(current_log_file, "All services started successfully")
                                 
                                 # Use Popen to follow the logs
                                 current_server_process = subprocess.Popen(
@@ -667,7 +1158,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 
                                 print("\nServer starting... Logs are being saved but not displayed.")
                                 print(f"Full logs are saved to: {current_log_file}")
-                                print(f"Use '/logs' command to view the logs.")
+                                print("Use '/logs' command to view the logs.")
                                 
                                 print("\n🌐 Web UI is available at:")
                                 print("   http://localhost:80 (for web servers, default HTTP port)")
@@ -677,9 +1168,13 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 print("Use /logs to view server logs.")
                                 
                             except subprocess.CalledProcessError as e:
-                                print(f"Error during project setup: {e}")
+                                error_msg = f"Error during project setup: {e}"
+                                print(error_msg)
+                                save_log_line(current_log_file, error_msg)
                             except FileNotFoundError:
-                                print("Error: 'docker' command not found. Please make sure Docker is installed.")
+                                error_msg = "Error: 'docker' command not found. Please make sure Docker is installed."
+                                print(error_msg)
+                                save_log_line(current_log_file, error_msg)
                         continue
                     case "/stop":
                         if not current_server_process:
@@ -735,165 +1230,6 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print(f"Error stopping server: {e}")
                         
                         current_server_process = None
-                        continue
-                    case "/logs":
-                        if not current_log_file or not os.path.exists(current_log_file):
-                            print("No log file available. Start a server first with /run")
-                            continue
-                        
-                        # Parse arguments
-                        mode = "tail"  # Default mode shows the last lines
-                        count = 20  # Default number of lines
-                        
-                        if rest:
-                            args = rest[0].split()
-                            if args:
-                                if args[0] in ["head", "tail", "all"]:
-                                    mode = args[0]
-                                    if len(args) > 1 and args[1].isdigit():
-                                        count = int(args[1])
-                                elif args[0].isdigit():
-                                    count = int(args[0])
-                        
-                        # Count total lines in the file
-                        with open(current_log_file, "r", encoding="utf-8") as f:
-                            total_lines = sum(1 for _ in f)
-                        
-                        print(f"\nLog file: {current_log_file}")
-                        print(f"Total lines: {total_lines}")
-                        
-                        # Read the requested portion of the log
-                        with open(current_log_file, "r", encoding="utf-8") as f:
-                            if mode == "all":
-                                lines = f.readlines()
-                            elif mode == "head":
-                                lines = [next(f) for _ in range(min(count, total_lines))]
-                            else:  # tail mode
-                                if count >= total_lines:
-                                    f.seek(0)
-                                    lines = f.readlines()
-                                else:
-                                    # Skip to the right position for tail
-                                    for _ in range(total_lines - count):
-                                        next(f)
-                                    lines = f.readlines()
-                        
-                        # Display the logs with line numbers
-                        start_line = 1 if mode == "head" else max(1, total_lines - count + 1) if mode == "tail" else 1
-                        print(f"\nShowing {mode} {len(lines)} lines (of {total_lines}):")
-                        print("=" * 80)
-                        
-                        for i, line in enumerate(lines):
-                            line_num = start_line + i
-                            print(f"{line_num:5d}: {line.rstrip()}")
-                        
-                        print("=" * 80)
-                        print("Navigation commands:")
-                        print("  /logs head [n]  - Show first n lines")
-                        print("  /logs tail [n]  - Show last n lines")
-                        print("  /logs all       - Show all lines (use with caution)")
-                        print("  /logs [n]       - Show last n lines (shorthand for tail)")
-                        continue
-                    case "/feedback":
-                        # Parse arguments
-                        log_lines_count = 0  # Default: no logs
-                        if rest and rest[0].strip().isdigit():
-                            log_lines_count = int(rest[0].strip())
-                        
-                        # Get the feedback message
-                        print("\nEnter your feedback (finish with an empty line):")
-                        feedback_lines = []
-                        while True:
-                            line = input()
-                            if not line.strip():
-                                break
-                            feedback_lines.append(line)
-                        
-                        feedback_text = "\n".join(feedback_lines)
-                        
-                        if not feedback_text.strip():
-                            print("Feedback message cannot be empty. Aborting.")
-                            continue
-                        
-                        # Add log section if requested and available
-                        log_section = ""
-                        if log_lines_count > 0 and current_log_file and os.path.exists(current_log_file):
-                            # Count total lines in the log file
-                            with open(current_log_file, "r", encoding="utf-8") as f:
-                                total_lines = sum(1 for _ in f)
-                            
-                            # Read the tail of the log file
-                            with open(current_log_file, "r", encoding="utf-8") as f:
-                                if log_lines_count >= total_lines:
-                                    # If requesting more lines than exist, read all lines
-                                    log_lines = f.readlines()
-                                else:
-                                    # Skip to the right position for tail
-                                    for _ in range(total_lines - log_lines_count):
-                                        next(f)
-                                    log_lines = f.readlines()
-                            
-                            # Format logs as a code block
-                            log_section = "\n\n## Server Logs (last {} lines)\n```\n{}```".format(
-                                len(log_lines), "".join(log_lines)
-                            )
-                        
-                        # Combine feedback with logs
-                        content = f"## Feedback\n{feedback_text}{log_section}"
-                        
-                        # Preview the message
-                        print("\nYour message will look like this:")
-                        print("-" * 40)
-                        
-                        # Show a preview (truncated if too long)
-                        preview = content
-                        if len(preview) > 500:
-                            preview = preview[:497] + "..."
-                        print(preview)
-                        
-                        print("-" * 40)
-                        confirm = input("Send this feedback to the agent? (Y/n): ")
-                        if confirm.lower() in ('n', 'no'):
-                            print("Feedback not sent")
-                            continue
-                        
-                        # Send the feedback message
-                        print("\nSending feedback to agent...\n")
-                        
-                        try:
-                            print("\033[92mBot> \033[0m", end="", flush=True)
-                            auth_token = os.environ.get("BUILDER_TOKEN")
-                            if request is None:
-                                logger.warning("Sending new message with feedback")
-                                events, request = await client.send_message(content, settings=settings_dict, auth_token=auth_token)
-                            else:
-                                logger.warning("Sending feedback as continuation")
-                                events, request = await client.continue_conversation(previous_events, request, content)
-
-                            for evt in events:
-                                if evt.message and evt.message.content:
-                                    print(evt.message.content, end="", flush=True)
-                                # Automatically print diffs when they're provided
-                                if evt.message and evt.message.unified_diff:
-                                    print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-                                    print(f"\033[36m{evt.message.unified_diff}\033[0m")
-                                    print("\033[36m--- End of Diff ---\033[0m\n")
-                            print()
-
-                            previous_messages.append(content)
-                            previous_events.extend(events)
-
-                            if autosave:
-                                with open(state_file, "w") as f:
-                                    json.dump({
-                                        "events": [e.model_dump() for e in previous_events],
-                                        "messages": previous_messages,
-                                        "agent_state": request.agent_state,
-                                        "timestamp": datetime.now().isoformat()
-                                    }, f, indent=2)
-                        except Exception as e:
-                            print(f"Error sending feedback: {e}")
-                            traceback.print_exc()
                         continue
                     case None:
                         # For non-command input, use the entire text including multiple lines
