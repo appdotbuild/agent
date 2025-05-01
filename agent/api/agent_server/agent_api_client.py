@@ -16,6 +16,7 @@ from api.agent_server.models import AgentSseEvent
 from datetime import datetime
 from patch_ng import PatchSet
 import contextlib
+from api.docker_utils import generate_random_name, setup_docker_env, start_docker_compose, stop_docker_compose
 
 logger = get_logger(__name__)
 
@@ -348,10 +349,6 @@ def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = N
 
 docker_cleanup_dirs = []
 
-def generate_random_name(prefix: str, length: int = 8) -> str:
-    """Generate a random name with a prefix for Docker resources"""
-    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
-    return f"{prefix}-{suffix}"
 
 def cleanup_docker_projects():
     """Clean up any Docker projects that weren't properly shut down"""
@@ -361,13 +358,7 @@ def cleanup_docker_projects():
         if os.path.exists(project_dir):
             print(f"Cleaning up Docker resources in {project_dir}")
             try:
-                subprocess.run(
-                    ["docker", "compose", "down", "-v"],
-                    cwd=project_dir,
-                    check=False,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL
-                )
+                stop_docker_compose(project_dir, None)  # No project name, will use directory name
             except Exception as e:
                 print(f"Error during cleanup of {project_dir}: {e}")
 
@@ -565,56 +556,25 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         if success and target_dir:
                             print(f"\nSetting up project in {target_dir}...")
 
-                            # Generate random names for containers to avoid conflicts
-                            db_container = generate_random_name("postgres")
-                            app_container = generate_random_name("app")
-                            frontend_container = generate_random_name("frontend")
-                            network_name = generate_random_name("network")
-                            db_push_container = generate_random_name("db-push")
-
-                            # Set environment variables instead of using .env file
-                            # These will be picked up by docker-compose
-                            os.environ["POSTGRES_CONTAINER_NAME"] = db_container
-                            os.environ["BACKEND_CONTAINER_NAME"] = app_container
-                            os.environ["FRONTEND_CONTAINER_NAME"] = frontend_container
-                            os.environ["DB_PUSH_CONTAINER_NAME"] = db_push_container
-                            os.environ["NETWORK_NAME"] = network_name
-
-                            # Common database configuration
-                            os.environ["POSTGRES_USER"] = "postgres"
-                            os.environ["POSTGRES_PASSWORD"] = "postgres"
-                            os.environ["POSTGRES_DB"] = "postgres"
-
+                            # Setup docker environment with random container names
+                            container_names = setup_docker_env()
+                            
                             # Add to cleanup list
                             if target_dir not in docker_cleanup_dirs:
                                 docker_cleanup_dirs.append(target_dir)
 
                             print("Building services with Docker Compose...")
                             try:
-                                # Build the services
-                                subprocess.run(["docker", "compose", "build"], cwd=target_dir, check=True)
-                                print("Dependencies installed successfully.")
-
-                                print("\nStarting development server with Docker Compose...")
-                                # Ensure clean environment with down before starting
-                                subprocess.run(
-                                    ["docker", "compose", "down", "-v", "--remove-orphans"],
-                                    cwd=target_dir,
-                                    check=False
+                                # Start the services (with build)
+                                success, error_message = start_docker_compose(
+                                    target_dir, 
+                                    container_names["project_name"], 
+                                    build=True
                                 )
-
-                                # Start the services with the environment variables set
-                                result = subprocess.run(
-                                    ["docker", "compose", "up", "-d"],
-                                    cwd=target_dir,
-                                    capture_output=True,
-                                    text=True,
-                                    check=False
-                                )
-
-                                if result.returncode != 0:
-                                    print(f"Warning: Docker Compose returned non-zero exit code: {result.returncode}")
-                                    print(f"Error output: {result.stderr}")
+                                
+                                if not success:
+                                    print(f"Warning: Docker Compose returned an error")
+                                    print(f"Error output: {error_message}")
                                 else:
                                     print("All services started successfully.")
 
@@ -685,11 +645,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             if server_dir and os.path.exists(server_dir):
                                 print(f"Stopping Docker containers in {server_dir}...")
                                 try:
-                                    subprocess.run(
-                                        ["docker", "compose", "down", "-v"],
-                                        cwd=server_dir,
-                                        check=False
-                                    )
+                                    stop_docker_compose(server_dir, None)
                                     # Remove from cleanup list
                                     if server_dir in docker_cleanup_dirs:
                                         docker_cleanup_dirs.remove(server_dir)
