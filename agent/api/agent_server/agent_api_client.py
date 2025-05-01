@@ -480,7 +480,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             "/export     Export the latest diff to a patchfile\n"
                             "/run [dir]  Apply diff, install deps, and start dev server\n"
                             "/stop       Stop the currently running server\n"
-                            "/logs [n|head|tail] [count] View server logs with navigation (default: last 20 lines)"
+                            "/logs [n|head|tail] [count] View server logs with navigation (default: last 20 lines)\n"
+                            "/feedback [n] Send feedback to the agent with optional log lines"
                         )
                         continue
                     case "/clear":
@@ -792,6 +793,107 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         print("  /logs tail [n]  - Show last n lines")
                         print("  /logs all       - Show all lines (use with caution)")
                         print("  /logs [n]       - Show last n lines (shorthand for tail)")
+                        continue
+                    case "/feedback":
+                        # Parse arguments
+                        log_lines_count = 0  # Default: no logs
+                        if rest and rest[0].strip().isdigit():
+                            log_lines_count = int(rest[0].strip())
+                        
+                        # Get the feedback message
+                        print("\nEnter your feedback (finish with an empty line):")
+                        feedback_lines = []
+                        while True:
+                            line = input()
+                            if not line.strip():
+                                break
+                            feedback_lines.append(line)
+                        
+                        feedback_text = "\n".join(feedback_lines)
+                        
+                        if not feedback_text.strip():
+                            print("Feedback message cannot be empty. Aborting.")
+                            continue
+                        
+                        # Add log section if requested and available
+                        log_section = ""
+                        if log_lines_count > 0 and current_log_file and os.path.exists(current_log_file):
+                            # Count total lines in the log file
+                            with open(current_log_file, "r", encoding="utf-8") as f:
+                                total_lines = sum(1 for _ in f)
+                            
+                            # Read the tail of the log file
+                            with open(current_log_file, "r", encoding="utf-8") as f:
+                                if log_lines_count >= total_lines:
+                                    # If requesting more lines than exist, read all lines
+                                    log_lines = f.readlines()
+                                else:
+                                    # Skip to the right position for tail
+                                    for _ in range(total_lines - log_lines_count):
+                                        next(f)
+                                    log_lines = f.readlines()
+                            
+                            # Format logs as a code block
+                            log_section = "\n\n## Server Logs (last {} lines)\n```\n{}```".format(
+                                len(log_lines), "".join(log_lines)
+                            )
+                        
+                        # Combine feedback with logs
+                        content = f"## Feedback\n{feedback_text}{log_section}"
+                        
+                        # Preview the message
+                        print("\nYour message will look like this:")
+                        print("-" * 40)
+                        
+                        # Show a preview (truncated if too long)
+                        preview = content
+                        if len(preview) > 500:
+                            preview = preview[:497] + "..."
+                        print(preview)
+                        
+                        print("-" * 40)
+                        confirm = input("Send this feedback to the agent? (Y/n): ")
+                        if confirm.lower() in ('n', 'no'):
+                            print("Feedback not sent")
+                            continue
+                        
+                        # Send the feedback message
+                        print("\nSending feedback to agent...\n")
+                        
+                        try:
+                            print("\033[92mBot> \033[0m", end="", flush=True)
+                            auth_token = os.environ.get("BUILDER_TOKEN")
+                            if request is None:
+                                logger.warning("Sending new message with feedback")
+                                events, request = await client.send_message(content, settings=settings_dict, auth_token=auth_token)
+                            else:
+                                logger.warning("Sending feedback as continuation")
+                                events, request = await client.continue_conversation(previous_events, request, content)
+
+                            for evt in events:
+                                if evt.message and evt.message.content:
+                                    print(evt.message.content, end="", flush=True)
+                                # Automatically print diffs when they're provided
+                                if evt.message and evt.message.unified_diff:
+                                    print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
+                                    print(f"\033[36m{evt.message.unified_diff}\033[0m")
+                                    print("\033[36m--- End of Diff ---\033[0m\n")
+                            print()
+
+                            previous_messages.append(content)
+                            previous_events.extend(events)
+
+                            if autosave:
+                                with open(state_file, "w") as f:
+                                    json.dump({
+                                        "events": [e.model_dump() for e in previous_events],
+                                        "messages": previous_messages,
+                                        "agent_state": request.agent_state,
+                                        "timestamp": datetime.now().isoformat()
+                                    }, f, indent=2)
+                        except Exception as e:
+                            print(f"Error sending feedback: {e}")
+                            traceback.print_exc()
                         continue
                     case None:
                         # For non-command input, use the entire text including multiple lines
