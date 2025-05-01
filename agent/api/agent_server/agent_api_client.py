@@ -1368,7 +1368,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         # For non-command input, use the entire text including multiple lines
                         content = ui
                     case _:
-                        content = cmd
+                        # Check if this is an unknown command (starts with /)
+                        if action.startswith('/'):
+                            print(f"Unknown command: {action}")
+                            print("Use /help to see available commands")
+                            await handle_help([], client=client, project_dir=project_dir)
+                            continue
+                        else:
+                            # For unknown input that doesn't start with /, treat as a message
+                            content = cmd
 
                 # Send or continue conversation
                 try:
