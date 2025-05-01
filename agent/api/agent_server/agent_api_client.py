@@ -9,6 +9,8 @@ import readline
 import random
 import string
 import atexit
+import time
+import threading
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
@@ -373,12 +375,24 @@ def cleanup_docker_projects():
 
 atexit.register(cleanup_docker_projects)
 
+# Global variable to store the currently running server logs
+current_log_file = None
+
+def save_log_line(log_file, line):
+    """Append a log line to the log file with timestamp"""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {line}\n")
+    except Exception as e:
+        logger.debug(f"Error saving log: {e}")
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
     # Make server process accessible globally
-    global current_server_process
+    global current_server_process, current_log_file
 
     # Prepare state and settings
     state_file = os.path.expanduser(state_file)
@@ -465,7 +479,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             f"/apply [dir] Apply the latest diff to directory (default: {project_dir})\n"
                             "/export     Export the latest diff to a patchfile\n"
                             "/run [dir]  Apply diff, install deps, and start dev server\n"
-                            "/stop       Stop the currently running server"
+                            "/stop       Stop the currently running server\n"
+                            "/logs [n|head|tail] [count] View server logs with navigation (default: last 20 lines)"
                         )
                         continue
                     case "/clear":
@@ -618,9 +633,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 else:
                                     print("All services started successfully.")
                                 
-                                # Simple message about web access
-                                print("\n🌐 Web UI is available at:")
-                                print("   http://localhost:80 (for web servers, default HTTP port)")
+                                # Create log file
+                                logs_dir = os.path.join(target_dir, "logs")
+                                os.makedirs(logs_dir, exist_ok=True)
+                                log_file = os.path.join(logs_dir, f"server_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+                                current_log_file = log_file
                                 
                                 # Use Popen to follow the logs
                                 current_server_process = subprocess.Popen(
@@ -631,16 +648,32 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                     text=True
                                 )
                                 
-                                # Wait briefly and then print a few lines of output
-                                print("\nServer starting, initial output:")
-                                for _ in range(10):  # Print up to 10 lines of output
-                                    line = current_server_process.stdout.readline()
-                                    if not line:
-                                        break
-                                    print(f"  {line.rstrip()}")
-                                    
+                                # Start a background thread to read logs
+                                def log_reader():
+                                    while current_server_process and current_server_process.poll() is None:
+                                        line = current_server_process.stdout.readline()
+                                        if not line:
+                                            time.sleep(0.1)
+                                            continue
+                                        
+                                        line_str = line.rstrip()
+                                        if current_log_file:
+                                            save_log_line(current_log_file, line_str)
+                                
+                                # Start the log reader in a separate thread
+                                log_thread = threading.Thread(target=log_reader, daemon=True)
+                                log_thread.start()
+                                
+                                print("\nServer starting... Logs are being saved but not displayed.")
+                                print(f"Full logs are saved to: {current_log_file}")
+                                print(f"Use '/logs' command to view the logs.")
+                                
+                                print("\n🌐 Web UI is available at:")
+                                print("   http://localhost:80 (for web servers, default HTTP port)")
+                                
                                 print(f"\nServer running in {target_dir}")
                                 print("Use /stop command to stop the server when done.")
+                                print("Use /logs to view server logs.")
                                 
                             except subprocess.CalledProcessError as e:
                                 print(f"Error during project setup: {e}")
@@ -701,6 +734,64 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print(f"Error stopping server: {e}")
                         
                         current_server_process = None
+                        continue
+                    case "/logs":
+                        if not current_log_file or not os.path.exists(current_log_file):
+                            print("No log file available. Start a server first with /run")
+                            continue
+                        
+                        # Parse arguments
+                        mode = "tail"  # Default mode shows the last lines
+                        count = 20  # Default number of lines
+                        
+                        if rest:
+                            args = rest[0].split()
+                            if args:
+                                if args[0] in ["head", "tail", "all"]:
+                                    mode = args[0]
+                                    if len(args) > 1 and args[1].isdigit():
+                                        count = int(args[1])
+                                elif args[0].isdigit():
+                                    count = int(args[0])
+                        
+                        # Count total lines in the file
+                        with open(current_log_file, "r", encoding="utf-8") as f:
+                            total_lines = sum(1 for _ in f)
+                        
+                        print(f"\nLog file: {current_log_file}")
+                        print(f"Total lines: {total_lines}")
+                        
+                        # Read the requested portion of the log
+                        with open(current_log_file, "r", encoding="utf-8") as f:
+                            if mode == "all":
+                                lines = f.readlines()
+                            elif mode == "head":
+                                lines = [next(f) for _ in range(min(count, total_lines))]
+                            else:  # tail mode
+                                if count >= total_lines:
+                                    f.seek(0)
+                                    lines = f.readlines()
+                                else:
+                                    # Skip to the right position for tail
+                                    for _ in range(total_lines - count):
+                                        next(f)
+                                    lines = f.readlines()
+                        
+                        # Display the logs with line numbers
+                        start_line = 1 if mode == "head" else max(1, total_lines - count + 1) if mode == "tail" else 1
+                        print(f"\nShowing {mode} {len(lines)} lines (of {total_lines}):")
+                        print("=" * 80)
+                        
+                        for i, line in enumerate(lines):
+                            line_num = start_line + i
+                            print(f"{line_num:5d}: {line.rstrip()}")
+                        
+                        print("=" * 80)
+                        print("Navigation commands:")
+                        print("  /logs head [n]  - Show first n lines")
+                        print("  /logs tail [n]  - Show last n lines")
+                        print("  /logs all       - Show all lines (use with caution)")
+                        print("  /logs [n]       - Show last n lines (shorthand for tail)")
                         continue
                     case None:
                         # For non-command input, use the entire text including multiple lines
