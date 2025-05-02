@@ -800,9 +800,294 @@ commands = {
     "/feedback": handle_feedback,
 }
 
-async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
+def extract_latest_diff(events: List[AgentSseEvent]) -> Optional[str]:
+    """Extract the latest diff from a list of events"""
+    return latest_unified_diff(events)
+
+async def start_server_in_directory(target_dir: str) -> Tuple[bool, str]:
+    """Start server in the specified directory using Docker Compose"""
+    global current_server_process, current_log_file
+    
+    if not os.path.exists(target_dir):
+        return False, f"Directory does not exist: {target_dir}"
+    
+    # Stop any currently running server
+    if current_server_process and current_server_process.poll() is None:
+        print("Stopping currently running server...")
+        try:
+            current_server_process.terminate()
+            current_server_process.wait(timeout=5)
+        except Exception as e:
+            print(f"Warning: Error stopping previous server: {e}")
+            try:
+                current_server_process.kill()
+            except (ProcessLookupError, OSError):
+                pass
+        current_server_process = None
+    
+    print(f"Starting server in {target_dir}...")
+    
+    db_container = generate_random_name("postgres")
+    app_container = generate_random_name("app")
+    frontend_container = generate_random_name("frontend")
+    network_name = generate_random_name("network")
+    db_push_container = generate_random_name("db-push")
+    
+    os.environ["POSTGRES_CONTAINER_NAME"] = db_container
+    os.environ["BACKEND_CONTAINER_NAME"] = app_container 
+    os.environ["FRONTEND_CONTAINER_NAME"] = frontend_container
+    os.environ["DB_PUSH_CONTAINER_NAME"] = db_push_container
+    os.environ["NETWORK_NAME"] = network_name
+    
+    os.environ["POSTGRES_USER"] = "postgres"
+    os.environ["POSTGRES_PASSWORD"] = "postgres"
+    os.environ["POSTGRES_DB"] = "postgres"
+    
+    if target_dir not in docker_cleanup_dirs:
+        docker_cleanup_dirs.append(target_dir)
+    
+    # Create log file BEFORE starting Docker
+    logs_dir = os.path.join(target_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    log_file = os.path.join(logs_dir, f"server_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+    current_log_file = log_file
+    
+    save_log_line(current_log_file, "Starting server setup...")
+    
+    try:
+        print("Building services with Docker Compose...")
+        build_result = subprocess.run(
+            ["docker", "compose", "build"], 
+            cwd=target_dir, 
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if build_result.returncode != 0:
+            error_msg = f"Docker Compose build failed with code {build_result.returncode}"
+            print(f"Error: {error_msg}")
+            save_log_line(current_log_file, error_msg)
+            save_log_line(current_log_file, build_result.stdout)
+            save_log_line(current_log_file, build_result.stderr)
+            return False, error_msg
+        
+        print("Dependencies installed successfully.")
+        save_log_line(current_log_file, "Build completed successfully")
+        
+        print("\nStarting development server with Docker Compose...")
+        save_log_line(current_log_file, "Starting Docker services...")
+        
+        # Ensure clean environment with down before starting
+        down_result = subprocess.run(
+            ["docker", "compose", "down", "-v", "--remove-orphans"],
+            cwd=target_dir,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if down_result.stdout:
+            save_log_line(current_log_file, down_result.stdout)
+        if down_result.stderr:
+            save_log_line(current_log_file, down_result.stderr)
+        
+        # Start the services with the environment variables set
+        result = subprocess.run(
+            ["docker", "compose", "up", "-d"],
+            cwd=target_dir,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        # Log the output regardless of success or failure
+        if result.stdout:
+            save_log_line(current_log_file, result.stdout)
+        if result.stderr:
+            save_log_line(current_log_file, result.stderr)
+        
+        if result.returncode != 0:
+            error_msg = f"Docker Compose returned non-zero exit code: {result.returncode}"
+            print(f"Warning: {error_msg}")
+            save_log_line(current_log_file, f"Docker Compose error (code {result.returncode})")
+            save_log_line(current_log_file, result.stderr)
+            return False, error_msg
+        
+        print("All services started successfully.")
+        save_log_line(current_log_file, "All services started successfully")
+        
+        # Ensure we capture ALL logs - both historical and new
+        def collect_historical_logs():
+            """Collect all historical logs at startup to ensure nothing is missed"""
+            try:
+                save_log_line(current_log_file, "Collecting historical Docker logs...")
+                # Get all logs without follow flag to capture history
+                result = subprocess.run(
+                    ["docker", "compose", "logs", "--no-color"],
+                    cwd=target_dir,
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+                if result.stdout:
+                    # Process and save all historical log lines
+                    for line in result.stdout.splitlines():
+                        save_log_line(current_log_file, line)
+                    
+                save_log_line(current_log_file, "Historical logs collection completed")
+            except Exception as e:
+                save_log_line(current_log_file, f"Error collecting historical logs: {e}")
+        
+        # Start historical log collection in a separate thread
+        hist_thread = threading.Thread(target=collect_historical_logs, daemon=True)
+        hist_thread.start()
+        
+        # Use Popen to follow the logs (for new logs)
+        current_server_process = subprocess.Popen(
+            ["docker", "compose", "logs", "--follow", "--no-color", "--timestamps"],
+            cwd=target_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        
+        # Start a background thread to read logs
+        def log_reader():
+            error_patterns = [
+                "Error:", "ERROR:", "Exception:", "EXCEPTION:",
+                "Failed to", "failed to",
+                "Bind for", "port is already allocated",
+                "Connection refused",
+                "exited with code",
+                "Exited with code",
+                "OCI runtime",
+                "npm ERR!",
+                "error Command failed",
+                "syntax error",
+                "Cannot start service",
+                "denied: requested access to the resource is denied",
+                "Permission denied"
+            ]
+            
+            critical_errors_shown = set()  # Track errors we've already shown
+            last_alert_time = time.time()  # Rate limit error alerts
+            last_sync_time = time.time()   # Track last resync time
+            
+            # Periodically sync logs to catch any logs from restarted containers
+            def resync_logs():
+                nonlocal last_sync_time
+                # Only resync every 30 seconds to avoid performance issues
+                current_time = time.time()
+                if current_time - last_sync_time < 30:
+                    return
+                    
+                # Check if we have active containers that might have restarted
+                try:
+                    ps_result = subprocess.run(
+                        ["docker", "compose", "ps", "--format", "json"],
+                        cwd=target_dir,
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
+                    
+                    # If we got container list, check if any have restarted recently
+                    if ps_result.returncode == 0 and ps_result.stdout.strip():
+                        save_log_line(current_log_file, "Resyncing logs to catch any missed entries...")
+                        # Get latest logs in a single batch (last 100 lines from each container)
+                        resync_result = subprocess.run(
+                            ["docker", "compose", "logs", "--no-color", "--tail=100"],
+                            cwd=target_dir,
+                            capture_output=True,
+                            text=True,
+                            check=False
+                        )
+                        # Only log info about the resync, not the actual logs
+                        # as they'll appear in the continuous follow
+                        if resync_result.returncode == 0:
+                            save_log_line(current_log_file, "Log resync completed")
+                        
+                    last_sync_time = current_time
+                except Exception as e:
+                    save_log_line(current_log_file, f"Error during log resync: {e}")
+            
+            while current_server_process and current_server_process.poll() is None:
+                line = current_server_process.stdout.readline()
+                if not line:
+                    # When there's no output, check if we need to resync
+                    # This helps catch logs after container restarts
+                    resync_logs()
+                    time.sleep(0.1)
+                    continue
+                
+                line_str = line.rstrip()
+                if current_log_file:
+                    save_log_line(current_log_file, line_str)
+                
+                # Check for error patterns in the log line
+                for pattern in error_patterns:
+                    if pattern in line_str:
+                        # Create a hash of the error to avoid duplicates
+                        error_hash = hash(line_str[:100])
+                        
+                        # Only show each unique error once and rate limit
+                        current_time = time.time()
+                        if (error_hash not in critical_errors_shown and 
+                                current_time - last_alert_time > 2.0):
+                            critical_errors_shown.add(error_hash)
+                            last_alert_time = current_time
+                            
+                            # Display the error in the console
+                            print(f"\n\033[91m🚨 SERVER ERROR DETECTED: \033[0m")
+                            print(f"\033[91m{line_str}\033[0m")
+                            print(f"Use '/logs' command to view full logs.")
+                            
+                        break  # Stop checking other patterns for this line
+        
+        # Start the log reader in a separate thread
+        log_thread = threading.Thread(target=log_reader, daemon=True)
+        log_thread.start()
+        
+        print("\nServer starting... Logs are being saved but not displayed.")
+        print(f"Full logs are saved to: {current_log_file}")
+        print("Use '/logs' command to view the logs.")
+        print("Error detection is active - critical errors will be shown automatically.")
+        
+        print("\n🌐 Web UI is available at:")
+        print("   http://localhost:80 (for web servers, default HTTP port)")
+        
+        print(f"\nServer running in {target_dir}")
+        
+        return True, f"Server started successfully in {target_dir}"
+        
+    except Exception as e:
+        error_msg = f"Error starting server: {e}"
+        print(error_msg)
+        save_log_line(current_log_file, error_msg)
+        return False, error_msg
+
+async def run_chatbot_client(
+    host: str, 
+    port: int, 
+    state_file: str, 
+    settings: Optional[str] = None,
+    autosave=False,
+    # Non-interactive mode parameters
+    message: Optional[str] = None,
+    apply_to: Optional[str] = None,
+    run: bool = False,
+    output_file: Optional[str] = None
+) -> None:
     """
     Async interactive Agent CLI chat.
+    
+    If message is provided, runs in non-interactive mode:
+    - Sends the specified message to the agent
+    - Optionally applies any diff to apply_to directory
+    - Optionally runs the server if run=True
+    - Optionally saves output to output_file
+    - Exits after completion
     """
     # Make server process accessible globally
     global current_server_process
@@ -837,6 +1122,103 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         except Exception as e:
             print(f"Warning: could not load state: {e}")
 
+    # Check for non-interactive mode
+    if message is not None:
+        print("Running in non-interactive mode")
+        if host:
+            base_url = f"http://{host}:{port}"
+            print(f"Connected to {base_url}")
+        else:
+            base_url = None # Use ASGI transport for local testing
+            
+        async with AgentApiClient(base_url=base_url) as client:
+            with project_dir_context() as project_dir:
+                try:
+                    print(f"Sending message: {message}")
+                    print("\033[92mBot> \033[0m", end="", flush=True)
+                    
+                    auth_token = os.environ.get("BUILDER_TOKEN")
+                    if request is None:
+                        logger.warning("Sending new message")
+                        events, request = await client.send_message(message, settings=settings_dict, auth_token=auth_token)
+                    else:
+                        logger.warning("Sending continuation")
+                        events, request = await client.continue_conversation(previous_events, request, message)
+                    
+                    response_text = ""
+                    
+                    for evt in events:
+                        if evt.message and evt.message.content:
+                            content = evt.message.content
+                            response_text += content
+                            print(content, end="", flush=True)
+                            
+                        # Automatically print diffs when they're provided
+                        if evt.message and evt.message.unified_diff:
+                            print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
+                            print(f"\033[36m{evt.message.unified_diff}\033[0m")
+                            print("\033[36m--- End of Diff ---\033[0m\n")
+                    
+                    print()  # Add newline after response
+                    
+                    # Save output if requested
+                    if output_file:
+                        with open(output_file, "w") as f:
+                            f.write(response_text)
+                        print(f"Response saved to {output_file}")
+                    
+                    # Apply diff if requested
+                    target_dir = None
+                    if apply_to:
+                        # Use the existing function to extract diff
+                        diff = extract_latest_diff(events)
+                        
+                        if diff:
+                            apply_dir = os.path.abspath(os.path.expanduser(apply_to))
+                            print(f"Applying diff to {apply_dir}")
+                            os.makedirs(apply_dir, exist_ok=True)
+                            success, message = apply_patch(diff, apply_dir)
+                            print(message)
+                            
+                            if success:
+                                target_dir = apply_dir
+                                print(f"Diff successfully applied to {target_dir}")
+                            else:
+                                print("Failed to apply diff")
+                        else:
+                            print("No diff found in response")
+                    
+                    # Run server if requested
+                    if run and target_dir:
+                        success, message = await start_server_in_directory(target_dir)
+                        if success:
+                            print("Server started successfully")
+                            print("To stop the server later, run: docker compose down -v")
+                        else:
+                            print(f"Failed to start server: {message}")
+                    
+                    # Save state
+                    if autosave:
+                        previous_messages.append(message)
+                        previous_events.extend(events)
+                        with open(state_file, "w") as f:
+                            json.dump({
+                                "events": [e.model_dump() for e in previous_events],
+                                "messages": previous_messages,
+                                "agent_state": request.agent_state,
+                                "timestamp": datetime.now().isoformat()
+                            }, f, indent=2)
+                            print(f"State saved to {state_file}")
+                    
+                    print("Task completed. Exiting.")
+                    return
+                
+                except Exception as e:
+                    print(f"Error in non-interactive mode: {e}")
+                    traceback.print_exc()
+                    return
+
+    # Continue with interactive mode if not in non-interactive mode
     # Banner
     divider = "=" * 60
     print(divider)
@@ -851,6 +1233,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         print(f"Connected to {base_url}")
     else:
         base_url = None # Use ASGI transport for local testing
+    
+    # Continue with existing interactive mode...
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
             while True:
@@ -1414,11 +1798,46 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     print(f"Error: {e}")
                     traceback.print_exc()
 
-def cli(host: str = "",
-        port: int = 8001,
-        state_file: str = "/tmp/agent_chat_state.json",
-        ):
-    anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
+def cli(
+    host: str = "",
+    port: int = 8001,
+    state_file: str = "/tmp/agent_chat_state.json",
+    settings: Optional[str] = None,
+    autosave: bool = False,
+    # Non-interactive mode parameters
+    message: Optional[str] = None,
+    apply_to: Optional[str] = None,
+    run: bool = False,
+    output_file: Optional[str] = None
+):
+    """
+    Launch the chatbot client.
+    
+    Args:
+        host: API host (default: empty for local ASGI)
+        port: API port (default: 8001)
+        state_file: Path to state file for saving/loading conversations (default: /tmp/agent_chat_state.json)
+        settings: JSON string with settings (default: None)
+        autosave: Whether to autosave state after each message (default: False)
+        
+        # Non-interactive mode:
+        message: Message to send to agent (enables non-interactive mode)
+        apply_to: Directory to apply any diff to
+        run: Whether to run the server after applying diff
+        output_file: File to save agent's response to
+    """
+    anyio.run(
+        run_chatbot_client, 
+        host, 
+        port, 
+        state_file, 
+        settings, 
+        autosave, 
+        message, 
+        apply_to, 
+        run, 
+        output_file
+    )
 
 if __name__ == "__main__":
     try:
