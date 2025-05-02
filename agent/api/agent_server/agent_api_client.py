@@ -1087,7 +1087,7 @@ async def run_chatbot_client(
     - Optionally applies any diff to apply_to directory
     - Optionally runs the server if run=True
     - Optionally saves output to output_file
-    - Exits after completion
+    - Exits after completion, unless run=True (then keeps server running)
     """
     # Make server process accessible globally
     global current_server_process
@@ -1189,11 +1189,13 @@ async def run_chatbot_client(
                             print("No diff found in response")
                     
                     # Run server if requested
+                    server_started = False
                     if run and target_dir:
                         success, message = await start_server_in_directory(target_dir)
                         if success:
+                            server_started = True
                             print("Server started successfully")
-                            print("To stop the server later, run: docker compose down -v")
+                            print("To stop the server, press CTRL+C")
                         else:
                             print(f"Failed to start server: {message}")
                     
@@ -1210,8 +1212,32 @@ async def run_chatbot_client(
                             }, f, indent=2)
                             print(f"State saved to {state_file}")
                     
-                    print("Task completed. Exiting.")
-                    return
+                    # Keep the app running if server was started with --run
+                    if server_started:
+                        print("Task completed. Server is running.")
+                        print("Press CTRL+C to stop the server and exit.")
+                        try:
+                            # Keep the main thread alive until keyboard interrupt
+                            while True:
+                                # Check if server process is still running
+                                if current_server_process and current_server_process.poll() is not None:
+                                    print("\nServer process has terminated. Exiting.")
+                                    break
+                                await anyio.sleep(1)
+                        except KeyboardInterrupt:
+                            print("\nReceived keyboard interrupt. Stopping server...")
+                            # Stop the server
+                            if current_server_process and current_server_process.poll() is None:
+                                current_server_process.terminate()
+                                try:
+                                    current_server_process.wait(timeout=5)
+                                except subprocess.TimeoutExpired:
+                                    current_server_process.kill()
+                            print("Server stopped. Exiting.")
+                        return
+                    else:
+                        print("Task completed. Exiting.")
+                        return
                 
                 except Exception as e:
                     print(f"Error in non-interactive mode: {e}")
