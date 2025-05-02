@@ -5,7 +5,6 @@ import string
 import docker
 import anyio
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -118,7 +117,7 @@ async def wait_for_healthy_containers(
                     logger.info(f"{kind} container not found")
                     all_healthy = False
                     break
-                except Exception as e:
+                except Exception:
                     logger.exception(f"Error checking container {name} status")
                     all_healthy = False
                     break

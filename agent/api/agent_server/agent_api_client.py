@@ -6,8 +6,6 @@ import tempfile
 import shutil
 import subprocess
 import readline
-import random
-import string
 import atexit
 from typing import List, Optional, Tuple
 from log import get_logger
@@ -16,7 +14,7 @@ from api.agent_server.models import AgentSseEvent
 from datetime import datetime
 from patch_ng import PatchSet
 import contextlib
-from api.docker_utils import generate_random_name, setup_docker_env, start_docker_compose, stop_docker_compose
+from api.docker_utils import setup_docker_env, start_docker_compose, stop_docker_compose
 
 logger = get_logger(__name__)
 
@@ -573,7 +571,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 )
                                 
                                 if not success:
-                                    print(f"Warning: Docker Compose returned an error")
+                                    print("Warning: Docker Compose returned an error")
                                     print(f"Error output: {error_message}")
                                 else:
                                     print("All services started successfully.")
