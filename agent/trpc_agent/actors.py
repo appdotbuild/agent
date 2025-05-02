@@ -85,6 +85,22 @@ class RunTests:
 
 run_tests = RunTests()
 
+async def run_eslint(node: Node[BaseData]) -> TextRaw | None:
+    """Validate code quality using ESLint, including Tailwind CSS rules."""
+    logger.info("Running ESLint validation (includes Tailwind CSS rules)")
+    
+    result = await node.data.workspace.exec(
+        ["bun", "run", "eslint", "--ext", ".tsx,.jsx", "src/", "--format", "stylish"],
+        cwd="client"
+    )
+    
+    if result.exit_code == 0:
+        logger.info("ESLint validation passed")
+        return None
+    
+    logger.info(f"ESLint validation failed with exit code {result.exit_code}")
+    return TextRaw(f"ESLint validation errors (including Tailwind CSS rules):\n{result.stdout}\n{result.stderr}")
+
 class BaseTRPCActor(BaseActor, LLMActor):
     model_params: dict
 
@@ -418,6 +434,9 @@ class FrontendActor(BaseTRPCActor):
             tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
             if tsc_result.exit_code != 0:
                 content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
+            eslint_err = await run_eslint(node)
+            if eslint_err:
+                content.append(eslint_err)
         if content:
             node.data.messages.append(Message(role="user", content=content))
             return False
