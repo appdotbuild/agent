@@ -25,7 +25,7 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
-      'tailwindcss/classnames-order': 'warn',
+      'tailwindcss/classnames-order': 'off',
       'tailwindcss/no-custom-classname': 'warn',
       'tailwindcss/no-contradicting-classname': 'error',
     },
