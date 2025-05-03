@@ -58,13 +58,13 @@ def setup_readline():
         if not os.path.exists(HISTORY_FILE):
             with open(HISTORY_FILE, 'w') as _:
                 pass
-                
+
         readline.read_history_file(HISTORY_FILE)
         readline.set_history_length(HISTORY_SIZE)
 
         import atexit
         atexit.register(readline.write_history_file, HISTORY_FILE)
-        
+
         return True
     except Exception as e:
         print(f"Warning: Could not configure readline history: {e}")
@@ -259,59 +259,59 @@ def get_multiline_input(prompt: str) -> str:
     Supports up/down arrow keys for navigating through command history.
     """
     print(prompt, end="", flush=True)
-    
+
     try:
         first_line = input()
-        
+
         # Add non-empty, non-command inputs to history
         if first_line.strip() and not first_line.strip().startswith('/'):
             # Add to readline history if not already the last item
             if readline.get_current_history_length() == 0 or readline.get_history_item(readline.get_current_history_length()) != first_line:
                 readline.add_history(first_line)
-        
+
         # If it's a command (starts with '/' or '+'), return it immediately
         if first_line.strip().startswith('/') or first_line.strip().startswith('+'):
             return first_line
-            
+
         lines = [first_line]
-        
+
     except (EOFError, KeyboardInterrupt):
         print("\nInput terminated.")
         return ""
-    
+
     # Continue collecting lines for multi-line input
     while True:
         try:
             # Show continuation prompt for subsequent lines
             print("\033[94m... \033[0m", end="", flush=True)
             line = input()
-            
+
             if not line.strip():  # Empty line terminates input
                 if not lines or (len(lines) == 1 and not lines[0].strip()):  # Don't allow empty input
                     continue
                 break
-                
+
             lines.append(line)
         except (EOFError, KeyboardInterrupt):
             print("\nInput terminated.")
             break
-    
+
     full_input = "\n".join(lines)
-    
+
     if len(lines) > 1:
         readline.add_history(full_input.replace('\n', ' '))
-    
+
     return full_input
 
 
 def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
     """
     Apply the latest diff to a directory.
-    
+
     Args:
         events: List of AgentSseEvent objects
         custom_dir: Optional custom base directory path
-    
+
     Returns:
         Tuple containing:
             - Success status (boolean)
@@ -338,12 +338,12 @@ def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = N
 
         # Apply the patch
         success, message = apply_patch(diff, target_dir)
-        
+
         if success:
             return True, message, target_dir
         else:
             return False, message, target_dir
-            
+
     except Exception as e:
         error_msg = f"Error applying diff: {e}"
         traceback.print_exc()
@@ -360,7 +360,7 @@ def generate_random_name(prefix: str, length: int = 8) -> str:
 def cleanup_docker_projects():
     """Clean up any Docker projects that weren't properly shut down"""
     global docker_cleanup_dirs
-    
+
     for project_dir in docker_cleanup_dirs:
         if os.path.exists(project_dir):
             print(f"Cleaning up Docker resources in {project_dir}")
@@ -1098,6 +1098,8 @@ async def run_chatbot_client(
     previous_messages: List[str] = []
     request = None
 
+    history_enabled = setup_readline()
+
     # Parse settings if provided
     settings_dict = {}
     if settings:
@@ -1455,35 +1457,35 @@ async def run_chatbot_client(
                                 except (ProcessLookupError, OSError):
                                     pass
                             current_server_process = None
-                            
+
                         # Apply the diff to create a new project
                         custom_dir = rest[0] if rest else None
                         success, message, target_dir = apply_latest_diff(previous_events, custom_dir)
                         print(message)
-                        
+
                         if success and target_dir:
                             print(f"\nSetting up project in {target_dir}...")
-                            
+
                             # Generate random names for containers to avoid conflicts
                             db_container = generate_random_name("postgres")
                             app_container = generate_random_name("app")
                             frontend_container = generate_random_name("frontend")
                             network_name = generate_random_name("network")
                             db_push_container = generate_random_name("db-push")
-                            
+
                             # Set environment variables instead of using .env file
                             # These will be picked up by docker-compose
                             os.environ["POSTGRES_CONTAINER_NAME"] = db_container
-                            os.environ["BACKEND_CONTAINER_NAME"] = app_container 
+                            os.environ["BACKEND_CONTAINER_NAME"] = app_container
                             os.environ["FRONTEND_CONTAINER_NAME"] = frontend_container
                             os.environ["DB_PUSH_CONTAINER_NAME"] = db_push_container
                             os.environ["NETWORK_NAME"] = network_name
-                            
+
                             # Common database configuration
                             os.environ["POSTGRES_USER"] = "postgres"
                             os.environ["POSTGRES_PASSWORD"] = "postgres"
                             os.environ["POSTGRES_DB"] = "postgres"
-                            
+
                             # Add to cleanup list
                             if target_dir not in docker_cleanup_dirs:
                                 docker_cleanup_dirs.append(target_dir)
@@ -1723,12 +1725,12 @@ async def run_chatbot_client(
                         if not current_server_process:
                             print("No server is currently running.")
                             continue
-                            
+
                         if current_server_process.poll() is not None:
                             print("Server has already terminated.")
                             current_server_process = None
                             continue
-                            
+
                         # Get the directory where the server is running
                         server_dir = None
                         for dir_path in docker_cleanup_dirs:
@@ -1740,7 +1742,7 @@ async def run_chatbot_client(
                             except (FileNotFoundError, PermissionError, OSError) as e:
                                 logger.debug(f"Error checking directory: {e}")
                                 pass
-                        
+
                         print("Stopping the server...")
                         try:
                             # First terminate the log process
@@ -1752,7 +1754,7 @@ async def run_chatbot_client(
                                 print("Logs process did not terminate gracefully. Forcing shutdown...")
                                 current_server_process.kill()
                                 current_server_process.wait()
-                                
+
                             # Then shut down the Docker containers if we found the directory
                             if server_dir and os.path.exists(server_dir):
                                 print(f"Stopping Docker containers in {server_dir}...")
@@ -1767,11 +1769,11 @@ async def run_chatbot_client(
                                         docker_cleanup_dirs.remove(server_dir)
                                 except Exception as e:
                                     print(f"Error stopping containers: {e}")
-                                
+
                             print("Server stopped successfully.")
                         except Exception as e:
                             print(f"Error stopping server: {e}")
-                        
+
                         current_server_process = None
                         continue
                     case None:

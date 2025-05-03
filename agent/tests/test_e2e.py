@@ -45,12 +45,13 @@ async def run_e2e(prompt: str, standalone: bool):
             os.environ["NETWORK_NAME"] = generate_random_name("network_")
 
             original_dir = os.getcwd()
+            docker_project_name = generate_random_name("e2e")
             try:
                 os.chdir(temp_dir)
 
                 logger.info(f"Starting Docker containers in {temp_dir}")
                 res = subprocess.run(
-                    ["docker", "compose", "up", "-d"],
+                    ["docker", "compose", "-p", docker_project_name, "up", "-d"],
                     check=False,
                     capture_output=True,
                     text=True
@@ -110,7 +111,7 @@ async def run_e2e(prompt: str, standalone: bool):
                 # Clean up Docker containers
                 try:
                     subprocess.run(
-                        ["docker", "compose", "down", "-v"],
+                        ["docker", "compose", "-p", docker_project_name, "down", "-v"],
                         cwd=temp_dir,
                         check=False,
                         capture_output=True,
