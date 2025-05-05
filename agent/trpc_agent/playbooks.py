@@ -267,3 +267,18 @@ Rules:
 TASK:
 {{ user_prompt }}
 """.strip()
+
+
+EDIT_SET_PROMPT = """
+Files:
+{% for file in files_ctx %}{{ file }} {% endfor %}
+
+Task:
+- Identify project files required for edits or deletion to implement changes.
+- Write draft changes to files if altering `server/src/db/schema.ts` or `server/src/schema.ts`.
+- Run checks to validate correctness of changeset.
+- Narrow down the scope to the minimum necessary.
+
+Requirements:
+{{ user_prompt }}
+""".strip()
