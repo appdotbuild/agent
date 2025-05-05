@@ -271,7 +271,7 @@ TASK:
 
 EDIT_SET_PROMPT = """
 Files:
-{% for file in files_ctx %}{{ file }} {% endfor %}
+{% for file in files_ctx|sort %}{{ file }} {% endfor %}
 
 Task:
 - Identify project files required for edits or deletion to implement changes.
