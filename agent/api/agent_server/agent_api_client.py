@@ -422,9 +422,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         if event.message:
             if event.message.content:
                 print(event.message.content, end="", flush=True)
-            if event.message.unified_diff:
+            if diff := event.message.unified_diff:
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-                print(f"\033[36m{evt.message.unified_diff}\033[0m")
+                print(f"\033[36m{diff}\033[0m")
                 print("\033[36m--- End of Diff ---\033[0m\n")
 
     async with AgentApiClient(base_url=base_url) as client:
