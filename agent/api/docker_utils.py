@@ -139,18 +139,21 @@ def stop_docker_compose(
     project_name: Optional[str] = None
 ) -> None:
     try:
-        cmd = ["docker", "compose", "down", "-v"]
+        cmd = ["docker", "compose", "down", "-v", "--remove-orphans"]
         if project_name:
-            cmd = ["docker", "compose", "-p", project_name, "down", "-v"]
+            cmd = ["docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"]
 
-        subprocess.run(
+        logger.info(f"Stopping Docker containers for project {project_name} in {project_dir}")
+        result = subprocess.run(
             cmd,
             cwd=project_dir,
             check=False,
             capture_output=True,
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL
+            text=True
         )
+        
+        if result.returncode != 0:
+            logger.error(f"Failed to stop Docker containers: {result.stderr}")
     except Exception as e:
         logger.exception(f"Error stopping Docker containers: {e}")
 
