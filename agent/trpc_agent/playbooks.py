@@ -67,7 +67,7 @@ export const myHandler = async (input: MyHandlerInput) => {
       .values({ message })
       .returning({ id: greetingsTable.id })
       .execute();
-    
+
     return { message, id: result[0].id };
   } catch (error) {
     console.error('Operation failed:', error);
@@ -78,14 +78,14 @@ export const myHandler = async (input: MyHandlerInput) => {
 """.strip()
 
 
-BASE_HANDLER_TEST = """
-<file path="server/src/tests/my_handler.test.ts">
+  = """
+<file path="server/src/tests/greet_and_record.test.ts">
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
 import { greetingsTable } from '../db/schema';
-import { type MyHandlerInput } from '../schema';
-import { myHandler } from '../handlers/my_handler';
+import { type GreetAndRecord } from '../schema';
+import { greetAndRecord } from '../handlers/greet_and_record';
 
 const testInput: MyHandlerInput = { name: 'Alice' };
 
@@ -95,13 +95,13 @@ describe('greet', () => {
   afterEach(resetDB);
 
   it('should greet user', async () => {
-    const result = await myHandler(testInput);
+    const result = await greetAndRecord(testInput);
     expect(result.message).toEqual('hello Alice');
     expect(result.id).toBeDefined();
   });
 
   it('should save request', async () => {
-    await myHandler(testInput);
+    await greetAndRecord(testInput);
     const requests = await db.select().from(greetingsTable);
     expect(requests).toHaveLength(1);
     expect(requests[0].message).toEqual('hello Alice');
@@ -323,6 +323,7 @@ Example Test:
   throw new Error('Failed to process request', {{ cause: error }});
   ```
 - Add context to errors including input parameters (but exclude sensitive data!)
+- Error handling does not need to be tested in unit tests.
 
 Key project files:
 {{{{project_context}}}}
