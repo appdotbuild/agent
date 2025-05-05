@@ -107,7 +107,7 @@ class AgentApiClient:
         messages_history_casted = []
         for m in [Message.from_dict(x) for x in json.loads(messages_history or "[]")]:
             role = m.role if m.role == "user" else "assistant"
-            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content 
+            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content
 
             if role == "user":
                 msg = UserMessage(role=role, content=content)
@@ -168,12 +168,12 @@ class AgentApiClient:
                             if stream_cb:
                                 try:
                                     stream_cb(event_obj)
-                                except Exception as cb_err:
-                                    print(f"Error in stream callback: {cb_err}")
+                                except Exception:
+                                    logger.exception("Callback failed")
                         except json.JSONDecodeError as e:
-                            print(f"JSON decode error: {e}, data: {data_str[:100]}...")
+                            logger.warning(f"JSON decode error: {e}, data: {data_str[:100]}...")
                         except Exception as e:
-                            print(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
+                            logger.warning(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
                 # Reset buffer for next event
                 buffer = ""
 
