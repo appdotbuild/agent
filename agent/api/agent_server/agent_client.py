@@ -1,7 +1,7 @@
 import json
 import uuid
 import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
 
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, AgentMessage, MessageKind
@@ -49,7 +49,9 @@ class AgentApiClient:
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
                           settings: Optional[Dict[str, Any]] = None,
-                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                          auth_token: Optional[str] = CONFIG.builder_token,
+                          stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                         ) -> Tuple[List[AgentSseEvent], AgentRequest]:
 
         """Send a message to the agent and return the parsed SSE events"""
 
@@ -77,14 +79,16 @@ class AgentApiClient:
         if response.status_code != 200:
             raise ValueError(f"Request failed with status code {response.status_code}")
 
-        events = await self.parse_sse_events(response)
+        events = await self.parse_sse_events(response, stream_cb)
         return events, request
 
     async def continue_conversation(self,
                                   previous_events: List[AgentSseEvent],
                                   previous_request: AgentRequest,
                                   message: str,
-                                  settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                                  settings: Optional[Dict[str, Any]] = None,
+                                  stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                                 ) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Continue a conversation using the agent state from previous events"""
         agent_state = None
         messages_history = None
@@ -118,7 +122,8 @@ class AgentApiClient:
             application_id=application_id,
             trace_id=trace_id,
             agent_state=agent_state,
-            settings=settings
+            settings=settings,
+            stream_cb=stream_cb
         )
 
         return events, request
@@ -144,7 +149,7 @@ class AgentApiClient:
         )
 
     @staticmethod
-    async def parse_sse_events(response) -> List[AgentSseEvent]:
+    async def parse_sse_events(response, stream_cb: Optional[Callable[[AgentSseEvent], None]] = None) -> List[AgentSseEvent]:
         """Parse the SSE events from a response stream"""
         event_objects = []
         buffer = ""
@@ -160,6 +165,11 @@ class AgentApiClient:
                             # Parse as both raw JSON and model objects
                             event_obj = AgentSseEvent.from_json(data_str)
                             event_objects.append(event_obj)
+                            if stream_cb:
+                                try:
+                                    stream_cb(event_obj)
+                                except Exception as cb_err:
+                                    print(f"Error in stream callback: {cb_err}")
                         except json.JSONDecodeError as e:
                             print(f"JSON decode error: {e}, data: {data_str[:100]}...")
                         except Exception as e:

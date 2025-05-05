@@ -416,6 +416,14 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         print(f"Connected to {base_url}")
     else:
         base_url = None # Use ASGI transport for local testing
+    # Callback to print events as they arrive
+    def print_event(evt: AgentSseEvent) -> None:
+        if evt.message and evt.message.content:
+            print(evt.message.content, end="", flush=True)
+        if evt.message and evt.message.unified_diff:
+            print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
+            print(f"\033[36m{evt.message.unified_diff}\033[0m")
+            print("\033[36m--- End of Diff ---\033[0m\n")
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
             while True:
@@ -668,19 +676,22 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     auth_token = os.environ.get("BUILDER_TOKEN")
                     if request is None:
                         logger.warning("Sending new message")
-                        events, request = await client.send_message(content, settings=settings_dict, auth_token=auth_token)
+                        events, request = await client.send_message(
+                            content,
+                            settings=settings_dict,
+                            auth_token=auth_token,
+                            stream_cb=print_event
+                        )
                     else:
                         logger.warning("Sending continuation")
-                        events, request = await client.continue_conversation(previous_events, request, content)
-
-                    for evt in events:
-                        if evt.message and evt.message.content:
-                            print(evt.message.content, end="", flush=True)
-                        # Automatically print diffs when they're provided
-                        if evt.message and evt.message.unified_diff:
-                            print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-                            print(f"\033[36m{evt.message.unified_diff}\033[0m")
-                            print("\033[36m--- End of Diff ---\033[0m\n")
+                        events, request = await client.continue_conversation(
+                            previous_events,
+                            request,
+                            content,
+                            settings=settings_dict,
+                            stream_cb=print_event
+                        )
+                    # Ensure newline after streaming events
                     print()
 
                     previous_messages.append(content)
