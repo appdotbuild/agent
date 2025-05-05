@@ -61,7 +61,7 @@ export const myHandler = async (input: MyHandlerInput) => {
   try {
     // Use nullish coalescing for optional fields
     const message = `hello ${input?.name ?? 'world'}`;
-    
+
     // Insert record and return the inserted id
     const result = await db.insert(greetingsTable)
       .values({ message })
@@ -245,7 +245,7 @@ Example:
    - Never use `.nullish()` in Zod - use `.nullable()` or `.optional()` as appropriate
 
 2. Date handling:
-   - For Drizzle `timestamp()` fields → Use Zod `z.coerce.date()` 
+   - For Drizzle `timestamp()` fields → Use Zod `z.coerce.date()`
    - For Drizzle `date()` fields → Use Zod `z.string()` with date validation
    - Always convert dates to proper format when inserting/retrieving
 
@@ -302,7 +302,7 @@ Example Test:
   const conditions = [];
   if (input.field1) conditions.push(eq(table.field1, input.field1));
   if (input.field2) conditions.push(eq(table.field2, input.field2));
-  const query = conditions.length > 0 
+  const query = conditions.length > 0
     ? db.select().from(table).where(and(conditions))
     : db.select().from(table);
   const results = await query.execute();
@@ -318,13 +318,11 @@ Example Test:
     throw new Error('User-friendly message');
   }}
   ```
-- Use specific error types or codes to distinguish between error cases
 - When rethrowing errors, include the original error as the cause:
   ```
   throw new Error('Failed to process request', {{ cause: error }});
   ```
 - Add context to errors including input parameters (but exclude sensitive data!)
-- In tests, verify error handling with expect.throws() assertions
 
 Key project files:
 {{{{project_context}}}}
@@ -349,7 +347,7 @@ Example:
 Key project files:
 {{{{project_context}}}}
 
-Return code within <file path="client/src/components/{{{{component_name}}}}.tsx">...</file> tags.
+Return code within <file path="client/src/components/example_component_name.tsx">...</file> tags.
 On errors, modify only relevant files and return code within <file path="...">...</file> tags.
 
 Task:
