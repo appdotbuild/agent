@@ -69,17 +69,17 @@ class AgentApiClient:
         else:
             logger.info("No auth token available for authorization")
 
-        response = await self.client.post(
+        # Use HTTPX streaming to handle server-sent events in real time
+        async with self.client.stream(
+            "POST",
             url,
             json=request.model_dump(by_alias=True),
             headers=headers,
             timeout=None
-        )
-
-        if response.status_code != 200:
-            raise ValueError(f"Request failed with status code {response.status_code}")
-
-        events = await self.parse_sse_events(response, stream_cb)
+        ) as response:
+            if response.status_code != 200:
+                raise ValueError(f"Request failed with status code {response.status_code}")
+            events = await self.parse_sse_events(response, stream_cb)
         return events, request
 
     async def continue_conversation(self,

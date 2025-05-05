@@ -53,5 +53,6 @@ def _generate(prompt=DEFAULT_APP_REQUEST):
     anyio.run(run_e2e, prompt, True)
 
 def interactive():
+    coloredlogs.install(level="INFO")
     os.environ["LLM_VCR_CACHE_MODE"] = "lru"
     Fire(_run_interactive)

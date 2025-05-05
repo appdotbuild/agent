@@ -416,14 +416,17 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         print(f"Connected to {base_url}")
     else:
         base_url = None # Use ASGI transport for local testing
-    # Callback to print events as they arrive
-    def print_event(evt: AgentSseEvent) -> None:
-        if evt.message and evt.message.content:
-            print(evt.message.content, end="", flush=True)
-        if evt.message and evt.message.unified_diff:
-            print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-            print(f"\033[36m{evt.message.unified_diff}\033[0m")
-            print("\033[36m--- End of Diff ---\033[0m\n")
+
+    def print_event(event: AgentSseEvent) -> None:
+        logger.info(f"Got an event: {event.status} {event.message.kind}")
+        if event.message:
+            if event.message.content:
+                print(event.message.content, end="", flush=True)
+            if event.message.unified_diff:
+                print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
+                print(f"\033[36m{evt.message.unified_diff}\033[0m")
+                print("\033[36m--- End of Diff ---\033[0m\n")
+
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
             while True:
@@ -564,7 +567,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 
                             # Setup docker environment with random container names
                             container_names = setup_docker_env()
-                            
+
                             # Add to cleanup list
                             if target_dir not in docker_cleanup_dirs:
                                 docker_cleanup_dirs.append(target_dir)
@@ -573,11 +576,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             try:
                                 # Start the services (with build)
                                 success, error_message = start_docker_compose(
-                                    target_dir, 
-                                    container_names["project_name"], 
+                                    target_dir,
+                                    container_names["project_name"],
                                     build=True
                                 )
-                                
+
                                 if not success:
                                     print("Warning: Docker Compose returned an error")
                                     print(f"Error output: {error_message}")
@@ -675,7 +678,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     print("\033[92mBot> \033[0m", end="", flush=True)
                     auth_token = os.environ.get("BUILDER_TOKEN")
                     if request is None:
-                        logger.warning("Sending new message")
+                        logger.info("Sending new message")
                         events, request = await client.send_message(
                             content,
                             settings=settings_dict,
@@ -683,7 +686,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             stream_cb=print_event
                         )
                     else:
-                        logger.warning("Sending continuation")
+                        logger.info("Sending continuation")
                         events, request = await client.continue_conversation(
                             previous_events,
                             request,
