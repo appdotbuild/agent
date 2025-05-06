@@ -49,6 +49,9 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
     if files_written > 0:
         logger.info(f"Written {files_written} files to workspace")
 
+    if errors:
+        errors.append(f"Only those files should be written: {node.data.workspace.allowed}")
+
     return TextRaw("\n".join(errors)) if errors else None
 
 

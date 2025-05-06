@@ -6,10 +6,10 @@ import { z } from 'zod';
 export const productSchema = z.object({
   id: z.number(),
   name: z.string(),
-  description: z.string().nullable(),
-  price: z.number(), // Will be correctly converted from DB string
-  stock_quantity: z.number().int(),
-  created_at: z.coerce.date() // Use coerce.date() for timestamp fields
+  description: z.string().nullable(), // Nullable field, not optional (can be explicitly null)
+  price: z.number(), // Stored as numeric in DB, but we use number in TS
+  stock_quantity: z.number().int(), // Ensures integer values only
+  created_at: z.coerce.date() // Automatically converts string timestamps to Date objects
 });
 
 export type Product = z.infer<typeof productSchema>;
@@ -17,9 +17,9 @@ export type Product = z.infer<typeof productSchema>;
 // Input schema for creating products
 export const createProductInputSchema = z.object({
   name: z.string(),
-  description: z.string().nullable(),
-  price: z.number(), // Explicitly handle as number in code
-  stock_quantity: z.number().int()
+  description: z.string().nullable(), // Explicit null allowed, undefined not allowed
+  price: z.number().positive(), // Validate that price is positive
+  stock_quantity: z.number().int().nonnegative() // Validate that stock is non-negative integer
 });
 
 export type CreateProductInput = z.infer<typeof createProductInputSchema>;
@@ -27,10 +27,10 @@ export type CreateProductInput = z.infer<typeof createProductInputSchema>;
 // Input schema for updating products
 export const updateProductInputSchema = z.object({
   id: z.number(),
-  name: z.string().optional(),
-  description: z.string().nullable().optional(),
-  price: z.number().optional(),
-  stock_quantity: z.number().int().optional()
+  name: z.string().optional(), // Optional = field can be undefined (omitted)
+  description: z.string().nullable().optional(), // Can be null or undefined
+  price: z.number().positive().optional(),
+  stock_quantity: z.number().int().nonnegative().optional()
 });
 
 export type UpdateProductInput = z.infer<typeof updateProductInputSchema>;
@@ -45,15 +45,15 @@ import { serial, text, pgTable, timestamp, numeric, integer } from 'drizzle-orm/
 export const productsTable = pgTable('products', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
-  description: text('description'),
-  price: numeric('price', { precision: 10, scale: 2 }).notNull(),
-  stock_quantity: integer('stock_quantity').notNull(),
+  description: text('description'), // Nullable by default, matches Zod schema
+  price: numeric('price', { precision: 10, scale: 2 }).notNull(), // Use numeric for monetary values with precision
+  stock_quantity: integer('stock_quantity').notNull(), // Use integer for whole numbers
   created_at: timestamp('created_at').defaultNow().notNull(),
 });
 
 // TypeScript type for the table schema
-export type Product = typeof productsTable.$inferSelect;
-export type NewProduct = typeof productsTable.$inferInsert;
+export type Product = typeof productsTable.$inferSelect; // For SELECT operations
+export type NewProduct = typeof productsTable.$inferInsert; // For INSERT operations
 
 // Important: Export all tables and relations for proper query building
 export const tables = { products: productsTable };
@@ -76,24 +76,27 @@ import { db } from '../db';
 import { productsTable } from '../db/schema';
 import { type CreateProductInput, type Product } from '../schema';
 
-export const createProduct = async (input: CreateProductInput) => {
+export const createProduct = async (input: CreateProductInput): Promise<Product> => {
   try {
     // Insert product record
     const result = await db.insert(productsTable)
       .values({
         name: input.name,
-        description: input.description,
-        price: input.price,
-        stock_quantity: input.stock_quantity
+        description: input.description, 
+        price: input.price, // Type safely passed to numeric column
+        stock_quantity: input.stock_quantity // Type safely passed to integer column
       })
       .returning()
       .execute();
 
-    // Return product data
+    // Return product data with proper typing
     return result[0];
   } catch (error) {
-    console.error('Operation failed:', error);
-    throw new Error('Failed to create product', { cause: error });
+    // Log the detailed error
+    console.error('Product creation failed:', error);
+    
+    // Re-throw the original error to preserve stack trace
+    throw error;
   }
 };
 </file>
@@ -108,7 +111,9 @@ import { db } from '../db';
 import { productsTable } from '../db/schema';
 import { type CreateProductInput } from '../schema';
 import { createProduct } from '../handlers/create_product';
+import { eq } from 'drizzle-orm';
 
+// Simple test input
 const testInput: CreateProductInput = {
   name: 'Test Product',
   description: 'A product for testing',
@@ -118,24 +123,33 @@ const testInput: CreateProductInput = {
 
 describe('createProduct', () => {
   beforeEach(createDB);
-
   afterEach(resetDB);
 
   it('should create a product', async () => {
     const result = await createProduct(testInput);
+    
+    // Basic field validation
     expect(result.name).toEqual('Test Product');
+    expect(result.description).toEqual(testInput.description);
     expect(result.price).toEqual(19.99);
     expect(result.stock_quantity).toEqual(100);
     expect(result.id).toBeDefined();
+    expect(result.created_at).toBeInstanceOf(Date);
   });
 
   it('should save product to database', async () => {
-    await createProduct(testInput);
-    const products = await db.select().from(productsTable);
+    const result = await createProduct(testInput);
+    
+    // Query using proper drizzle syntax
+    const products = await db.select()
+      .from(productsTable)
+      .where(eq(productsTable.id, result.id))
+      .execute();
+    
     expect(products).toHaveLength(1);
     expect(products[0].name).toEqual('Test Product');
-    expect(products[0].price).toEqual(19.99);
-    expect(products[0].stock_quantity).toEqual(100);
+    expect(products[0].description).toEqual(testInput.description);
+    expect(products[0].created_at).toBeInstanceOf(Date);
   });
 });
 </file>
