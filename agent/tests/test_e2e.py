@@ -1,14 +1,12 @@
 import os
 import pytest
-import subprocess
 import tempfile
 import anyio
-from datetime import datetime
-import docker
 
 from fire import Fire
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST
+from api.docker_utils import setup_docker_env, start_docker_compose, wait_for_healthy_containers, stop_docker_compose, get_container_logs
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -19,9 +17,6 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture
 def anyio_backend():
     return 'asyncio'
-
-def generate_random_name(prefix):
-    return f"{prefix}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
 async def run_e2e(prompt: str, standalone: bool):
     async with AgentApiClient() as client:
@@ -34,71 +29,41 @@ async def run_e2e(prompt: str, standalone: bool):
             success, message = apply_patch(diff, temp_dir)
             assert success, f"Failed to apply patch: {message}"
 
-            db_container_name = generate_random_name("db")
-            app_container_name = generate_random_name("app")
-            frontend_container_name = generate_random_name("frontend")
-
-            os.environ["POSTGRES_CONTAINER_NAME"] = db_container_name
-            os.environ["BACKEND_CONTAINER_NAME"] = app_container_name
-            os.environ["FRONTEND_CONTAINER_NAME"] = frontend_container_name
-            os.environ["DB_PUSH_CONTAINER_NAME"] = generate_random_name("db_push_")
-            os.environ["NETWORK_NAME"] = generate_random_name("network_")
-
             original_dir = os.getcwd()
-            docker_project_name = generate_random_name("e2e")
+            container_names = setup_docker_env()
             try:
                 os.chdir(temp_dir)
 
-                logger.info(f"Starting Docker containers in {temp_dir}")
-                res = subprocess.run(
-                    ["docker", "compose", "-p", docker_project_name, "up", "-d"],
-                    check=False,
-                    capture_output=True,
-                    text=True
+                success, error_message = start_docker_compose(temp_dir, container_names["project_name"])
+                if not success:
+                    # Get logs if possible for debugging
+                    try:
+                        logs = get_container_logs([
+                            container_names["db_container_name"], 
+                            container_names["app_container_name"], 
+                            container_names["frontend_container_name"]
+                        ])
+                        for container, log in logs.items():
+                            logger.error(f"Container {container} logs: {log}")
+                    except Exception:
+                        logger.error("Failed to get container logs")
+
+                    logger.error(f"Error starting Docker containers: {error_message}")
+                    raise RuntimeError(f"Failed to start Docker containers: {error_message}")
+
+                container_healthy = await wait_for_healthy_containers(
+                    [
+                        container_names["db_container_name"], 
+                        container_names["app_container_name"], 
+                        container_names["frontend_container_name"]
+                    ],
+                    ["db", "app", "frontend"],
+                    timeout=30,
+                    interval=1
                 )
-                docker_cli = docker.from_env()
-                if res.returncode != 0:
-                    for container in (db_container_name, app_container_name, frontend_container_name):
-                        try:
-                            status = docker_cli.containers.get(container).status
-                            logs = docker_cli.containers.get(container).logs()
-                            logger.error(f"Container {container} status: {status}, logs: {logs.decode('utf-8')}")
-                        except Exception:
-                            logger.error(f"Failed to get status for container {container}")
-
-                    logger.error(f"Error starting Docker containers: {res.stderr}")
-                    raise RuntimeError(f"Failed to start Docker containers: return code {res.returncode}")
-
-                timeout = 30  # seconds
-                interval = 1 # seconds
-                start_time = anyio.current_time()
-
-                while anyio.current_time() - start_time < timeout:
-                    all_healthy = True
-                    for name, kind in zip(
-                        [db_container_name, app_container_name, frontend_container_name],
-                        ["db", "app", "frontend"]
-                    ):
-                        container = docker_cli.containers.get(name)
-                        if container.status != "running":
-                            logger.info(f"{kind} container is not running yet: {container.status}")
-                            all_healthy = False
-                            break
-
-                        health_status = container.attrs.get('State', {}).get('Health', {}).get('Status')
-                        if health_status != 'healthy':
-                            logger.info(f"{kind} container is not healthy yet: {health_status}")
-                            all_healthy = False
-                            break
-                        logger.info(f"{kind} container is healthy.")
-
-                    if all_healthy:
-                        logger.info("All containers are healthy.")
-                        break
-                    await anyio.sleep(interval)
-
-                if anyio.current_time() - start_time >= timeout:
-                    raise RuntimeError(f"Containers did not become healthy within {timeout} seconds")
+                
+                if not container_healthy:
+                    raise RuntimeError("Containers did not become healthy within the timeout period")
 
                 if standalone:
                     input(f"App is running on http://localhost:80/, app dir is {temp_dir}; Press Enter to continue and tear down...")
@@ -109,16 +74,7 @@ async def run_e2e(prompt: str, standalone: bool):
                 os.chdir(original_dir)
 
                 # Clean up Docker containers
-                try:
-                    subprocess.run(
-                        ["docker", "compose", "-p", docker_project_name, "down", "-v"],
-                        cwd=temp_dir,
-                        check=False,
-                        capture_output=True,
-                        text=True
-                    )
-                except Exception as e:
-                    logger.exception(f"Error cleaning up Docker: {e}")
+                stop_docker_compose(temp_dir, container_names["project_name"])
 
 async def test_e2e_generation():
     await run_e2e(standalone=False, prompt=DEFAULT_APP_REQUEST)

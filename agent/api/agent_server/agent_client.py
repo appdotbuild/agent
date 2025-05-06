@@ -1,7 +1,7 @@
 import json
 import uuid
 import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
 
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, AgentMessage, MessageKind
@@ -49,7 +49,9 @@ class AgentApiClient:
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
                           settings: Optional[Dict[str, Any]] = None,
-                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                          auth_token: Optional[str] = CONFIG.builder_token,
+                          stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                         ) -> Tuple[List[AgentSseEvent], AgentRequest]:
 
         """Send a message to the agent and return the parsed SSE events"""
 
@@ -67,24 +69,26 @@ class AgentApiClient:
         else:
             logger.info("No auth token available for authorization")
 
-        response = await self.client.post(
+        # Use HTTPX streaming to handle server-sent events in real time
+        async with self.client.stream(
+            "POST",
             url,
             json=request.model_dump(by_alias=True),
             headers=headers,
             timeout=None
-        )
-
-        if response.status_code != 200:
-            raise ValueError(f"Request failed with status code {response.status_code}")
-
-        events = await self.parse_sse_events(response)
+        ) as response:
+            if response.status_code != 200:
+                raise ValueError(f"Request failed with status code {response.status_code}")
+            events = await self.parse_sse_events(response, stream_cb)
         return events, request
 
     async def continue_conversation(self,
                                   previous_events: List[AgentSseEvent],
                                   previous_request: AgentRequest,
                                   message: str,
-                                  settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                                  settings: Optional[Dict[str, Any]] = None,
+                                  stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                                 ) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Continue a conversation using the agent state from previous events"""
         agent_state = None
         messages_history = None
@@ -103,7 +107,7 @@ class AgentApiClient:
         messages_history_casted = []
         for m in [Message.from_dict(x) for x in json.loads(messages_history or "[]")]:
             role = m.role if m.role == "user" else "assistant"
-            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content 
+            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content
 
             if role == "user":
                 msg = UserMessage(role=role, content=content)
@@ -118,7 +122,8 @@ class AgentApiClient:
             application_id=application_id,
             trace_id=trace_id,
             agent_state=agent_state,
-            settings=settings
+            settings=settings,
+            stream_cb=stream_cb
         )
 
         return events, request
@@ -144,7 +149,7 @@ class AgentApiClient:
         )
 
     @staticmethod
-    async def parse_sse_events(response) -> List[AgentSseEvent]:
+    async def parse_sse_events(response, stream_cb: Optional[Callable[[AgentSseEvent], None]] = None) -> List[AgentSseEvent]:
         """Parse the SSE events from a response stream"""
         event_objects = []
         buffer = ""
@@ -160,10 +165,15 @@ class AgentApiClient:
                             # Parse as both raw JSON and model objects
                             event_obj = AgentSseEvent.from_json(data_str)
                             event_objects.append(event_obj)
+                            if stream_cb:
+                                try:
+                                    stream_cb(event_obj)
+                                except Exception:
+                                    logger.exception("Callback failed")
                         except json.JSONDecodeError as e:
-                            print(f"JSON decode error: {e}, data: {data_str[:100]}...")
+                            logger.warning(f"JSON decode error: {e}, data: {data_str[:100]}...")
                         except Exception as e:
-                            print(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
+                            logger.warning(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
                 # Reset buffer for next event
                 buffer = ""
 

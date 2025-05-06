@@ -15,7 +15,6 @@ dependencies = [
     "ujson>=5.10.0",
     "uvicorn==0.34.0",
     "patch-ng>=1.17.4",
-    "pytest-xdist>=3.6.1",
 ]
 
 [build-system]
@@ -41,6 +40,7 @@ dev = [
     "pdbpp>=0.10.3",
     "pytest>=8.3.5",
     "ruff>=0.11.5",
+    "pytest-xdist>=3.6.1",
 ]
 google = ["google-genai>=1.7.0"]
 openai = ["openai>=1.68.2"]
