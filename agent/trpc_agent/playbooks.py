@@ -82,7 +82,7 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
     const result = await db.insert(productsTable)
       .values({
         name: input.name,
-        description: input.description, 
+        description: input.description,
         price: input.price, // Type safely passed to numeric column
         stock_quantity: input.stock_quantity // Type safely passed to integer column
       })
@@ -94,7 +94,7 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
   } catch (error) {
     // Log the detailed error
     console.error('Product creation failed:', error);
-    
+
     // Re-throw the original error to preserve stack trace
     throw error;
   }
@@ -127,7 +127,7 @@ describe('createProduct', () => {
 
   it('should create a product', async () => {
     const result = await createProduct(testInput);
-    
+
     // Basic field validation
     expect(result.name).toEqual('Test Product');
     expect(result.description).toEqual(testInput.description);
@@ -139,13 +139,13 @@ describe('createProduct', () => {
 
   it('should save product to database', async () => {
     const result = await createProduct(testInput);
-    
+
     // Query using proper drizzle syntax
     const products = await db.select()
       .from(productsTable)
       .where(eq(productsTable.id, result.id))
       .execute();
-    
+
     expect(products).toHaveLength(1);
     expect(products[0].name).toEqual('Test Product');
     expect(products[0].description).toEqual(testInput.description);
@@ -263,7 +263,7 @@ function App() {
       const response = await trpc.createProduct.mutate({
         name: 'Sample Product',
         description: 'A sample product created from the UI',
-        price: 29.99, // Number in JS, will be properly handled by backend
+        price: 29.99,
         stock_quantity: 50
       });
       // Complete response with proper types thanks to tRPC
@@ -290,7 +290,6 @@ function App() {
           <h2 className="text-xl font-semibold">{product.name}</h2>
           <p className="text-gray-600">{product.description}</p>
           <div className="flex justify-between mt-2">
-            {/* price is a number thanks to Zod's transform in schema */}
             <span>${product.price.toFixed(2)}</span>
             <span>In stock: {product.stock_quantity}</span>
           </div>
