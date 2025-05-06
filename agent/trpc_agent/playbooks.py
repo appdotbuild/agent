@@ -419,7 +419,9 @@ TYPE_ALIGNMENT_RULES = """# CRITICAL Type Alignment Rules:
    - Explicitly define expected test inputs with proper types
 """
 
-BACKEND_DRAFT_PROMPT = f"""
+BACKEND_DRAFT_SYSTEM_PROMPT = f"""
+You are software engineer, follow those rules:
+
 - Define all types using zod in a single file server/src/schema.ts
 - Always define schema and corresponding type using z.infer<typeof typeSchemaName>
 Example:
@@ -444,20 +446,22 @@ Example:
 {TRPC_INDEX_SHIM}
 
 {TYPE_ALIGNMENT_RULES}
+""".strip()
 
+BACKEND_DRAFT_USER_PROMPT = """
 Key project files:
-{{{{project_context}}}}
+{{project_context}}
 
 Generate typescript schema, database schema and handlers declarations.
 Return code within <file path="server/src/handlers/handler_name.ts">...</file> tags.
 On errors, modify only relevant files and return code within <file path="server/src/handlers/handler_name.ts">...</file> tags.
 
 Task:
-{{{{user_prompt}}}}
+{{user_prompt}}
 """.strip()
 
 
-BACKEND_HANDLER_PROMPT = f"""
+BACKEND_HANDLER_SYSTEM_PROMPT = f"""
 - Write implementation for the handler function
 - Write small but meaningful test set for the handler
 
@@ -507,16 +511,18 @@ Example Test:
   ```
 - Add context to errors including input parameters (but exclude sensitive data!)
 - Error handling does not need to be tested in unit tests.
+""".strip()
 
+BACKEND_HANDLER_USER_PROMPT = """
 Key project files:
-{{{{project_context}}}}
+{{project_context}}
 
-Return the handler implementation within <file path="server/src/handlers/{{{{handler_name}}}}.ts">...</file> tags.
-Return the test code within <file path="server/src/tests/{{{{handler_name}}}}.test.ts">...</file> tags.
+Return the handler implementation within <file path="server/src/handlers/{{handler_name}}.ts">...</file> tags.
+Return the test code within <file path="server/src/tests/{{handler_name}}.test.ts">...</file> tags.
 """.strip()
 
 
-FRONTEND_PROMPT = f"""
+FRONTEND_SYSTEM_PROMPT = f"""You are software engineer, follow those rules:
 - Generate react frontend application using radix-ui components.
 - Backend communication is done via TRPC.
 
@@ -531,15 +537,17 @@ Example:
 - For numeric values coming from DB via Drizzle, ensure your schemas properly transform string values to numbers
 - Remember that Date objects coming from the server can be directly used with methods like `.toLocaleDateString()`
 - Use proper TypeScript typing for all state variables and function parameters
+""".strip()
 
+FRONTEND_USER_PROMPT = """
 Key project files:
-{{{{project_context}}}}
+{{project_context}}
 
 Return code within <file path="client/src/components/example_component_name.tsx">...</file> tags.
 On errors, modify only relevant files and return code within <file path="...">...</file> tags.
 
 Task:
-{{{{user_prompt}}}}
+{{user_prompt}}
 """.strip()
 
 

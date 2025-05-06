@@ -182,14 +182,17 @@ class DraftActor(BaseTRPCActor):
         # Prepare prompt for LLM
         logger.info("Preparing prompt template for LLM")
         jinja_env = jinja2.Environment()
-        prompt_template = jinja_env.from_string(playbooks.BACKEND_DRAFT_PROMPT)
-        prompt = prompt_template.render(
+        user_prompt_template = jinja_env.from_string(playbooks.BACKEND_DRAFT_USER_PROMPT)
+        user_prompt_rendered = user_prompt_template.render(
             project_context="\n".join(context),
             user_prompt=user_prompt,
         )
 
+        # Store system prompt separately
+        self.model_params["system_prompt"] = playbooks.BACKEND_DRAFT_SYSTEM_PROMPT
+
         # Create root node
-        message = Message(role="user", content=[TextRaw(prompt)])
+        message = Message(role="user", content=[TextRaw(user_prompt_rendered)])
         self.root = Node(BaseData(workspace, [message], {}))
         logger.info("Created root node for draft")
 
@@ -293,7 +296,7 @@ class HandlersActor(BaseTRPCActor):
 
         # Prepare jinja template
         jinja_env = jinja2.Environment()
-        prompt_template = jinja_env.from_string(playbooks.BACKEND_HANDLER_PROMPT)
+        user_prompt_template = jinja_env.from_string(playbooks.BACKEND_HANDLER_USER_PROMPT)
 
         # Process handler files
         handler_count = 0
@@ -316,12 +319,16 @@ class HandlersActor(BaseTRPCActor):
 
             context.append(f"Allowed paths and directories: {allowed}")
 
-            # Render prompt and create node
-            prompt = prompt_template.render(
+            # Render user prompt and create node
+            user_prompt_rendered = user_prompt_template.render(
                 project_context="\n".join(context),
                 handler_name=handler_name,
             )
-            message = Message(role="user", content=[TextRaw(prompt)])
+
+            # Store system prompt separately in model_params
+            self.model_params["system_prompt"] = playbooks.BACKEND_HANDLER_SYSTEM_PROMPT
+
+            message = Message(role="user", content=[TextRaw(user_prompt_rendered)])
             node = Node(BaseData(handler_ws, [message], {}))
             self.handlers[handler_name] = node
             handler_count += 1
@@ -408,12 +415,14 @@ class FrontendActor(BaseTRPCActor):
             f"Protected paths and directories: {self.files_protected}",
         ])
         jinja_env = jinja2.Environment()
-        prompt_template = jinja_env.from_string(playbooks.FRONTEND_PROMPT)
-        prompt = prompt_template.render(
+        user_prompt_template = jinja_env.from_string(playbooks.FRONTEND_USER_PROMPT)
+        user_prompt_rendered = user_prompt_template.render(
             project_context="\n".join(context),
             user_prompt=user_prompt,
         )
-        message = Message(role="user", content=[TextRaw(prompt)])
+        self.model_params["system_prompt"] = playbooks.FRONTEND_SYSTEM_PROMPT
+
+        message = Message(role="user", content=[TextRaw(user_prompt_rendered)])
         self.root = Node(BaseData(workspace, [message], {}))
 
     async def eval_node(self, node: Node[BaseData]) -> bool:

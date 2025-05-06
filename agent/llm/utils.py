@@ -27,11 +27,11 @@ def merge_text(content: list[ContentBlock]) -> list[ContentBlock]:
     return merged
 
 
-async def loop_completion(m_client: AsyncLLM, messages: list[Message], **kwargs) -> Message:
+async def loop_completion(m_client: AsyncLLM, messages: list[Message], system_prompt: str | None = None, **kwargs) -> Message:
     content: list[ContentBlock] = []
     while True:
         payload = messages + [Message(role="assistant", content=content)] if content else messages
-        completion = await m_client.completion(messages=payload, **kwargs)
+        completion = await m_client.completion(messages=payload, system_prompt=system_prompt, **kwargs)
         content.extend(completion.content)
         if completion.stop_reason != "max_tokens":
             break
