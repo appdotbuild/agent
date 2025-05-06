@@ -167,3 +167,4 @@ tsp-output/
 
 **/.claude/settings.local.json
 debug_logs/*
+**/.DS_Store
