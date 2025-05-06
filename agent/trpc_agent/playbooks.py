@@ -2,109 +2,140 @@ BASE_TYPESCRIPT_SCHEMA = """
 <file path="server/src/schema.ts">
 import { z } from 'zod';
 
-// Input schemas should match database field types
-export const myHandlerInputSchema = z.object({
-  name: z.string().nullable(), // .nullable() aligns with database .notNull() or not
-});
-
-// Consistent type naming pattern
-export type MyHandlerInput = z.infer<typeof myHandlerInputSchema>;
-
-// Response schema matching database fields
-export const greetingSchema = z.object({
+// Product schema with proper numeric handling
+export const productSchema = z.object({
   id: z.number(),
-  message: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  price: z.number(), // Will be correctly converted from DB string
+  stock_quantity: z.number().int(),
   created_at: z.coerce.date() // Use coerce.date() for timestamp fields
 });
 
-export type Greeting = z.infer<typeof greetingSchema>;
+export type Product = z.infer<typeof productSchema>;
+
+// Input schema for creating products
+export const createProductInputSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable(),
+  price: z.number(), // Explicitly handle as number in code
+  stock_quantity: z.number().int()
+});
+
+export type CreateProductInput = z.infer<typeof createProductInputSchema>;
+
+// Input schema for updating products
+export const updateProductInputSchema = z.object({
+  id: z.number(),
+  name: z.string().optional(),
+  description: z.string().nullable().optional(),
+  price: z.number().optional(),
+  stock_quantity: z.number().int().optional()
+});
+
+export type UpdateProductInput = z.infer<typeof updateProductInputSchema>;
 </file>
 """.strip()
 
 
 BASE_DRIZZLE_SCHEMA = """
 <file path="server/src/db/schema.ts">
-import { serial, text, pgTable, timestamp } from 'drizzle-orm/pg-core';
+import { serial, text, pgTable, timestamp, numeric, integer } from 'drizzle-orm/pg-core';
 
-export const greetingsTable = pgTable('greetings', {
+export const productsTable = pgTable('products', {
   id: serial('id').primaryKey(),
-  message: text('message').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+  stock_quantity: integer('stock_quantity').notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
 });
 
 // TypeScript type for the table schema
-export type Greeting = typeof greetingsTable.$inferSelect;
-export type NewGreeting = typeof greetingsTable.$inferInsert;
+export type Product = typeof productsTable.$inferSelect;
+export type NewProduct = typeof productsTable.$inferInsert;
 
 // Important: Export all tables and relations for proper query building
-export const tables = { greetings: greetingsTable };
+export const tables = { products: productsTable };
 </file>
 """.strip()
 
 
 BASE_HANDLER_DECLARATION = """
-<file path="server/src/handlers/my_handler.ts">
-import { type MyHandlerInput } from '../schema';
+<file path="server/src/handlers/create_product.ts">
+import { type CreateProductInput, type Product } from '../schema';
 
-export declare function myHandler(input: MyHandlerInput): Promise<{ message: string; id: number }>;
+export declare function createProduct(input: CreateProductInput): Promise<Product>;
 </file>
 """.strip()
 
 
 BASE_HANDLER_IMPLEMENTATION = """
-<file path="server/src/handlers/my_handler.ts">
+<file path="server/src/handlers/create_product.ts">
 import { db } from '../db';
-import { greetingsTable } from '../db/schema';
-import { type MyHandlerInput } from '../schema';
+import { productsTable } from '../db/schema';
+import { type CreateProductInput, type Product } from '../schema';
 
-export const myHandler = async (input: MyHandlerInput) => {
+export const createProduct = async (input: CreateProductInput) => {
   try {
-    // Use nullish coalescing for optional fields
-    const message = `hello ${input?.name ?? 'world'}`;
-
-    // Insert record and return the inserted id
-    const result = await db.insert(greetingsTable)
-      .values({ message })
-      .returning({ id: greetingsTable.id })
+    // Insert product record
+    const result = await db.insert(productsTable)
+      .values({
+        name: input.name,
+        description: input.description,
+        price: input.price,
+        stock_quantity: input.stock_quantity
+      })
+      .returning()
       .execute();
 
-    return { message, id: result[0].id };
+    // Return product data
+    return result[0];
   } catch (error) {
     console.error('Operation failed:', error);
-    throw new Error('Failed to process greeting', { cause: error });
+    throw new Error('Failed to create product', { cause: error });
   }
 };
 </file>
 """.strip()
 
 
-  = """
-<file path="server/src/tests/greet_and_record.test.ts">
+BASE_HANDLER_TEST = """
+<file path="server/src/tests/create_product.test.ts">
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
-import { greetingsTable } from '../db/schema';
-import { type GreetAndRecord } from '../schema';
-import { greetAndRecord } from '../handlers/greet_and_record';
+import { productsTable } from '../db/schema';
+import { type CreateProductInput } from '../schema';
+import { createProduct } from '../handlers/create_product';
 
-const testInput: MyHandlerInput = { name: 'Alice' };
+const testInput: CreateProductInput = {
+  name: 'Test Product',
+  description: 'A product for testing',
+  price: 19.99,
+  stock_quantity: 100
+};
 
-describe('greet', () => {
+describe('createProduct', () => {
   beforeEach(createDB);
 
   afterEach(resetDB);
 
-  it('should greet user', async () => {
-    const result = await greetAndRecord(testInput);
-    expect(result.message).toEqual('hello Alice');
+  it('should create a product', async () => {
+    const result = await createProduct(testInput);
+    expect(result.name).toEqual('Test Product');
+    expect(result.price).toEqual(19.99);
+    expect(result.stock_quantity).toEqual(100);
     expect(result.id).toBeDefined();
   });
 
-  it('should save request', async () => {
-    await greetAndRecord(testInput);
-    const requests = await db.select().from(greetingsTable);
-    expect(requests).toHaveLength(1);
-    expect(requests[0].message).toEqual('hello Alice');
+  it('should save product to database', async () => {
+    await createProduct(testInput);
+    const products = await db.select().from(productsTable);
+    expect(products).toHaveLength(1);
+    expect(products[0].name).toEqual('Test Product');
+    expect(products[0].price).toEqual(19.99);
+    expect(products[0].stock_quantity).toEqual(100);
   });
 });
 </file>
@@ -171,25 +202,53 @@ BASE_APP_TSX = """
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/utils/trpc';
 import { useState } from 'react';
+import type { Product } from '../../../server/src/schema';
 
 function App() {
-  const [greeting, setGreeting] = useState<{ message: string; id: number } | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchGreeting = async () => {
+  const createSampleProduct = async () => {
     setIsLoading(true);
-    const response = await trpc.myHandler.query({ name: 'Alice' });
-    setGreeting(response);
-    setIsLoading(false);
+    try {
+      const response = await trpc.createProduct.mutate({
+        name: 'Sample Product',
+        description: 'A sample product created from the UI',
+        price: 29.99,
+        stock_quantity: 50
+      });
+      setProduct(response);
+    } catch (error) {
+      console.error('Failed to create product:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-svh">
-      <Button onClick={fetchGreeting} disabled={isLoading}>Click me</Button>
+    <div className="flex flex-col items-center justify-center min-h-svh gap-4">
+      <h1 className="text-2xl font-bold">Product Management</h1>
+      
+      <Button onClick={createSampleProduct} disabled={isLoading}>
+        Create Sample Product
+      </Button>
+      
       {isLoading ? (
-        <p>Loading...</p>
+        <p>Creating product...</p>
+      ) : product ? (
+        <div className="border p-4 rounded-md">
+          <h2 className="text-xl font-semibold">{product.name}</h2>
+          <p className="text-gray-600">{product.description}</p>
+          <div className="flex justify-between mt-2">
+            <span>${product.price.toFixed(2)}</span>
+            <span>In stock: {product.stock_quantity}</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Created: {product.created_at.toLocaleDateString()}
+          </p>
+        </div>
       ) : (
-        greeting && <p>{greeting.message} (ID: {greeting.id})</p>
+        <p>No product created yet. Click the button to create one.</p>
       )}
     </div>
   );
@@ -202,13 +261,13 @@ export default App;
 
 TRPC_INDEX_SHIM = """
 ...
-import { myHandlerInputSchema } from './schema';
-import { myHandler } from './handlers/my_handler';
+import { createProductInputSchema } from './schema';
+import { createProduct } from './handlers/create_product';
 ...
 const appRouter = router({
-  myHandler: publicProcedure
-    .input(myHandlerInputSchema)
-    .query(({ input }) => myHandler(input)),
+  createProduct: publicProcedure
+    .input(createProductInputSchema)
+    .mutation(({ input }) => createProduct(input)),
 });
 ...
 """.strip()
