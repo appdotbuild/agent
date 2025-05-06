@@ -1,5 +1,6 @@
 from typing import Iterable, TypedDict, NotRequired
 import anyio
+import random
 import anthropic
 from anthropic.types import (
     ToolParam,
@@ -73,8 +74,9 @@ class AnthropicLLM(common.AsyncLLM):
                 completion = await self.client.messages.create(**call_args)
                 return self._completion_from(completion)
             except anthropic.RateLimitError:
-                logger.warning("Rate limit error, retrying in 5 seconds")
-                await anyio.sleep(5)
+                delay = random.randint(1, 5)
+                logger.warning(f"Rate limit error, retrying in {delay} seconds")
+                await anyio.sleep(delay)
 
     @staticmethod
     def _completion_from(completion: Message) -> common.Completion:
