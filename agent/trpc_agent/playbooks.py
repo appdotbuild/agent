@@ -2,12 +2,13 @@ BASE_TYPESCRIPT_SCHEMA = """
 <file path="server/src/schema.ts">
 import { z } from 'zod';
 
+// Product schema with proper numeric handling
 export const productSchema = z.object({
   id: z.number(),
   name: z.string(),
   description: z.string().nullable(), // Nullable field, not optional (can be explicitly null)
-  price: z.number(),
-  stock_quantity: z.number().int(),
+  price: z.number(), // Stored as numeric in DB, but we use number in TS
+  stock_quantity: z.number().int(), // Ensures integer values only
   created_at: z.coerce.date() // Automatically converts string timestamps to Date objects
 });
 
@@ -39,14 +40,14 @@ export type UpdateProductInput = z.infer<typeof updateProductInputSchema>;
 
 BASE_DRIZZLE_SCHEMA = """
 <file path="server/src/db/schema.ts">
-import { serial, text, pgTable, timestamp, real, integer } from 'drizzle-orm/pg-core';
+import { serial, text, pgTable, timestamp, numeric, integer } from 'drizzle-orm/pg-core';
 
 export const productsTable = pgTable('products', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
   description: text('description'), // Nullable by default, matches Zod schema
-  price: real('price').notNull(), // Use real() for float numbers
-  stock_quantity: integer('stock_quantity').notNull(), // Use integer() for whole numbers
+  price: numeric('price', { precision: 10, scale: 2 }).notNull(), // Use numeric for monetary values with precision
+  stock_quantity: integer('stock_quantity').notNull(), // Use integer for whole numbers
   created_at: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -81,18 +82,19 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
     const result = await db.insert(productsTable)
       .values({
         name: input.name,
-        description: input.description,
-        price: input.price,
-        stock_quantity: input.stock_quantity
+        description: input.description, 
+        price: input.price, // Type safely passed to numeric column
+        stock_quantity: input.stock_quantity // Type safely passed to integer column
       })
       .returning()
       .execute();
 
+    // Return product data with proper typing
     return result[0];
   } catch (error) {
     // Log the detailed error
     console.error('Product creation failed:', error);
-
+    
     // Re-throw the original error to preserve stack trace
     throw error;
   }
@@ -125,7 +127,7 @@ describe('createProduct', () => {
 
   it('should create a product', async () => {
     const result = await createProduct(testInput);
-
+    
     // Basic field validation
     expect(result.name).toEqual('Test Product');
     expect(result.description).toEqual(testInput.description);
@@ -137,13 +139,13 @@ describe('createProduct', () => {
 
   it('should save product to database', async () => {
     const result = await createProduct(testInput);
-
+    
     // Query using proper drizzle syntax
     const products = await db.select()
       .from(productsTable)
       .where(eq(productsTable.id, result.id))
       .execute();
-
+    
     expect(products).toHaveLength(1);
     expect(products[0].name).toEqual('Test Product');
     expect(products[0].description).toEqual(testInput.description);
@@ -565,5 +567,20 @@ Rules:
 - Must write small but meaningful tests for newly created handlers.
 - Must not modify existing code unless necessary.
 TASK:
+{{ user_prompt }}
+""".strip()
+
+
+EDIT_SET_PROMPT = """
+Files:
+{% for file in files_ctx|sort %}{{ file }} {% endfor %}
+
+Task:
+- Identify project files required for edits or deletion to implement changes.
+- Write draft changes to files if altering `server/src/db/schema.ts` or `server/src/schema.ts`.
+- Run checks to validate correctness of changeset.
+- Narrow down the scope to the minimum necessary.
+
+Requirements:
 {{ user_prompt }}
 """.strip()
