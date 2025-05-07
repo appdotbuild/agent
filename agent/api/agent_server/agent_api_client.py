@@ -712,39 +712,60 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     print(f"Error: {e}")
                     traceback.print_exc()
 
-def cli(host: str = "",
-        port: int = 8001,
-        state_file: str = "/tmp/agent_chat_state.json",
-        ):
-    codegen_proc = None
+@contextlib.contextmanager
+def spawn_local_server(command: List[str] = ["uv", "run", "server"], host: str = "localhost", port: int = 8001):
+    """
+    Spawns a local server process and yields connection details.
+    
+    Args:
+        command: Command to run the server as a list of strings
+        host: Host to use for connection
+        port: Port to use for connection
+        
+    Yields:
+        Tuple of (host, port) for connecting to the server
+    """
+    proc = None
     std_err_file = None
     temp_dir = None
-
+    
     try:
-        if not host:
-            temp_dir = tempfile.mkdtemp()
-            std_err_file = open(os.path.join(temp_dir, "codegen_stderr.log"), "a+")
-            codegen_proc = subprocess.Popen(
-                ["uv", "run", "server"],
-                stdout=subprocess.PIPE,
-                stderr=std_err_file,
-                text=True
-            )
-            host = "localhost"
-            port = 8001
-            print(f"Local server started, pid {codegen_proc.pid}, check `tail -f {std_err_file.name}` for logs")
-
-        anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
+        temp_dir = tempfile.mkdtemp()
+        std_err_file = open(os.path.join(temp_dir, "server_stderr.log"), "a+")
+        proc = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=std_err_file,
+            text=True
+        )
+        logger.info(f"Local server started, pid {proc.pid}, check `tail -f {std_err_file.name}` for logs")
+        
+        yield (host, port)
     finally:
-        if codegen_proc:
-            codegen_proc.terminate()
-            codegen_proc.wait()
-            print("Terminated local server process")
+        if proc:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            logger.info("Terminated local server process")
         if std_err_file:
             std_err_file.close()
         if temp_dir:
             shutil.rmtree(temp_dir)
-            print(f"Removed temporary directory: {temp_dir}")
+            logger.info(f"Removed temporary directory: {temp_dir}")
+
+
+def cli(host: str = "",
+        port: int = 8001,
+        state_file: str = "/tmp/agent_chat_state.json",
+        ):
+    if not host:
+        with spawn_local_server() as (local_host, local_port):
+            anyio.run(run_chatbot_client, local_host, local_port, state_file, backend="asyncio")
+    else:
+        anyio.run(run_chatbot_client, host, port, state_file, backend="asyncio")
 
 
 if __name__ == "__main__":

@@ -13,16 +13,21 @@ from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult,
 logger = logging.getLogger(__name__)
 
 
-async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
-    pattern = re.compile(
-        r'<file path="(?P<path>[^"]+)">(?P<content>.*?)</file>',
-        re.DOTALL
-    )
+class ParseFiles:
+    def __init__(self):
+        self.pattern = re.compile(
+            r'<file path="(?P<path>[^"]+)">(?P<content>.*?)</file>',
+            re.DOTALL
+        )
 
-    def parse_files(content: str) -> dict[str, str]:
-        matches = pattern.finditer(content)
+    def __call__(self, content: str):
+        matches = self.pattern.finditer(content)
         return {match.group("path"): match.group("content") for match in matches}
 
+parse_files = ParseFiles()
+
+
+async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
     errors = []
     files_written = 0
 
@@ -43,6 +48,9 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
 
     if files_written > 0:
         logger.info(f"Written {files_written} files to workspace")
+
+    if errors:
+        errors.append(f"Only those files should be written: {node.data.workspace.allowed}")
 
     return TextRaw("\n".join(errors)) if errors else None
 

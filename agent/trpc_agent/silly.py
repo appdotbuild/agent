@@ -201,10 +201,14 @@ class EditActor(SillyActor):
         self,
         files: dict[str, str],
         user_prompt: str,
+        edit_set: list[str] | None = None,
     ) -> Node[BaseData]:
         workspace = self.workspace.clone()
         for file_path, content in files.items():
             workspace.write_file(file_path, content)
+        if edit_set:
+            self.allowed = edit_set
+            logger.info(f"Allowed files updated: {edit_set}")
         workspace.permissions(protected=self.protected, allowed=self.allowed)
         files_ctx: list[str] = [
             self.file_as_xml(file_path, content)
@@ -289,11 +293,147 @@ class EditActor(SillyActor):
         self.visible = data.get("visible", [])
 
 
+class EditSetActor(SillyActor):
+    root: Node[BaseData] | None = None
+
+    def __init__(
+        self,
+        llm: AsyncLLM,
+        workspace: Workspace,
+        prompt_template: str,
+        beam_width: int = 1,
+        max_depth: int = 10,
+    ):
+        super().__init__(llm, workspace, beam_width, max_depth)
+        self.prompt_template = prompt_template
+
+    async def execute(self, files: dict[str, str], user_prompt: str) -> list[str]:
+        workspace = self.workspace.clone()
+        for file_path, content in files.items():
+            workspace.write_file(file_path, content)
+        files_ctx: list[str] = [
+            self.file_as_xml(file_path, content)
+            for file_path, content in files.items()
+        ]
+        jinja_env = jinja2.Environment()
+        text = jinja_env.from_string(self.prompt_template).render(
+            files_ctx=files_ctx,
+            user_prompt=user_prompt,
+        )
+        logger.info(f"Generated prompt: {text}")
+        message = Message(role="user", content=[TextRaw(text=text)])
+        self.root = Node(BaseData(workspace, [message], {}))
+
+        solution = await self.search(self.root)
+        if solution is None:
+            raise ValueError("No solution found")
+        for block in solution.data.messages[0].content:
+            match block:
+                case ToolUse(name="mark_changeset", input=args):
+                    return args["files"] # pyright: ignore[reportIndexIssue]
+                case _:
+                    continue
+        raise ValueError("No files marked for edit")
+
+    async def run_tools(self, node: Node[BaseData]) -> tuple[list[ToolUseResult], bool]:
+        result, is_complete = [], False
+        for block in node.data.head().content:
+            if not isinstance(block, ToolUse):
+                continue
+            try:
+                match block.name:
+                    case "write_file":
+                        node.data.workspace.write_file(block.input["path"], block.input["content"]) # pyright: ignore[reportIndexIssue]
+                        result.append(ToolUseResult.from_tool_use(block, "success"))
+                        node.data.files[block.input["path"]] = block.input["content"] # pyright: ignore[reportIndexIssue]
+                    case "run_checks":
+                        check_err = await self.run_checks(node)
+                        result.append(ToolUseResult.from_tool_use(block, check_err or "success"))
+                    case "mark_changeset":
+                        result.append(ToolUseResult.from_tool_use(block, "success"))
+                        is_complete = True
+                    case unknown:
+                        raise ValueError(f"Unknown tool: {unknown}")
+            except FileNotFoundError as e:
+                result.append(ToolUseResult.from_tool_use(block, str(e), is_error=True))
+            except PermissionError as e:
+                result.append(ToolUseResult.from_tool_use(block, str(e), is_error=True))
+            except ValueError as e:
+                result.append(ToolUseResult.from_tool_use(block, str(e), is_error=True))
+        return result, is_complete
+
+    async def run_checks(self, node: Node[BaseData]) -> str | None:
+        errors: list[str] = []
+
+        logger.info("Running server tsc compile")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
+        if tsc_result.exit_code != 0:
+            errors.append(f"Error running tsc: {tsc_result.stdout}")
+
+        logger.info("Running client tsc compile")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
+        if tsc_result.exit_code != 0:
+            errors.append(f"Error running tsc: {tsc_result.stdout}")
+
+        return "\n".join(errors) if errors else None
+
+    @property
+    def tools(self) -> list[Tool]:
+        return [
+            {
+                "name": "write_file",
+                "description": "Write a file",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["path", "content"],
+                }
+            },
+            {
+                "name": "run_checks",
+                "description": "Run compile checks to see if any other code is affected",
+                "input_schema": {}
+            },
+            {
+                "name": "mark_changeset",
+                "description": "Mark files to create / edit / delete or run compile checks",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "files": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "List of file paths related to the operation"
+                        },
+                    },
+                    "required": ["files"],
+                }
+            }
+        ]
+
+    async def dump(self) -> object:
+        if self.root is None:
+            return []
+        return await self.dump_node(self.root)
+
+    async def load(self, data: object):
+        if not isinstance(data, list):
+            raise ValueError(f"Expected list got {type(data)}")
+        if not data:
+            return
+        self.root = await self.load_node(data)
+
+
 async def main(user_prompt="Add feature to create plain notes without status."):
     import json
     import dagger
     from llm.utils import get_llm_client
-    from trpc_agent.playbooks import SILLY_PROMPT
+    from trpc_agent.playbooks import EDIT_SET_PROMPT, SILLY_PROMPT
 
     with open("./trpc_agent/todo_app_snapshot.json", "r") as f:
         files = json.load(f)
@@ -305,6 +445,12 @@ async def main(user_prompt="Add feature to create plain notes without status."):
             base_image="oven/bun:1.2.5-alpine",
             context=dagger.dag.host().directory("./trpc_agent/template"),
             setup_cmd=[["bun", "install"]],
+        )
+
+        edit_set_actor = EditSetActor(
+            llm,
+            workspace.clone(),
+            prompt_template=EDIT_SET_PROMPT,
         )
 
         edit_actor = EditActor(
@@ -334,7 +480,9 @@ async def main(user_prompt="Add feature to create plain notes without status."):
             max_depth=70,
         )
 
-        solution = await edit_actor.execute(files, user_prompt)
+        edit_set = await edit_set_actor.execute(files, user_prompt)
+
+        solution = await edit_actor.execute(files, user_prompt, edit_set)
 
         if solution:
             changeset = {}
