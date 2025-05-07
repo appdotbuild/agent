@@ -433,7 +433,7 @@ Example:
 Example:
 {BASE_DRIZZLE_SCHEMA}
 
-- For each handler write its declaration in corresponding file in server/src/handlers/
+- For each handler write its declaration in corresponding file in server/src/handlers/; prefer simple handlers, follow single responsibility principle
 Example:
 {BASE_HANDLER_DECLARATION}
 
