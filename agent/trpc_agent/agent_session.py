@@ -79,16 +79,7 @@ class TrpcAgentSession(AgentInterface):
         
     @staticmethod
     async def generate_app_name(prompt: str, llm_client: AsyncLLM) -> str:
-        """
-        Generate an app name suitable for use as a GitHub repository name using the LLM.
-        
-        Args:
-            prompt: User's application description
-            llm_client: LLM client to use for generation
-            
-        Returns:
-            A repository-style app name (lowercase with hyphens)
-        """
+        """Generate a GitHub repository name from the application description"""
         try:
             logger.info(f"Generating app name from prompt: {prompt[:50]}...")
             
@@ -103,8 +94,8 @@ Return ONLY the name, nothing else.""")
             
             completion = await llm_client.completion(
                 messages=messages,
-                max_tokens=50,  # Short response is sufficient
-                temperature=0.7  # Some creativity allowed
+                max_tokens=50,
+                temperature=0.7
             )
             
             generated_name = ""
