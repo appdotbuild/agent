@@ -77,13 +77,13 @@ class BaseActor(statemachine.Actor):
 class LLMActor(Protocol):
     llm: AsyncLLM
 
-    async def run_llm(self, nodes: list[Node[BaseData]], **kwargs) -> list[Node[BaseData]]:
+    async def run_llm(self, nodes: list[Node[BaseData]], system_prompt: str | None = None, **kwargs) -> list[Node[BaseData]]:
         async def node_fn(node: Node[BaseData], tx: MemoryObjectSendStream[Node[BaseData]]):
             history = [m for n in node.get_trajectory() for m in n.data.messages]
             new_node = Node[BaseData](
                 data=BaseData(
                     workspace=node.data.workspace.clone(),
-                    messages=[await loop_completion(self.llm, history, **kwargs)],
+                    messages=[await loop_completion(self.llm, history, system_prompt=system_prompt, **kwargs)],
                 ),
                 parent=node
             )

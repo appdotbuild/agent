@@ -82,7 +82,7 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
     const result = await db.insert(productsTable)
       .values({
         name: input.name,
-        description: input.description, 
+        description: input.description,
         price: input.price, // Type safely passed to numeric column
         stock_quantity: input.stock_quantity // Type safely passed to integer column
       })
@@ -94,7 +94,7 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
   } catch (error) {
     // Log the detailed error
     console.error('Product creation failed:', error);
-    
+
     // Re-throw the original error to preserve stack trace
     throw error;
   }
@@ -111,7 +111,7 @@ import { db } from '../db';
 import { productsTable } from '../db/schema';
 import { type CreateProductInput } from '../schema';
 import { createProduct } from '../handlers/create_product';
-import { eq } from 'drizzle-orm';
+import { eq, gte, between, and } from 'drizzle-orm';
 
 // Simple test input
 const testInput: CreateProductInput = {
@@ -127,7 +127,7 @@ describe('createProduct', () => {
 
   it('should create a product', async () => {
     const result = await createProduct(testInput);
-    
+
     // Basic field validation
     expect(result.name).toEqual('Test Product');
     expect(result.description).toEqual(testInput.description);
@@ -139,17 +139,49 @@ describe('createProduct', () => {
 
   it('should save product to database', async () => {
     const result = await createProduct(testInput);
-    
+
     // Query using proper drizzle syntax
     const products = await db.select()
       .from(productsTable)
       .where(eq(productsTable.id, result.id))
       .execute();
-    
+
     expect(products).toHaveLength(1);
     expect(products[0].name).toEqual('Test Product');
     expect(products[0].description).toEqual(testInput.description);
+    expect(products[0].price).toEqual(19.99);
     expect(products[0].created_at).toBeInstanceOf(Date);
+  });
+
+  it('should query products by date range correctly', async () => {
+    // Create test product
+    await createProduct(testInput);
+
+    // Test date filtering - demonstration of correct date handling
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Proper query building - step by step
+    let query = db.select()
+      .from(productsTable);
+
+    // Apply date filter - Date objects work directly with timestamp columns
+    query = query.where(
+      and([
+        gte(productsTable.created_at, today),
+        between(productsTable.created_at, today, tomorrow)
+      ])
+    );
+
+    const products = await query.execute();
+
+    expect(products.length).toBeGreaterThan(0);
+    products.forEach(product => {
+      expect(product.created_at).toBeInstanceOf(Date);
+      expect(product.created_at >= today).toBe(true);
+      expect(product.created_at <= tomorrow).toBe(true);
+    });
   });
 });
 </file>
@@ -216,21 +248,25 @@ BASE_APP_TSX = """
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/utils/trpc';
 import { useState } from 'react';
+// Using type-only import for better TypeScript compliance
 import type { Product } from '../../../server/src/schema';
 
 function App() {
+  // Explicit typing with Product interface
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const createSampleProduct = async () => {
     setIsLoading(true);
     try {
+      // Send numeric values directly - tRPC handles validation via Zod
       const response = await trpc.createProduct.mutate({
         name: 'Sample Product',
         description: 'A sample product created from the UI',
         price: 29.99,
         stock_quantity: 50
       });
+      // Complete response with proper types thanks to tRPC
       setProduct(response);
     } catch (error) {
       console.error('Failed to create product:', error);
@@ -242,11 +278,11 @@ function App() {
   return (
     <div className="flex flex-col items-center justify-center min-h-svh gap-4">
       <h1 className="text-2xl font-bold">Product Management</h1>
-      
+
       <Button onClick={createSampleProduct} disabled={isLoading}>
         Create Sample Product
       </Button>
-      
+
       {isLoading ? (
         <p>Creating product...</p>
       ) : product ? (
@@ -258,6 +294,7 @@ function App() {
             <span>In stock: {product.stock_quantity}</span>
           </div>
           <p className="text-xs text-gray-400 mt-2">
+            {/* created_at is a Date object thanks to z.coerce.date() */}
             Created: {product.created_at.toLocaleDateString()}
           </p>
         </div>
@@ -286,8 +323,106 @@ const appRouter = router({
 ...
 """.strip()
 
+TYPE_ALIGNMENT_RULES = """# CRITICAL Type Alignment Rules:
+1. Align Zod and Drizzle types exactly:
+   - Drizzle `.notNull()` → Zod should NOT have `.nullable()`
+   - Drizzle field without `.notNull()` → Zod MUST have `.nullable()`
+   - Never use `.nullish()` in Zod - use `.nullable()` or `.optional()` as appropriate
 
-BACKEND_DRAFT_PROMPT = f"""
+2. Numeric type handling:
+   - Drizzle `real()` and `integer()` return native number values from the database
+   - Define your Zod schema with `z.number()` for these column types
+   - For integer values, use `z.number().int()` for proper validation
+   - Example: for `integer('quantity')`, use `z.number().int()`
+   - Example: for `real('price')`, use `z.number()`
+
+3. Date handling:
+   - For Drizzle `timestamp()` fields → Use Zod `z.coerce.date()`
+   - For Drizzle `date()` fields → Use Zod `z.string()` with date validation
+   - Always convert dates to proper format when inserting/retrieving
+
+4. Enum handling:
+   - For Drizzle `pgEnum()` → Create matching Zod enum with `z.enum([...])`
+   - NEVER accept raw string for enum fields, always validate against enum values
+
+5. Optional vs Nullable:
+   - Use `.nullable()` when a field can be explicitly null
+   - Use `.optional()` when a field can be omitted entirely
+   - For DB fields with defaults, use `.optional()` in input schemas
+
+6. Type exports:
+   - Export types for ALL schemas using `z.infer<typeof schemaName>`
+   - Create both input and output schema types for handlers
+
+7. Database query patterns:
+   - Always build queries step-by-step, applying `.where()` before `.limit()`, `.offset()`, or `.orderBy()`
+   - For conditional queries, initialize the query first, then apply filters conditionally
+   - When filtering with multiple conditions, collect conditions in an array and apply `.where(and([...conditions]))`
+   - Example pattern for conditional filters:
+     ```typescript
+     // Good pattern for conditional filters
+     let query = db.select().from(productsTable);
+
+     const conditions: SQL<unknown>[] = [];
+
+     if (filters.minPrice !== undefined) {
+       conditions.push(gte(productsTable.price, filters.minPrice));
+     }
+
+     if (filters.category) {
+       conditions.push(eq(productsTable.category, filters.category));
+     }
+
+     if (conditions.length > 0) {
+       query = query.where(conditions.length === 1 ? conditions[0] : and(conditions));
+     }
+
+     // Apply other query modifiers AFTER where clause
+     if (orderBy) {
+       query = query.orderBy(desc(productsTable[orderBy]));
+     }
+
+     // Apply pagination LAST
+     query = query.limit(limit).offset(offset);
+
+     const results = await query.execute();
+     ```
+
+8. Testing Best Practices:
+   - Create reliable test setup with prerequisite data:
+     ```typescript
+     beforeEach(async () => {
+       // Always create prerequisite data first (users, categories, etc.)
+       const user = await db.insert(usersTable)
+         .values({ name: 'Test User', email: 'test@example.com' })
+         .returning()
+         .execute();
+
+       testUserId = user[0].id; // Store IDs for relationships
+
+       // Then create dependent data referencing the prerequisites
+       await db.insert(clientsTable)
+         .values({ name: 'Test Client', user_id: testUserId })
+         .returning()
+         .execute();
+     });
+     ```
+   - Clean up after tests to prevent test interference:
+     ```typescript
+     afterEach(resetDB); // Use a reliable database reset function
+     ```
+   - Use flexible error assertions:
+     ```typescript
+     // Avoid brittle exact message checks
+     expect(() => deleteInvoice(999)).rejects.toThrow(/not found/i);
+     ```
+   - Verify both application state and database state in tests
+   - Explicitly define expected test inputs with proper types
+"""
+
+BACKEND_DRAFT_SYSTEM_PROMPT = f"""
+You are software engineer, follow those rules:
+
 - Define all types using zod in a single file server/src/schema.ts
 - Always define schema and corresponding type using z.infer<typeof typeSchemaName>
 Example:
@@ -298,7 +433,7 @@ Example:
 Example:
 {BASE_DRIZZLE_SCHEMA}
 
-- For each handler write its declaration in corresponding file in server/src/handlers/
+- For each handler write its declaration in corresponding file in server/src/handlers/; prefer simple handlers, follow single responsibility principle
 Example:
 {BASE_HANDLER_DECLARATION}
 
@@ -311,43 +446,23 @@ Example:
 - Registering TRPC routes
 {TRPC_INDEX_SHIM}
 
-# CRITICAL Type Alignment Rules:
-1. Align Zod and Drizzle types exactly:
-   - Drizzle `.notNull()` → Zod should NOT have `.nullable()`
-   - Drizzle field without `.notNull()` → Zod MUST have `.nullable()`
-   - Never use `.nullish()` in Zod - use `.nullable()` or `.optional()` as appropriate
+{TYPE_ALIGNMENT_RULES}
+""".strip()
 
-2. Date handling:
-   - For Drizzle `timestamp()` fields → Use Zod `z.coerce.date()`
-   - For Drizzle `date()` fields → Use Zod `z.string()` with date validation
-   - Always convert dates to proper format when inserting/retrieving
-
-3. Enum handling:
-   - For Drizzle `pgEnum()` → Create matching Zod enum with `z.enum([...])`
-   - NEVER accept raw string for enum fields, always validate against enum values
-
-4. Optional vs Nullable:
-   - Use `.nullable()` when a field can be explicitly null
-   - Use `.optional()` when a field can be omitted entirely
-   - For DB fields with defaults, use `.optional()` in input schemas
-
-5. Type exports:
-   - Export types for ALL schemas using `z.infer<typeof schemaName>`
-   - Create both input and output schema types for handlers
-
+BACKEND_DRAFT_USER_PROMPT = """
 Key project files:
-{{{{project_context}}}}
+{{project_context}}
 
 Generate typescript schema, database schema and handlers declarations.
 Return code within <file path="server/src/handlers/handler_name.ts">...</file> tags.
 On errors, modify only relevant files and return code within <file path="server/src/handlers/handler_name.ts">...</file> tags.
 
 Task:
-{{{{user_prompt}}}}
+{{user_prompt}}
 """.strip()
 
 
-BACKEND_HANDLER_PROMPT = f"""
+BACKEND_HANDLER_SYSTEM_PROMPT = f"""
 - Write implementation for the handler function
 - Write small but meaningful test set for the handler
 
@@ -397,16 +512,18 @@ Example Test:
   ```
 - Add context to errors including input parameters (but exclude sensitive data!)
 - Error handling does not need to be tested in unit tests.
+""".strip()
 
+BACKEND_HANDLER_USER_PROMPT = """
 Key project files:
-{{{{project_context}}}}
+{{project_context}}
 
-Return the handler implementation within <file path="server/src/handlers/{{{{handler_name}}}}.ts">...</file> tags.
-Return the test code within <file path="server/src/tests/{{{{handler_name}}}}.test.ts">...</file> tags.
+Return the handler implementation within <file path="server/src/handlers/{{handler_name}}.ts">...</file> tags.
+Return the test code within <file path="server/src/tests/{{handler_name}}.test.ts">...</file> tags.
 """.strip()
 
 
-FRONTEND_PROMPT = f"""
+FRONTEND_SYSTEM_PROMPT = f"""You are software engineer, follow those rules:
 - Generate react frontend application using radix-ui components.
 - Backend communication is done via TRPC.
 
@@ -417,15 +534,21 @@ Example:
 - Always match frontend state types with exactly what the tRPC endpoint returns
 - For tRPC queries, store the complete response object before using its properties
 - Access nested data correctly based on the server's return structure
+- Always use type-only imports for TypeScript type definitions
+- For numeric values coming from DB via Drizzle, ensure your schemas properly transform string values to numbers
+- Remember that Date objects coming from the server can be directly used with methods like `.toLocaleDateString()`
+- Use proper TypeScript typing for all state variables and function parameters
+""".strip()
 
+FRONTEND_USER_PROMPT = """
 Key project files:
-{{{{project_context}}}}
+{{project_context}}
 
 Return code within <file path="client/src/components/example_component_name.tsx">...</file> tags.
 On errors, modify only relevant files and return code within <file path="...">...</file> tags.
 
 Task:
-{{{{user_prompt}}}}
+{{user_prompt}}
 """.strip()
 
 

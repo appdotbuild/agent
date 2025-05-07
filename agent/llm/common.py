@@ -1,4 +1,4 @@
-from typing import Literal, Protocol, Self, Iterable, TypedDict, TypeAlias, Union, Required
+from typing import Literal, Protocol, Self, Iterable, TypedDict, TypeAlias, Union, Required, NotRequired
 from dataclasses import dataclass
 
 
@@ -133,6 +133,7 @@ class Tool(TypedDict, total=False):
     name: Required[str]
     description: str
     input_schema: Required[dict[str, object]]
+    cache_control: NotRequired[dict[str, str]]
 
 
 class AsyncLLM(Protocol):

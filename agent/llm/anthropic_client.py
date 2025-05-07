@@ -1,4 +1,6 @@
 from typing import Iterable, TypedDict, NotRequired
+import anyio
+import random
 import anthropic
 from anthropic.types import (
     ToolParam,
@@ -13,6 +15,9 @@ from anthropic.types import (
     ToolChoiceParam,
 )
 from llm import common
+from log import get_logger
+
+logger = get_logger(__name__)
 
 
 class AnthropicParams(TypedDict):
@@ -22,13 +27,15 @@ class AnthropicParams(TypedDict):
     temperature: float
     tools: NotRequired[Iterable[ToolParam]]
     tool_choice: NotRequired[ToolChoiceParam]
-    system: NotRequired[str]
+    system: NotRequired[Iterable[TextBlockParam] | str]
 
 
 class AnthropicLLM(common.AsyncLLM):
     def __init__(self, client: anthropic.AsyncAnthropic | anthropic.AsyncAnthropicBedrock, default_model: str = "claude-3-7-sonnet-20250219"):
         self.client = client
         self.default_model = default_model
+        self.use_prompt_caching = "bedrock" not in self.client.__class__.__name__.lower()
+        # this is a workaround for the fact that the bedrock client does not support caching yet
 
     async def completion(
         self,
@@ -48,14 +55,30 @@ class AnthropicLLM(common.AsyncLLM):
         }
 
         if system_prompt is not None:
-            call_args["system"] = system_prompt
+            if self.use_prompt_caching:
+                call_args["system"] = [{
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            else:
+                call_args["system"] = system_prompt
         if tools is not None:
+            if self.use_prompt_caching:
+                tools[-1]["cache_control"] = {"type": "ephemeral"}
             call_args["tools"] = tools # type: ignore
         if tool_choice is not None:
             call_args["tool_choice"] = {"type": "tool", "name": tool_choice}
 
-        completion = await self.client.messages.create(**call_args)
-        return self._completion_from(completion)
+        completion = None
+        while completion is None:
+            try:
+                completion = await self.client.messages.create(**call_args)
+                return self._completion_from(completion)
+            except anthropic.RateLimitError:
+                delay = random.randint(1, 5)
+                logger.warning(f"Rate limit error, retrying in {delay} seconds")
+                await anyio.sleep(delay)
 
     @staticmethod
     def _completion_from(completion: Message) -> common.Completion:
