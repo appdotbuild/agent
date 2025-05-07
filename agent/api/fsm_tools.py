@@ -251,7 +251,7 @@ class FSMToolProcessor[T: FSMInterface]:
         if tool_results:
             thread.append(Message(role="user", content=[
                 *tool_results,
-                TextRaw("Please continue based on these results, addressing any failures or errors if they exist.")
+                TextRaw("Generation complete. You can now review the results and proceed with using the generated application.")
             ]))
         return thread
 
