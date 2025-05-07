@@ -59,6 +59,10 @@ class AgentMessage(BaseModel):
         alias="unifiedDiff", 
         description="A unified diff format string representing code changes made by the agent."
     )
+    app_name: Optional[str] = Field(
+        None,
+        description="Generated application name suitable for use as a GitHub repository name."
+    )
     
     def to_json(self) -> str:
         """Serialize the model to JSON string."""

@@ -76,6 +76,57 @@ class TrpcAgentSession(AgentInterface):
         if not messages:
               return False
         return messages[-1].role == "user"
+        
+    @staticmethod
+    async def generate_app_name(prompt: str, llm_client: AsyncLLM) -> str:
+        """
+        Generate an app name suitable for use as a GitHub repository name using the LLM.
+        
+        Args:
+            prompt: User's application description
+            llm_client: LLM client to use for generation
+            
+        Returns:
+            A repository-style app name (lowercase with hyphens)
+        """
+        try:
+            logger.info(f"Generating app name from prompt: {prompt[:50]}...")
+            
+            messages = [
+                Message(role="user", content=[
+                    TextRaw(f"""Based on this application description, generate a short, concise name suitable for use as a GitHub repository name. 
+The name should be lowercase with words separated by hyphens (kebab-case) and should not include any special characters.
+Application description: "{prompt}"
+Return ONLY the name, nothing else.""")
+                ])
+            ]
+            
+            completion = await llm_client.completion(
+                messages=messages,
+                max_tokens=50,  # Short response is sufficient
+                temperature=0.7  # Some creativity allowed
+            )
+            
+            generated_name = ""
+            for block in completion.content:
+                if isinstance(block, TextRaw):
+                    name = block.text.strip().strip('"\'').lower()
+                    import re
+                    name = re.sub(r'[^a-z0-9\-]', '-', name.replace(' ', '-').replace('_', '-'))
+                    name = re.sub(r'-+', '-', name)
+                    name = name.strip('-')
+                    generated_name = name
+                    break
+            
+            if not generated_name:
+                logger.warning("Failed to generate app name, using default")
+                return "generated-application"
+                
+            logger.info(f"Generated app name: {generated_name}")
+            return generated_name
+        except Exception as e:
+            logger.exception(f"Error generating app name: {e}")
+            return "generated-application"
 
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
@@ -121,6 +172,12 @@ class TrpcAgentSession(AgentInterface):
                     app_diff = await self.get_app_diff()
                     # include empty diffs too as they are valid = template diff
                 messages += new_messages
+                
+                # Generate app name if this is the first response
+                app_name = None
+                if request.agent_state is None and self.processor_instance.fsm_app:  # This is the first request
+                    app_name = await self.generate_app_name(self.processor_instance.fsm_app.fsm.context.user_prompt, self.llm_client)
+                
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
                     traceId=self.trace_id,
@@ -129,7 +186,8 @@ class TrpcAgentSession(AgentInterface):
                         kind=MessageKind.STAGE_RESULT if self.user_answered(messages) else MessageKind.REFINEMENT_REQUEST,
                         content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
-                        unifiedDiff=app_diff
+                        unifiedDiff=app_diff,
+                        app_name=app_name
                     )
                 )
                 await event_tx.send(event_out)
@@ -165,7 +223,8 @@ class TrpcAgentSession(AgentInterface):
                                     kind=MessageKind.STAGE_RESULT,
                                     content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                     agentState={"fsm_state": fsm_state} if fsm_state else None,
-                                    unifiedDiff=final_diff
+                                    unifiedDiff=final_diff,
+                                    app_name=app_name  # Use the same app_name from above
                                 )
                             )
                             logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
@@ -187,7 +246,8 @@ class TrpcAgentSession(AgentInterface):
                     kind=MessageKind.RUNTIME_ERROR,
                     content=f"Error processing request: {str(e)}",
                     agentState=None,
-                    unifiedDiff=None
+                    unifiedDiff=None,
+                    app_name=None
                 )
             )
             await event_tx.send(error_event)
