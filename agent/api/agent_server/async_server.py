@@ -53,6 +53,51 @@ app = FastAPI(
 )
 bearer_scheme = HTTPBearer(auto_error=False)
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    """
+    Custom exception handler for validation errors that provides more user-friendly error messages,
+    particularly for enum validation failures.
+    """
+    errors = exc.errors()
+    formatted_errors = []
+    
+    for error in errors:
+        error_msg = error.get("msg", "")
+        error_type = error.get("type", "")
+        error_loc = error.get("loc", [])
+        error_input = error.get("input", "")
+        
+        # Format enum errors more clearly
+        if error_type == "enum" and "MessageKind" in str(error_loc):
+            if error_input == "STAGE_RESULT":
+                error_msg = f"Input should be 'StageResult' (not 'STAGE_RESULT'). Note the casing difference."
+            elif error_input == "RUNTIME_ERROR":
+                error_msg = f"Input should be 'RuntimeError' (not 'RUNTIME_ERROR'). Note the casing difference." 
+            elif error_input == "REFINEMENT_REQUEST":
+                error_msg = f"Input should be 'RefinementRequest' (not 'REFINEMENT_REQUEST'). Note the casing difference."
+            else:
+                expected = error.get("ctx", {}).get("expected", "")
+                error_msg = f"Invalid value '{error_input}'. Expected one of: {expected}"
+        
+        formatted_error = {
+            "type": error_type,
+            "loc": error_loc,
+            "msg": error_msg,
+            "input": error_input
+        }
+        formatted_errors.append(formatted_error)
+    
+    return JSONResponse(
+        status_code=422,
+        content={"detail": formatted_errors}
+    )
+
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     valid_token = CONFIG.builder_token

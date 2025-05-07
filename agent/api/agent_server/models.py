@@ -11,6 +11,7 @@ from enum import Enum
 import ujson as json
 from typing import Dict, List, Optional, Any, Union, Literal, Type, TypeVar
 from pydantic import BaseModel, Field
+import re
 
 
 T = TypeVar('T', bound='BaseModel')
