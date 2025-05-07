@@ -1,6 +1,7 @@
 from typing import Self
 import uuid
 import dagger
+import anyio
 from dagger import dag, function, object_type, Container, Directory, ReturnType
 
 class ExecResult:
@@ -171,3 +172,28 @@ class Workspace:
             protected=self.protected,
             allowed=self.allowed
         )
+
+    @function
+    async def run_playwright(self, output_path: str | None, host: str = "127.0.0.1", port: int = 5173) -> ExecResult:
+        config_content = await self.read_file("playwright.config.ts")
+        updated_config = config_content.replace(
+            'baseURL: "http://127.0.0.1:8080"',
+            f'baseURL: "http://{host}:{port}"'
+        )
+
+        playwright_ctr = (
+            dag.container()
+            .from_("mcr.microsoft.com/playwright:v1.52.0")
+            .with_directory("/app", self.ctr.directory("."))
+            .with_workdir("/app")
+            .with_new_file("playwright.config.ts", updated_config)
+            .with_exec(["npm", "install"])
+            .with_exec(["npx", "playwright", "test"], expect=ReturnType.ANY)
+        )
+
+        result = await ExecResult.from_ctr(
+            playwright_ctr
+        )
+        if output_path:
+            await playwright_ctr.directory("/app/test_results").export(output_path)
+        return result
