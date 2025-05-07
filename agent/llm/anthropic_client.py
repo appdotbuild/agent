@@ -64,6 +64,8 @@ class AnthropicLLM(common.AsyncLLM):
             else:
                 call_args["system"] = system_prompt
         if tools is not None:
+            if self.use_prompt_caching:
+                tools[-1]["cache_control"] = {"type": "ephemeral"}
             call_args["tools"] = tools # type: ignore
         if tool_choice is not None:
             call_args["tool_choice"] = {"type": "tool", "name": tool_choice}
