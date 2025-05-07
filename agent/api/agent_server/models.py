@@ -63,6 +63,10 @@ class AgentMessage(BaseModel):
         None,
         description="Generated application name suitable for use as a GitHub repository name."
     )
+    commit_message: Optional[str] = Field(
+        None,
+        description="Generated commit message suitable for use in Git commits."
+    )
     
     def to_json(self) -> str:
         """Serialize the model to JSON string."""
