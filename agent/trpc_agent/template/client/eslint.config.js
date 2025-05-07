@@ -22,12 +22,21 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': [
-        'warn',
+        'off',
         { allowConstantExport: true },
       ],
       'tailwindcss/classnames-order': 'off',
-      'tailwindcss/no-custom-classname': 'warn',
+      'tailwindcss/no-custom-classname': 'error',
       'tailwindcss/no-contradicting-classname': 'error',
+    },
+  },
+  {
+    files: ['src/components/**/*.{ts,tsx}'],
+    plugins: {
+      'tailwindcss': tailwindcss,
+    },
+    rules: {
+      'tailwindcss/no-custom-classname': 'off',
     },
   },
 )
