@@ -31,7 +31,7 @@ from api.agent_server.models import (
     ErrorResponse
 )
 from api.agent_server.interface import AgentInterface
-from trpc_agent.agent_session import TrpcAgentSession
+from api.trpc_agent.interface import TrpcAgentInterface
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
 
@@ -209,7 +209,7 @@ async def message(
         logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
         agent_type = {
             "template_diff": TemplateDiffAgentImplementation,
-            "trpc_agent": TrpcAgentSession,
+            "trpc_agent": TrpcAgentInterface,
         }
         return StreamingResponse(
             run_agent(request, agent_type[CONFIG.agent_type]),
