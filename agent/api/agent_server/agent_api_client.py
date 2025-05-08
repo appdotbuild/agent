@@ -426,6 +426,13 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
                 print(f"\033[36m{diff}\033[0m")
                 print("\033[36m--- End of Diff ---\033[0m\n")
+            
+            # Display app_name and commit_message when present
+            if event.message.app_name:
+                print(f"\n\033[35m🚀 App Name: {event.message.app_name}\033[0m")
+            
+            if event.message.commit_message:
+                print(f"\033[35m📝 Commit Message: {event.message.commit_message}\033[0m\n")
 
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
@@ -465,7 +472,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             f"/apply [dir] Apply the latest diff to directory (default: {project_dir})\n"
                             "/export     Export the latest diff to a patchfile\n"
                             "/run [dir]  Apply diff, install deps, and start dev server\n"
-                            "/stop       Stop the currently running server"
+                            "/stop       Stop the currently running server\n"
+                            "/info       Show the app name and commit message"
                         )
                         continue
                     case "/clear":
@@ -473,6 +481,33 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         previous_messages.clear()
                         request = None
                         print("Conversation cleared.")
+                        continue
+                    case "/info":
+                        app_name = None
+                        commit_message = None
+                        
+                        # Look for app_name and commit_message in the events
+                        for evt in reversed(previous_events):
+                            try:
+                                if evt.message:
+                                    if app_name is None and evt.message.app_name is not None:
+                                        app_name = evt.message.app_name
+                                    if commit_message is None and evt.message.commit_message is not None:
+                                        commit_message = evt.message.commit_message
+                                    if app_name is not None and commit_message is not None:
+                                        break
+                            except AttributeError:
+                                continue
+                        
+                        if app_name:
+                            print(f"\033[35m🚀 App Name: {app_name}\033[0m")
+                        else:
+                            print("\033[33mNo app name available\033[0m")
+                            
+                        if commit_message:
+                            print(f"\033[35m📝 Commit Message: {commit_message}\033[0m")
+                        else:
+                            print("\033[33mNo commit message available\033[0m")
                         continue
                     case "/save":
                         with open(state_file, "w") as f:
