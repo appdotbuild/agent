@@ -81,6 +81,11 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.3"
+
       - name: Run linters
         uses: astral-sh/ruff-action@v3
         with:
