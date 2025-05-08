@@ -15,7 +15,7 @@ COPY client/package.json ./client/
 COPY server/package.json ./server/
 
 # Install all dependencies
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile
 
 # Copy the entire project
 COPY . .
