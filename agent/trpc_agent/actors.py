@@ -2,6 +2,7 @@ import os
 import re
 import anyio
 import logging
+from tempfile import TemporaryDirectory
 from anyio.streams.memory import MemoryObjectSendStream
 import jinja2
 from trpc_agent import playbooks
@@ -9,6 +10,7 @@ from core.base_node import Node
 from core.workspace import Workspace, ExecResult
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
                 errors.append(error_msg)
 
     if files_written > 0:
-        logger.info(f"Written {files_written} files to workspace")
+        logger.debug(f"Written {files_written} files to workspace")
 
     if errors:
         errors.append(f"Only those files should be written: {node.data.workspace.allowed}")
@@ -56,13 +58,13 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
 
 
 async def run_tsc_compile(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
-    logger.info("Running TypeScript compilation")
+    logger.debug("Running TypeScript compilation")
     result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
     if result.exit_code == 0:
         logger.info("TypeScript compilation succeeded")
         return result, None
 
-    logger.info(f"TypeScript compilation failed with exit code {result.exit_code}")
+    logger.debug(f"TypeScript compilation failed with exit code {result.exit_code}")
     return result, TextRaw(f"Error running tsc: {result.stdout}")
 
 
@@ -75,6 +77,28 @@ async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]
 
     logger.info(f"Drizzle schema push failed with exit code {result.exit_code}")
     return result, TextRaw(f"Error running drizzle: {result.stderr}")
+
+
+async def run_playwright(node: Node[BaseData], entrypoint: str = "dev:client") -> tuple[ExecResult, TextRaw | None]:
+    logger.info("Running Playwright tests")
+    app_service =  (node.data.workspace.ctr
+    .with_exec(["bun", "install", "."])
+    .with_entrypoint(["bun", "run", entrypoint])
+    .with_exposed_port(5173)
+    .as_service(use_entrypoint=True)
+    )
+    with TemporaryDirectory() as temp_dir:
+        result = await node.data.workspace.run_playwright(
+            app_service,
+            temp_dir,
+        )
+        if result.exit_code == 0:
+            logger.info("Playwright tests succeeded")
+            return result, None
+
+
+        logger.info(f"Playwright tests failed with exit code {result.exit_code}")
+        return result, TextRaw(f"Error running Playwright tests: {result.stderr}")
 
 
 class RunTests:
@@ -457,6 +481,13 @@ class FrontendActor(BaseTRPCActor):
         if content:
             node.data.messages.append(Message(role="user", content=content))
             return False
+
+        run_playwright_result, run_playwright_err = await run_playwright(node)
+        if run_playwright_err:
+            content.append(run_playwright_err)
+            node.data.messages.append(Message(role="user", content=content))
+            return False
+
         return True
 
     async def run_tools(self, node: Node[BaseData]) -> list[ToolUseResult]:
