@@ -5,7 +5,7 @@ from llm.common import Message, TextRaw, Completion, Tool
 from llm.utils import get_llm_client, merge_text
 import uuid
 import ujson as json
-
+import os
 
 pytestmark = pytest.mark.anyio
 
@@ -123,5 +123,24 @@ async def test_gemini():
     match text:
         case TextRaw(text=text):
             assert text != "", "Gemini should return a non-empty response"
+        case _:
+            raise ValueError(f"Unexpected content type: {type(text)}")
+
+
+async def test_gemini_with_image():
+    client = get_llm_client(model_name="gemini-flash")
+    image_path = os.path.join(
+        os.path.dirname(__file__),
+        "image.png",
+    )
+    resp = await client.completion(
+        messages=[Message(role="user", content=[TextRaw("Answer only what is written in the image, single word")])],
+        max_tokens=512,
+        attach_files=[image_path]
+    )
+    text, = merge_text(resp.content)
+    match text:
+        case TextRaw(text=text):
+            assert text.lower() == "app.build"
         case _:
             raise ValueError(f"Unexpected content type: {type(text)}")

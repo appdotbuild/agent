@@ -62,7 +62,7 @@ def _cache_key_from_seq(key: Sequence) -> str:
 
 def get_llm_client(
     backend: Literal["auto"] | LLMBackend = "auto",
-    model_name: Literal["sonnet", "haiku", "gemini-flash", "gemini-pro"] = "sonnet",
+    model_name: Literal["sonnet", "haiku", "gemini-flash", "gemini-pro", "gemini-flash-lite"] = "sonnet",
     cache_mode: CacheMode = "auto",
     client_params: dict | None = None,
 ) -> AsyncLLM:
@@ -113,6 +113,10 @@ def get_llm_client(
         "gemini-flash":
             {
                 "gemini": "gemini-2.5-flash-preview-04-17",
+            },
+        "gemini-flash-lite":
+            {
+                "gemini": "gemini-2.0-flash-lite",
             },
     }
 
