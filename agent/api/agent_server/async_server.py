@@ -74,15 +74,14 @@ async def validation_exception_handler(request, exc):
         error_input = error.get("input", "")
         
         # Format enum errors more clearly
-        if error_type == "enum" and "MessageKind" in str(error_loc):
-            if error_input == "STAGE_RESULT":
-                error_msg = f"Input should be 'StageResult' (not 'STAGE_RESULT'). Note the casing difference."
-            elif error_input == "RUNTIME_ERROR":
-                error_msg = f"Input should be 'RuntimeError' (not 'RUNTIME_ERROR'). Note the casing difference." 
-            elif error_input == "REFINEMENT_REQUEST":
-                error_msg = f"Input should be 'RefinementRequest' (not 'REFINEMENT_REQUEST'). Note the casing difference."
+        if error_type == "enum":
+            expected = error.get("ctx", {}).get("expected", "")
+            if isinstance(error_input, str) and any(error_input.upper() == exp.upper() for exp in expected.replace("'", "").split(", ")):
+                for exp in expected.replace("'", "").split(", "):
+                    if error_input.upper() == exp.upper():
+                        error_msg = f"Invalid enum value: '{error_input}'. Note the casing difference - expected '{exp}'."
+                        break
             else:
-                expected = error.get("ctx", {}).get("expected", "")
                 error_msg = f"Invalid value '{error_input}'. Expected one of: {expected}"
         
         formatted_error = {
