@@ -108,7 +108,7 @@ def get_llm_client(
         },
         "gemini-pro":
             {
-                "gemini": "gemini-2.5-pro-preview-03-25",
+                "gemini": "gemini-2.5-pro-preview-05-06",
             },
         "gemini-flash":
             {
