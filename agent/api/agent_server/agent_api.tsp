@@ -57,6 +57,12 @@ model AgentMessage {
 
   @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
   unifiedDiff: string | null;
+  
+  @doc("Generated application name suitable for use as a GitHub repository name.")
+  app_name: string | null;
+  
+  @doc("Generated commit message suitable for use in Git commits.")
+  commit_message: string | null;
 }
 
 @doc("Structure of the data payload within each Server-Sent Event (SSE).")

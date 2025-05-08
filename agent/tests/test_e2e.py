@@ -23,6 +23,30 @@ def empty_context():
 def anyio_backend():
     return 'asyncio'
 
+def latest_app_name_and_commit_message(events):
+    """Extract the most recent app_name and commit_message from events"""
+    app_name = None
+    commit_message = None
+    
+    for evt in reversed(events):
+        try:
+            if evt.message:
+                # Update app_name if found and not yet set
+                if app_name is None and evt.message.app_name is not None:
+                    app_name = evt.message.app_name
+                    
+                # Update commit_message if found and not yet set
+                if commit_message is None and evt.message.commit_message is not None:
+                    commit_message = evt.message.commit_message
+                    
+                # If both are set, we can break
+                if app_name is not None and commit_message is not None:
+                    break
+        except AttributeError:
+            continue
+    
+    return app_name, commit_message
+
 async def run_e2e(prompt: str, standalone: bool):
     context = empty_context() if standalone else spawn_local_server()
     with context:
@@ -31,6 +55,13 @@ async def run_e2e(prompt: str, standalone: bool):
             assert events, "No response received from agent"
             diff = latest_unified_diff(events)
             assert diff, "No diff was generated in the agent response"
+            
+            # Check that app_name and commit_message are present in the response
+            app_name, commit_message = latest_app_name_and_commit_message(events)
+            assert app_name is not None, "No app_name was generated in the agent response"
+            assert commit_message is not None, "No commit_message was generated in the agent response"
+            logger.info(f"Generated app_name: {app_name}")
+            logger.info(f"Generated commit_message: {commit_message}")
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 success, message = apply_patch(diff, temp_dir)
