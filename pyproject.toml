@@ -52,6 +52,10 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
 # FixMe: how to pull dev dependencies from the children workspace?
 [dependency-groups]
 dev = [
