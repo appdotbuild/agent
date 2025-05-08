@@ -587,29 +587,29 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 else:
                                     print("All services started successfully.")
 
-                                # Simple message about web access
-                                print("\n🌐 Web UI is available at:")
-                                print("   http://localhost:80 (for web servers, default HTTP port)")
+                                    # Simple message about web access
+                                    print("\n🌐 Web UI is available at:")
+                                    print("   http://localhost:80 (for web servers, default HTTP port)")
 
-                                # Use Popen to follow the logs
-                                current_server_process = subprocess.Popen(
-                                    ["docker", "compose", "logs", "-f"],
-                                    cwd=target_dir,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    text=True
-                                )
+                                    # Use Popen to follow the logs
+                                    current_server_process = subprocess.Popen(
+                                        ["docker", "compose", "logs", "-f"],
+                                        cwd=target_dir,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT,
+                                        text=True
+                                    )
 
-                                # Wait briefly and then print a few lines of output
-                                print("\nServer starting, initial output:")
-                                for _ in range(10):  # Print up to 10 lines of output
-                                    line = current_server_process.stdout.readline()
-                                    if not line:
-                                        break
-                                    print(f"  {line.rstrip()}")
+                                    # Wait briefly and then print a few lines of output
+                                    print("\nServer starting, initial output:")
+                                    for _ in range(10):  # Print up to 10 lines of output
+                                        line = current_server_process.stdout.readline()
+                                        if not line:
+                                            break
+                                        print(f"  {line.rstrip()}")
 
-                                print(f"\nServer running in {target_dir}")
-                                print("Use /stop command to stop the server when done.")
+                                    print(f"\nServer running in {target_dir}")
+                                    print("Use /stop command to stop the server when done.")
 
                             except subprocess.CalledProcessError as e:
                                 print(f"Error during project setup: {e}")
@@ -716,19 +716,19 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 def spawn_local_server(command: List[str] = ["uv", "run", "server"], host: str = "localhost", port: int = 8001):
     """
     Spawns a local server process and yields connection details.
-    
+
     Args:
         command: Command to run the server as a list of strings
         host: Host to use for connection
         port: Port to use for connection
-        
+
     Yields:
         Tuple of (host, port) for connecting to the server
     """
     proc = None
     std_err_file = None
     temp_dir = None
-    
+
     try:
         temp_dir = tempfile.mkdtemp()
         std_err_file = open(os.path.join(temp_dir, "server_stderr.log"), "a+")
@@ -739,7 +739,7 @@ def spawn_local_server(command: List[str] = ["uv", "run", "server"], host: str =
             text=True
         )
         logger.info(f"Local server started, pid {proc.pid}, check `tail -f {std_err_file.name}` for logs")
-        
+
         yield (host, port)
     finally:
         if proc:
