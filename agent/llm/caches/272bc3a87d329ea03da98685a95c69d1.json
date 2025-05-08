@@ -1,0 +1,15 @@
+{
+  "ed583473d058e188bf63fb9f0a4aaabc": {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "app.build\n"
+      }
+    ],
+    "input_tokens": 1817,
+    "output_tokens": 4,
+    "stop_reason": "end_turn",
+    "thinking_tokens": null
+  }
+}

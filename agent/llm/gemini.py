@@ -4,7 +4,6 @@ from google import genai
 from google.genai import types as genai_types
 import os
 from llm import common
-import anyio
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -184,15 +183,3 @@ class GeminiLLM(common.AsyncLLM):
                         role="user"
                     ))
         return theirs_messages
-
-
-async def main():
-    gemini_llm = GeminiLLM("gemini-2.5-flash-preview-04-17")
-    messages = [
-        common.Message(role="user", content=[common.TextRaw("Hello, how are you?")]),
-    ]
-    response = await gemini_llm.completion(messages, max_tokens=1024)
-    print(response)
-
-if __name__ == "__main__":
-    anyio.run(main)

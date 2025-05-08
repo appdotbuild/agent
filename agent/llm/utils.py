@@ -47,7 +47,7 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
                 return "anthropic"
             # that is rare case, but may be non-trivial AWS config, try Bedrock again
             return "bedrock"
-        case ("gemini-flash" | "gemini-pro"):
+        case ("gemini-flash" | "gemini-pro" | "gemini-flash-lite"):
             if os.getenv("GEMINI_API_KEY"):
                 return "gemini"
             raise ValueError("Gemini backend requires GEMINI_API_KEY to be set")

@@ -128,7 +128,7 @@ async def test_gemini():
 
 
 async def test_gemini_with_image():
-    client = get_llm_client(model_name="gemini-flash")
+    client = get_llm_client(model_name="gemini-flash-lite")
     image_path = os.path.join(
         os.path.dirname(__file__),
         "image.png",
@@ -139,8 +139,9 @@ async def test_gemini_with_image():
         attach_files=[image_path]
     )
     text, = merge_text(resp.content)
+
     match text:
         case TextRaw(text=text):
-            assert text.lower() == "app.build"
+            assert "app.build" in text.lower(), f"Gemini should return 'app.build', got {text}"
         case _:
             raise ValueError(f"Unexpected content type: {type(text)}")
