@@ -12,6 +12,18 @@ logger = get_logger(__name__)
 
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
 
+
+def _normalize_repo_files(files : list[str]) -> list[str]:
+    repo_dir = Path(__file__).parent.parent.parent
+    normalized = []
+    for file in files:
+        file_path = Path(file)
+        if file_path.is_absolute() and file_path.is_relative_to(repo_dir):
+            normalized.append(file_path.relative_to(repo_dir).as_posix())
+        else:
+            normalized.append(file)
+    return normalized
+
 def normalize(obj):
     match obj:
         case list() | tuple():
@@ -22,6 +34,9 @@ def normalize(obj):
             for k, v in sorted(obj.items()):
                 if k == "id":
                     normalized_dict[k] = "__ID_PLACEHOLDER__"
+                elif k == "attach_files":
+                    # Normalize file paths for CI
+                    normalized_dict[k] = _normalize_repo_files(v)
                 else:
                     normalized_dict[k] = normalize(v)
             return normalized_dict
