@@ -92,7 +92,6 @@ async def run_playwright(node: Node[BaseData], entrypoint: str = "dev:client") -
             app_service,
             temp_dir,
         )
-        breakpoint()
         if result.exit_code == 0:
             logger.info("Playwright tests succeeded")
             return result, None
