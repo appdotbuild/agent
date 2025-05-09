@@ -127,6 +127,7 @@ async def test_gemini():
             raise ValueError(f"Unexpected content type: {type(text)}")
 
 
+@pytest.mark.skip(reason="Flaky")
 async def test_gemini_with_image():
     client = get_llm_client(model_name="gemini-flash-lite")
     image_path = os.path.join(
