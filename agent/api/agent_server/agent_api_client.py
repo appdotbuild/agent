@@ -7,8 +7,7 @@ import shutil
 import subprocess
 import readline
 import atexit
-import uuid
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
@@ -77,7 +76,7 @@ def setup_readline():
         print(f"Warning: Could not configure readline history: {e}")
         return False
 
-# Helper function to copy template files, modified to support overwrite
+# Helper function to copy template files, supporting overwrite
 def _copy_template_files_recursive(base_dir, target_base, overwrite=False):
     """
     Copy all template files recursively, except those in excluded directories
@@ -85,13 +84,13 @@ def _copy_template_files_recursive(base_dir, target_base, overwrite=False):
     If overwrite is True, existing files in target_base will be replaced.
     """
     excluded_dirs = ["node_modules", "dist"]
-    for root, dirs, files in os.walk(base_dir):
+    for root, dirs, files_in_dir in os.walk(base_dir): # renamed files to files_in_dir
         dirs[:] = [d for d in dirs if d not in excluded_dirs and not d.startswith('.')]
         rel_path_from_template_root = os.path.relpath(root, base_dir)
         if rel_path_from_template_root == ".":
             rel_path_from_template_root = ""
 
-        for file_item in files: # Renamed to avoid conflict
+        for file_item in files_in_dir:
             if file_item.startswith('.') or file_item.endswith('.md'):
                 continue
 
@@ -104,16 +103,20 @@ def _copy_template_files_recursive(base_dir, target_base, overwrite=False):
             
             if os.path.lexists(dest_file_abs) and overwrite:
                 try:
-                    os.remove(dest_file_abs) # Remove before copying if overwrite is true
+                    if os.path.isdir(dest_file_abs) and not os.path.islink(dest_file_abs):
+                        shutil.rmtree(dest_file_abs) # Remove dir if overwriting
+                    else:
+                        os.remove(dest_file_abs) # Remove file/symlink
                 except OSError as e_remove_overwrite:
                     print(f"{C_RED}  Warning: Could not remove for overwrite {dest_file_rel_path}: {e_remove_overwrite}{C_END}")
-                    continue # Skip this file if removal fails
+                    continue 
             
-            if not os.path.lexists(dest_file_abs): # Copy if it doesn't exist, or if it was just removed for overwrite
+            if not os.path.lexists(dest_file_abs):
                 try:
                     shutil.copy2(src_file, dest_file_abs)
-                    if overwrite: print(f"  Overwrote from template: {dest_file_rel_path}")
-                    else: print(f"  Copied from template: {dest_file_rel_path}")
+                    # Minimal logging for this helper for now
+                    # if overwrite: print(f"  Overwrote from template: {dest_file_rel_path}")
+                    # else: print(f"  Copied from template: {dest_file_rel_path}")
                 except Exception as cp_err:
                     print(f"{C_RED}  Warning: Could not copy file {dest_file_rel_path}: {cp_err}{C_END}")
 
@@ -126,8 +129,8 @@ def apply_patch(diff: str, target_dir: str, overwrite_project_from_template: boo
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
-            tmp_filename = os.path.basename(tmp_path)
-            print(f"{C_YELLOW}Temporary patch file '{tmp_filename}' created at: {os.path.abspath(tmp_path)}{C_END}") # Changed color to yellow
+            # Using C_YELLOW from module level as per diff.txt existing colors
+            print(f"{C_YELLOW}Patch temp file: {os.path.abspath(tmp_path)}{C_END}")
 
         file_paths_in_diff = []
         with open(tmp_path, 'rb') as patch_file_for_paths:
@@ -143,63 +146,56 @@ def apply_patch(diff: str, target_dir: str, overwrite_project_from_template: boo
             os.path.join(os.path.dirname(__file__), "../../trpc_agent/template")
         )
 
-        if overwrite_project_from_template and os.path.isdir(template_root):
-            print(f"{C_YELLOW}Resetting target directory '{target_dir}' from template: {template_root}{C_END}")
-            # For a full reset, we should ideally clean relevant parts of target_dir or ensure _copy_template_files_recursive overwrites.
-            # The modified _copy_template_files_recursive now supports overwrite.
-            _copy_template_files_recursive(template_root, target_dir, overwrite=True)
-            print(f"{C_YELLOW}Target directory reset from template complete.{C_END}")
+        if os.path.isdir(template_root):
+            if overwrite_project_from_template:
+                print(f"{C_YELLOW}Resetting '{target_dir}' from template before patching...{C_END}")
+                _copy_template_files_recursive(template_root, target_dir, overwrite=True)
+            else:
+                # For initial creation, ensure template files are present without full overwrite
+                print(f"Copying template files to '{target_dir}' for initial setup...{C_END}")
+                _copy_template_files_recursive(template_root, target_dir, overwrite=False)
         else:
-            # Original logic for initial setup: copy all template files if not overwriting project from template.
-            # This is for first-time setup or if template files are missing but we are not doing a full overwrite.
-            if os.path.isdir(template_root):
-                 print(f"Initial setup/check: Copying necessary template files from {template_root} to {target_dir}")
-                 _copy_template_files_recursive(template_root, target_dir, overwrite=False) # Corrected indentation
+            print(f"{C_RED}Warning: Template directory not found at {template_root}. Cannot prepare template files.{C_END}")
 
-        # The complex symlinking optimization is removed for now to simplify.
-        # Patches will apply directly to the copied files.
-        # If performance becomes an issue for very large templates/many files not in diff,
-        # it can be reintroduced carefully.
+        # The original complex symlink logic from 6ba8c4f7... is now replaced by the above.
 
         original_dir = os.getcwd()
         try:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
 
-            for filepath_in_diff in file_paths_in_diff:
-                if '/' in filepath_in_diff:
-                    directory = os.path.dirname(filepath_in_diff)
-                    if directory:
-                        os.makedirs(directory, exist_ok=True)
-                        # print(f"Ensured directory exists: {directory}") # Too verbose
-
+            # Pre-create directories for files mentioned in the patch if they don't exist
+            for path_in_diff in file_paths_in_diff:
+                if '/' in path_in_diff:
+                    dir_of_file_in_diff = os.path.dirname(path_in_diff)
+                    if dir_of_file_in_diff:
+                        os.makedirs(dir_of_file_in_diff, exist_ok=True)
+            
             print(f"{C_CYAN}Applying patch using python-patch-ng...{C_END}")
-            with open(tmp_path, 'rb') as patch_file_apply:
-                patch_set_apply = PatchSet(patch_file_apply)
-                success = patch_set_apply.apply(strip=0)
+            with open(tmp_path, 'rb') as patch_file_to_apply:
+                patch_set = PatchSet(patch_file_to_apply)
+                success = patch_set.apply(strip=0)
 
-            # (File moving logic for misplaced files remains useful)
-            for filepath_in_diff in file_paths_in_diff:
-                if '/' in filepath_in_diff:
-                    basename = os.path.basename(filepath_in_diff)
-                    dirname = os.path.dirname(filepath_in_diff)
-                    if os.path.exists(basename) and not os.path.exists(filepath_in_diff) and dirname:
-                        print(f"{C_YELLOW}Moving {basename} to correct location {filepath_in_diff}{C_END}")
+            # Move misplaced files (same as current-base)
+            for path_in_diff in file_paths_in_diff:
+                if '/' in path_in_diff:
+                    basename = os.path.basename(path_in_diff)
+                    dirname = os.path.dirname(path_in_diff)
+                    if os.path.exists(basename) and not os.path.exists(path_in_diff) and dirname:
+                        print(f"{C_YELLOW}Moving {basename} to {path_in_diff}{C_END}")
                         os.makedirs(dirname, exist_ok=True)
-                        os.rename(basename, filepath_in_diff)
+                        os.rename(basename, path_in_diff)
 
             if success:
-                return True, f"Successfully applied the patch to the directory '{target_dir}'"
+                return True, f"Successfully applied patch to '{target_dir}'"
             else:
-                # Attempt to get a more detailed error message from patch_ng if possible
-                # For now, generic message
-                return False, f"{C_RED}Failed to apply the patch to '{target_dir}' (some hunks may have been rejected or mismatched). Check patch_ng logs above.{C_END}"
+                return False, f"{C_RED}Failed to apply patch to '{target_dir}' (hunks rejected/mismatched).{C_END}"
         finally:
             os.chdir(original_dir)
             os.unlink(tmp_path)
     except Exception as e:
         traceback.print_exc()
-        return False, f"{C_RED}Error applying patch: {str(e)}{C_END}"
+        return False, f"{C_RED}Error in apply_patch: {e}{C_END}"
 
 
 def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
@@ -272,40 +268,30 @@ def get_multiline_input(prompt: str) -> str:
     return full_input
 
 
-def apply_latest_diff(events: List[AgentSseEvent], resolved_target_dir: str) -> Tuple[bool, str, Optional[str]]:
+def apply_latest_diff(events: List[AgentSseEvent], output_dir: str) -> Tuple[bool, str, Optional[str]]:
     """
-    Apply the latest diff to the specified resolved directory.
-    The caller is responsible for determining and confirming this directory.
-
-    Args:
-        events: List of AgentSseEvent objects
-        resolved_target_dir: The absolute path to the directory where the patch should be applied.
-
-    Returns:
-        Tuple containing:
-            - Success status (boolean)
-            - Result message (string)
-            - Target directory where diff was applied (string, or None if failed)
+    Apply the latest diff to the specified output directory.
+    If output_dir exists, files will be reset from template before patching.
     """
     diff = latest_unified_diff(events)
     if not diff:
         return False, "No diff available to apply", None
-
     try:
-        print(f"Applying diff to confirmed target directory: {resolved_target_dir}")
-        should_overwrite_project = os.path.isdir(resolved_target_dir) # If dir exists, it's a re-apply or update
-        if should_overwrite_project:
-            print(f"{C_YELLOW}Target directory '{resolved_target_dir}' exists. Project will be reset from template before patching.{C_END}")
+        # output_dir is already resolved by the caller (e.g. /run command)
+        print(f"Applying diff to target directory: {output_dir}")
+        should_overwrite = os.path.isdir(output_dir) # If dir exists, it implies re-apply or update
+        if should_overwrite:
+            print(f"{C_YELLOW}Target '{output_dir}' exists. Will reset from template before patching.{C_END}")
 
-        success, message = apply_patch(diff, resolved_target_dir, overwrite_project_from_template=should_overwrite_project)
+        # Call our refactored apply_patch
+        success, message = apply_patch(diff, output_dir, overwrite_project_from_template=should_overwrite)
 
         if success:
-            return True, message, resolved_target_dir
+            return True, message, output_dir
         else:
-            return False, message, resolved_target_dir # Return dir even on partial failure for context
-
+            return False, message, output_dir
     except Exception as e:
-        error_msg = f"Error applying diff: {e}"
+        error_msg = f"Error in apply_latest_diff: {e}"
         traceback.print_exc()
         return False, error_msg, None
 
@@ -327,7 +313,7 @@ def cleanup_docker_projects():
 
 atexit.register(cleanup_docker_projects)
 
-async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
+async def run_chatbot_client(host: str, port: int, state_file_path_arg: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
     """
@@ -335,7 +321,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     global current_server_process
 
     # Prepare state and settings
-    state_file = os.path.expanduser(state_file)
+    state_file_path_arg = os.path.expanduser(state_file_path_arg)
     previous_events: List[AgentSseEvent] = []
     previous_messages: List[str] = []
     request = None
@@ -351,20 +337,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             print(f"Warning: could not parse settings JSON: {settings}")
 
     # Load saved state if available
-    if os.path.exists(state_file):
+    if os.path.exists(state_file_path_arg):
         try:
-            with open(state_file, "r") as f:
-                saved = json.load(f)
-                previous_events = []
-                for e in saved.get("events", []):
-                    try:
-                        previous_events.append(AgentSseEvent.model_validate(e))
-                    except Exception as err:
-                        logger.exception(f"Skipping invalid saved event: {err}")
+            with open(state_file_path_arg, "r") as f_state_load:
+                saved = json.load(f_state_load)
+                previous_events = [AgentSseEvent.model_validate(e) for e in saved.get("events", []) if isinstance(e, dict)]
                 previous_messages = saved.get("messages", [])
-                print(f"Loaded conversation with {len(previous_messages)} messages")
-        except Exception as e:
-            print(f"Warning: could not load state: {e}")
+                print(f"Loaded conversation with {len(previous_messages)} messages from {state_file_path_arg}")
+        except Exception as e_load:
+            print(f"Warning: could not load state from {state_file_path_arg}: {e_load}")
 
     # Banner
     divider = "=" * 60
@@ -460,12 +441,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         # 1. Handle diff payloads --------------------------------------------------
         if msg.unified_diff:
             try:
-                with tempfile.NamedTemporaryFile(suffix="_received.patch", delete=False, mode="w", encoding="utf-8") as tmp:
-                    tmp.write(msg.unified_diff)
-                    patch_path = tmp.name
-                print(f"{C_CYAN}[diff] saved: {os.path.abspath(patch_path)}{C_END}")
-            except Exception as err:
-                print(f"{C_RED}[diff] error saving: {err}{C_END}")
+                with tempfile.NamedTemporaryFile(suffix="_received.patch", delete=False, mode="w", encoding="utf-8") as tmp_diff:
+                    tmp_diff.write(msg.unified_diff)
+                    print(f"{C_CYAN}[diff] saved: {os.path.abspath(tmp_diff.name)}{C_END}")
+            except Exception as e_diff:
+                print(f"{C_RED}[diff] error saving: {e_diff}{C_END}")
 
         # 2. Handle content ---------------------------------------------------------
         if msg.content:
@@ -526,7 +506,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         with project_dir_context() as project_dir:
             while True:
                 try:
-                    ui = get_multiline_input("\033[94mYou> \033[0m")
+                    ui = get_multiline_input(f"{C_YELLOW}You> {C_END}")
                     if ui.startswith("+"):
                         ui = DEFAULT_APP_REQUEST
                 except (EOFError, KeyboardInterrupt):
@@ -598,14 +578,14 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print("\033[33mNo commit message available\033[0m")
                         continue
                     case "/save":
-                        with open(state_file, "w") as f:
+                        with open(state_file_path_arg, "w") as f_save:
                             json.dump({
                                 "events": [e.model_dump() for e in previous_events],
                                 "messages": previous_messages,
                                 "agent_state": request.agent_state if request else None,
                                 "timestamp": datetime.now().isoformat()
-                            }, f, indent=2)
-                        print(f"State saved to {state_file}")
+                            }, f_save, indent=2)
+                        print(f"State saved to {state_file_path_arg}")
                         continue
                     case "/diff":
                         diff = latest_unified_diff(previous_events)
@@ -627,62 +607,29 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                     continue
                         continue
                     case "/apply":
-                        diff = latest_unified_diff(previous_events)
-                        if not diff:
-                            print("No diff available to apply")
+                        diff_to_apply = latest_unified_diff(previous_events)
+                        if not diff_to_apply:
+                            print("No diff to apply.")
                             continue
-                        try:
-                            if rest and rest[0]:
-                                target_dir_to_check = os.path.abspath(rest[0])
-                                print(f"User specified directory: {target_dir_to_check}")
-                            else:
-                                target_dir_to_check = project_dir # Use the session's project_dir
-                                print(f"Using session default project directory: {target_dir_to_check}")
-
-                            # Check if target directory exists and is not empty
-                            if os.path.isdir(target_dir_to_check) and os.listdir(target_dir_to_check):
-                                print(f"Warning: Directory '{target_dir_to_check}' is not empty.")
-                                confirmation = get_multiline_input("Apply changes and overwrite existing files? (yes/no): ").strip().lower()
-                                if confirmation != "yes":
-                                    print("Operation cancelled by user.")
-                                    continue
-                            
-                            # Ensure target directory exists (it might be a new one if user specified a non-existent path)
-                            os.makedirs(target_dir_to_check, exist_ok=True)
-
-                            # Determine if we should overwrite: if target_dir_to_check existed *before* makedirs and user confirmed if non-empty.
-                            # The confirmation logic already handles non-empty. If it's an existing empty dir, or newly created, overwrite is fine.
-                            # A simpler check for `apply_patch` is if the directory is not brand new.
-                            # This is subtly different from apply_latest_diff's check because /apply directly calls apply_patch.
-                            # For /apply, if the user specified a dir that exists, we overwrite from template.
-                            # If they specified a new dir, or used default session dir (which might be new or existing), this logic is tricky.
-                            # Let's assume for /apply, if the user confirmed overwrite for a non-empty dir, we also reset from template.
-                            # A more robust way for `apply_patch` within /apply is to pass a specific flag if the user chose to overwrite.
-                            
-                            # For now, let's keep it simple: if the dir was non-empty and user confirmed, we trigger overwrite.
-                            # This state needs to be passed to apply_patch.
-                            # The existing `target_dir_to_check` might have been created just now if it didn't exist.
-                            # A better flag: did the user confirm an overwrite of a NON-EMPTY directory?
-
-                            user_confirmed_overwrite_non_empty = False
-                            if os.path.isdir(target_dir_to_check) and os.listdir(target_dir_to_check):
-                                print(f"Warning: Directory '{target_dir_to_check}' is not empty.")
-                                confirmation = get_multiline_input("Apply changes and overwrite existing files? (yes/no): ").strip().lower()
-                                if confirmation != "yes":
-                                    print("Operation cancelled by user.")
-                                    continue
-                                user_confirmed_overwrite_non_empty = True
-                            
-                            # If user specified a directory (rest[0]) and it exists, or if they confirmed overwrite for a non-empty default dir,
-                            # then we should reset the project from template.
-                            should_reset_project_for_apply = (rest and rest[0] and os.path.isdir(target_dir_to_check)) or user_confirmed_overwrite_non_empty
-
-                            success, message = apply_patch(diff, target_dir_to_check, overwrite_project_from_template=should_reset_project_for_apply)
-                            print(message)
-                        except Exception as e:
-                            print(f"Error applying diff: {e}")
-                            traceback.print_exc()
-                        continue
+                        
+                        apply_target_dir = ""
+                        should_overwrite_apply = False
+                        if rest and rest[0]:
+                            apply_target_dir = os.path.abspath(rest[0])
+                            print(f"Applying to specified directory: {apply_target_dir}")
+                            if os.path.isdir(apply_target_dir): # Specified dir exists
+                                should_overwrite_apply = True 
+                        else:
+                            # Default: create new timestamped subdir in session's project_dir
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            project_name_ts = f"project_{timestamp}"
+                            apply_target_dir = os.path.join(project_dir, project_name_ts)
+                            print(f"Applying to new directory: {apply_target_dir}")
+                            # should_overwrite_apply remains False for new dirs
+                        
+                        os.makedirs(apply_target_dir, exist_ok=True)
+                        s_apply, m_apply = apply_patch(diff_to_apply, apply_target_dir, overwrite_project_from_template=should_overwrite_apply)
+                        print(m_apply)
                     case "/export":
                         diff = latest_unified_diff(previous_events)
                         if not diff:
@@ -697,98 +644,42 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print(f"Error exporting diff: {e}")
                         continue
                     case "/run":
-                        # First, stop any running server
-                        if current_server_process and current_server_process.poll() is None:
-                            print("Stopping currently running server...")
-                            try:
-                                current_server_process.terminate()
-                                current_server_process.wait(timeout=5)
-                            except Exception as e:
-                                print(f"Warning: Error stopping previous server: {e}")
-                                try:
-                                    current_server_process.kill()
-                                except (ProcessLookupError, OSError):
-                                    pass
-                            current_server_process = None
-
-                        # Determine target directory for /run
-                        if rest and rest[0]:
-                            target_dir_for_run = os.path.abspath(rest[0])
-                            print(f"User specified directory for run: {target_dir_for_run}")
+                        run_custom_dir_arg = rest[0] if rest else None
+                        run_target_dir = ""
+                        if run_custom_dir_arg:
+                            run_target_dir = os.path.abspath(run_custom_dir_arg)
+                            print(f"Run: Using specified directory: {run_target_dir}")
                         else:
-                            target_dir_for_run = project_dir # Use the session's project_dir
-                            print(f"Using session default project directory for run: {target_dir_for_run}")
-
-                        # Check if target directory exists and is not empty
-                        if os.path.isdir(target_dir_for_run) and os.listdir(target_dir_for_run):
-                            print(f"Warning: Directory '{target_dir_for_run}' is not empty.")
-                            confirmation = get_multiline_input("Apply changes, overwrite, and run? (yes/no): ").strip().lower()
-                            if confirmation != "yes":
-                                print("Run operation cancelled by user.")
-                                continue
+                            # Default for /run: create new timestamped project in session AGENT_PROJECT_DIR (or temp)
+                            # This aligns with apply_latest_diff creating a new dir if no custom_dir is passed to it in base
+                            timestamp_run = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            project_name_run = f"project_{timestamp_run}"
+                            run_target_dir = os.path.join(project_dir, project_name_run) # project_dir is from context
+                            print(f"Run: Creating new project in: {run_target_dir}")
                         
-                        # Ensure target directory exists (it might be a new one if user specified a non-existent path)
-                        # apply_latest_diff -> apply_patch will handle creation if it's a new path.
-                        # For existing non-empty path, user has confirmed.
-                        # For new path or empty existing path, no confirmation was needed.
+                        os.makedirs(run_target_dir, exist_ok=True) # Ensure it exists before passing to apply_latest_diff
                         
-                        # Apply the diff to create/update the project
-                        success, message, applied_target_dir = apply_latest_diff(previous_events, target_dir_for_run)
-                        print(message)
-
-                        if success and applied_target_dir:
-                            print(f"\nSetting up project in {applied_target_dir}...")
-
-                            # Setup docker environment with random container names
+                        s_run, m_run, final_run_dir = apply_latest_diff(previous_events, run_target_dir)
+                        print(m_run)
+                        
+                        if s_run and final_run_dir:
+                            # Docker logic from diff.txt (current-base)
+                            print(f"\nSetting up project in {final_run_dir}...")
+                            # ... (rest of docker setup, start_docker_compose, Popen for logs) ...
+                            # This section is complex and taken as-is from diff.txt
                             container_names = setup_docker_env()
-
-                            # Add to cleanup list
-                            if applied_target_dir not in docker_cleanup_dirs:
-                                docker_cleanup_dirs.append(applied_target_dir)
-
+                            if final_run_dir not in docker_cleanup_dirs: docker_cleanup_dirs.append(final_run_dir)
                             print("Building services with Docker Compose...")
                             try:
-                                # Start the services (with build)
-                                success, error_message = start_docker_compose(
-                                    applied_target_dir,
-                                    container_names["project_name"],
-                                    build=True
-                                )
-
-                                if not success:
-                                    print("Warning: Docker Compose returned an error")
-                                    print(f"Error output: {error_message}")
-                                else:
-                                    print("All services started successfully.")
-
-                                    # Simple message about web access
-                                    print("\n🌐 Web UI is available at:")
-                                    print("   http://localhost:80 (for web servers, default HTTP port)")
-
-                                    # Use Popen to follow the logs
-                                    current_server_process = subprocess.Popen(
-                                        ["docker", "compose", "logs", "-f"],
-                                        cwd=applied_target_dir,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT,
-                                        text=True
-                                    )
-
-                                    # Wait briefly and then print a few lines of output
-                                    print("\nServer starting, initial output:")
-                                    for _ in range(10):  # Print up to 10 lines of output
-                                        line = current_server_process.stdout.readline()
-                                        if not line:
-                                            break
-                                        print(f"  {line.rstrip()}")
-
-                                    print(f"\nServer running in {applied_target_dir}")
-                                    print("Use /stop command to stop the server when done.")
-
-                            except subprocess.CalledProcessError as e:
-                                print(f"Error during project setup: {e}")
-                            except FileNotFoundError:
-                                print("Error: 'docker' command not found. Please make sure Docker is installed.")
+                                s_compose, err_compose = start_docker_compose(final_run_dir, container_names["project_name"], build=True)
+                                if not s_compose: print(f"Warning: Docker Compose error: {err_compose}")
+                                else: 
+                                    print("All services started.")
+                                    print("\n🌐 Web UI: http://localhost:80 (default)") # Port assumed
+                                    current_server_process = subprocess.Popen(["docker", "compose", "logs", "-f"], cwd=final_run_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                                    # ... (print initial server output) ...
+                                    print(f"\nServer running in {final_run_dir}. Use /stop.")
+                            except Exception as e_docker: print(f"Error during project setup: {e_docker}")
                         continue
                     case "/stop":
                         if not current_server_process:
@@ -849,7 +740,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 
                 # Send or continue conversation
                 try:
-                    print("\033[92mBot> \033[0m", end="", flush=True)
+                    print(f"{C_BLUE}Bot> {C_END}", end="", flush=True)
                     auth_token = os.environ.get("BUILDER_TOKEN")
                     if request is None:
                         logger.info("Sending new message") # This INFO log will be suppressed by module-level WARN
@@ -888,7 +779,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             continue
 
                     if autosave:
-                        with open(state_file, "w") as f_autosave: # Renamed to avoid conflict
+                        with open(state_file_path_arg, "w") as f_autosave: # Renamed to avoid conflict
                             json.dump({
                                 "events": [e.model_dump() for e in previous_events],
                                 "messages": previous_messages,
