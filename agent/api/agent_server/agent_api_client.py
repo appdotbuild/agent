@@ -75,7 +75,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
-            print(f"Wrote patch to temporary file: {tmp_path}")
+            print(f"\033[33mPatch file created at: {os.path.abspath(tmp_path)}\033[0m")
 
         # First detect all target paths from the patch
         file_paths = []
@@ -138,7 +138,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                         shutil.copy2(src_file, dest_file)
                                         print(f"  ↳ copied file {rel_file_path}")
                                     except Exception as cp_err:
-                                        print(f"Warning: could not copy file {rel_file_path}: {cp_err}")
+                                        print(f"Could not copy file {rel_file_path}: {cp_err}")
 
                     # Copy all template files recursively (except excluded dirs)
                     copy_template_files(template_root, target_dir)
@@ -160,7 +160,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                     os.symlink(template_file, dest_file)
                                     print(f"  ↳ symlinked {rel_path}")
                                 except Exception as link_err:
-                                    print(f"Warning: could not symlink {rel_path}: {link_err}")
+                                    print(f"Could not symlink {rel_path}: {link_err}")
 
                     # After creating symlinks, we immediately convert them into
                     # *real* files (copy-once).  This still saves time because
@@ -177,10 +177,10 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                 os.unlink(dest_file)
                                 shutil.copy2(target_path, dest_file)
                             except Exception as cp_err:
-                                print(f"Warning: could not materialise copy for {rel_path}: {cp_err}")
+                                print(f"Could not materialise copy for {rel_path}: {cp_err}")
         except Exception as link_copy_err:
             # Non-fatal – the patch may still succeed without template files
-            print(f"Warning: could not prepare template symlinks: {link_copy_err}")
+            print(f"Could not prepare template symlinks: {link_copy_err}")
 
         original_dir = os.getcwd()
         try:
@@ -299,13 +299,14 @@ def get_multiline_input(prompt: str) -> str:
     return full_input
 
 
-def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
+def apply_latest_diff(events: List[AgentSseEvent], resolved_target_dir: str) -> Tuple[bool, str, Optional[str]]:
     """
-    Apply the latest diff to a directory.
+    Apply the latest diff to the specified resolved directory.
+    The caller is responsible for determining and confirming this directory.
 
     Args:
         events: List of AgentSseEvent objects
-        custom_dir: Optional custom base directory path
+        resolved_target_dir: The absolute path to the directory where the patch should be applied.
 
     Returns:
         Tuple containing:
@@ -318,26 +319,14 @@ def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = N
         return False, "No diff available to apply", None
 
     try:
-        # Create a timestamp-based project directory name
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        project_name = f"project_{timestamp}"
-
-        if custom_dir:
-            base_dir = custom_dir
-        else:
-            base_dir = os.path.expanduser("~/projects")
-            print(f"Using default project directory: {base_dir}")
-
-        # Create the full project directory path
-        target_dir = os.path.join(base_dir, project_name)
-
-        # Apply the patch
-        success, message = apply_patch(diff, target_dir)
+        print(f"Applying diff to confirmed target directory: {resolved_target_dir}")
+        
+        success, message = apply_patch(diff, resolved_target_dir)
 
         if success:
-            return True, message, target_dir
+            return True, message, resolved_target_dir
         else:
-            return False, message, target_dir
+            return False, message, resolved_target_dir # Return dir even on partial failure for context
 
     except Exception as e:
         error_msg = f"Error applying diff: {e}"
@@ -422,10 +411,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         if event.message:
             if event.message.content:
                 print(event.message.content, end="", flush=True)
-            if diff := event.message.unified_diff:
-                print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-                print(f"\033[36m{diff}\033[0m")
-                print("\033[36m--- End of Diff ---\033[0m\n")
+            if event.message.unified_diff is not None: # Check if diff exists
+                print("\n\n\033[36m--- Diff received from agent. It will be written to a temporary file upon /apply or /run. ---\033[0m\n")
             
             # Display app_name and commit_message when present
             if event.message.app_name:
@@ -544,21 +531,26 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print("No diff available to apply")
                             continue
                         try:
-                            # Create a timestamp-based project directory name
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            project_name = f"project_{timestamp}"
-
                             if rest and rest[0]:
-                                base_dir = rest[0]
+                                target_dir_to_check = os.path.abspath(rest[0])
+                                print(f"User specified directory: {target_dir_to_check}")
                             else:
-                                base_dir = project_dir
-                                print(f"Using default project directory: {base_dir}")
+                                target_dir_to_check = project_dir # Use the session's project_dir
+                                print(f"Using session default project directory: {target_dir_to_check}")
 
-                            # Create the full project directory path
-                            target_dir = os.path.join(base_dir, project_name)
+                            # Check if target directory exists and is not empty
+                            if os.path.isdir(target_dir_to_check) and os.listdir(target_dir_to_check):
+                                print(f"Warning: Directory '{target_dir_to_check}' is not empty.")
+                                confirmation = get_multiline_input("Apply changes and overwrite existing files? (yes/no): ").strip().lower()
+                                if confirmation != "yes":
+                                    print("Operation cancelled by user.")
+                                    continue
+                            
+                            # Ensure target directory exists (it might be a new one if user specified a non-existent path)
+                            os.makedirs(target_dir_to_check, exist_ok=True)
 
                             # Apply the patch
-                            success, message = apply_patch(diff, target_dir)
+                            success, message = apply_patch(diff, target_dir_to_check)
                             print(message)
                         except Exception as e:
                             print(f"Error applying diff: {e}")
@@ -592,26 +584,46 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                     pass
                             current_server_process = None
 
-                        # Apply the diff to create a new project
-                        custom_dir = rest[0] if rest else None
-                        success, message, target_dir = apply_latest_diff(previous_events, custom_dir)
+                        # Determine target directory for /run
+                        if rest and rest[0]:
+                            target_dir_for_run = os.path.abspath(rest[0])
+                            print(f"User specified directory for run: {target_dir_for_run}")
+                        else:
+                            target_dir_for_run = project_dir # Use the session's project_dir
+                            print(f"Using session default project directory for run: {target_dir_for_run}")
+
+                        # Check if target directory exists and is not empty
+                        if os.path.isdir(target_dir_for_run) and os.listdir(target_dir_for_run):
+                            print(f"Warning: Directory '{target_dir_for_run}' is not empty.")
+                            confirmation = get_multiline_input("Apply changes, overwrite, and run? (yes/no): ").strip().lower()
+                            if confirmation != "yes":
+                                print("Run operation cancelled by user.")
+                                continue
+                        
+                        # Ensure target directory exists (it might be a new one if user specified a non-existent path)
+                        # apply_latest_diff -> apply_patch will handle creation if it's a new path.
+                        # For existing non-empty path, user has confirmed.
+                        # For new path or empty existing path, no confirmation was needed.
+                        
+                        # Apply the diff to create/update the project
+                        success, message, applied_target_dir = apply_latest_diff(previous_events, target_dir_for_run)
                         print(message)
 
-                        if success and target_dir:
-                            print(f"\nSetting up project in {target_dir}...")
+                        if success and applied_target_dir:
+                            print(f"\nSetting up project in {applied_target_dir}...")
 
                             # Setup docker environment with random container names
                             container_names = setup_docker_env()
 
                             # Add to cleanup list
-                            if target_dir not in docker_cleanup_dirs:
-                                docker_cleanup_dirs.append(target_dir)
+                            if applied_target_dir not in docker_cleanup_dirs:
+                                docker_cleanup_dirs.append(applied_target_dir)
 
                             print("Building services with Docker Compose...")
                             try:
                                 # Start the services (with build)
                                 success, error_message = start_docker_compose(
-                                    target_dir,
+                                    applied_target_dir,
                                     container_names["project_name"],
                                     build=True
                                 )
@@ -629,7 +641,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                     # Use Popen to follow the logs
                                     current_server_process = subprocess.Popen(
                                         ["docker", "compose", "logs", "-f"],
-                                        cwd=target_dir,
+                                        cwd=applied_target_dir,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT,
                                         text=True
@@ -643,7 +655,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                             break
                                         print(f"  {line.rstrip()}")
 
-                                    print(f"\nServer running in {target_dir}")
+                                    print(f"\nServer running in {applied_target_dir}")
                                     print("Use /stop command to stop the server when done.")
 
                             except subprocess.CalledProcessError as e:
