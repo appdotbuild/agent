@@ -15,8 +15,13 @@ def anyio_backend():
 
 @pytest.fixture
 def empty_token(monkeypatch):
-    monkeypatch.delenv("BUILDER_TOKEN")
+    if os.getenv("BUILDER_TOKEN") is not None:
+        monkeypatch.delenv("BUILDER_TOKEN")
     yield
+
+@pytest.fixture
+def dummy_token(monkeypatch):
+    monkeypatch.setenv("BUILDER_TOKEN", "dummy_token")
 
 @pytest.fixture
 async def client(monkeypatch):
@@ -24,15 +29,13 @@ async def client(monkeypatch):
     async with AgentApiClient() as client:
         yield client
 
-
-
 async def test_health(client):
     resp = await client.client.get("http://test/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "healthy"}
 
 
-async def test_invalid_token(client):
+async def test_invalid_token(dummy_token, client):
     with pytest.raises(ValueError, match="Request failed with status code 403"):
         await client.send_message("Hello", auth_token="invalid_token")
 
@@ -42,7 +45,7 @@ async def test_auth_disabled(empty_token, client):
     assert len(events) > 0, "No events received with empty token"
 
 
-async def test_empty_token(client):
+async def test_empty_token(dummy_token, client):
     with pytest.raises(ValueError, match="Request failed with status code 401"):
         await client.send_message("Hello", auth_token=None)
 

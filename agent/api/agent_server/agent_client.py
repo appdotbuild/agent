@@ -1,6 +1,5 @@
 import json
 import uuid
-import os
 from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
 
@@ -10,9 +9,6 @@ from log import get_logger
 from llm.common import Message
 
 logger = get_logger(__name__)
-
-# Set dummy token for tests
-os.environ["BUILDER_TOKEN"] = "dummy_token_for_tests"
 
 
 class AgentApiClient:
@@ -61,7 +57,8 @@ class AgentApiClient:
             logger.info(f"Using existing request with trace ID: {request.trace_id}, ignoring the message parameter")
 
         # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
-        url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
+        url = self.base_url or "http://test"
+        url += "/message"
         headers={"Accept": "text/event-stream"}
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
@@ -78,7 +75,9 @@ class AgentApiClient:
             timeout=None
         ) as response:
             if response.status_code != 200:
-                raise ValueError(f"Request failed with status code {response.status_code}")
+                # wait for the response to be fully read
+                await response.aread()
+                raise ValueError(f"Request failed with status code {response.status_code}: {response.json()}")
             events = await self.parse_sse_events(response, stream_cb)
         return events, request
 
