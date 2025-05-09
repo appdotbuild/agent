@@ -18,14 +18,6 @@ services:
       retries: 3
       start_period: 10s
 
-  unified:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: unified
-    ports:
-      - "88:80"
-
   db-push:
     build:
       context: .

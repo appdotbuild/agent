@@ -3,7 +3,7 @@
 		output stderr
 		level INFO
 	}
-	root * /srv
+	root * /app/client/dist
 	request_body {
 		max_size 10M
 	}
