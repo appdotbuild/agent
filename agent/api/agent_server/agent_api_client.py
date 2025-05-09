@@ -420,6 +420,19 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         – App name / commit message banners are printed when first encountered.
         """
         nonlocal displayed_message_count
+        
+        # Add a newline before each event's output for separation
+        print() 
+
+        # ANSI escape codes for colors
+        C_BLUE = '\033[94m'
+        C_GREEN = '\033[92m'
+        C_YELLOW = '\033[93m'
+        C_RED = '\033[91m'
+        C_MAGENTA = '\033[95m'
+        C_CYAN = '\033[96m'
+        C_END = '\033[0m'
+        C_BOLD = '\033[1m'
 
         msg = event.message
         if not msg:
@@ -431,9 +444,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 with tempfile.NamedTemporaryFile(suffix="_received.patch", delete=False, mode="w", encoding="utf-8") as tmp:
                     tmp.write(msg.unified_diff)
                     patch_path = tmp.name
-                print(f"\n\033[36m--- Diff saved to: {os.path.abspath(patch_path)} ---\033[0m\n")
+                print(f"{C_CYAN}[diff] saved: {os.path.abspath(patch_path)}{C_END}")
             except Exception as err:
-                print(f"\n\033[31mCould not save diff to temp file: {err}\033[0m\n")
+                print(f"{C_RED}[diff] error saving: {err}{C_END}")
 
         # 2. Handle content ---------------------------------------------------------
         if msg.content:
@@ -448,22 +461,21 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 if isinstance(history, list) and all(isinstance(m, dict) for m in history):
                     new_messages = history[displayed_message_count:]
                     if new_messages:
-                        print("\n\033[32m--- New Chat Messages ---\033[0m")
-                        for m in new_messages:  # direct order
-                            role = m.get("role", "unknown")
-                            role_color = "\033[36m" if role == "assistant" else "\033[33m"
-                            print(f"\n{role_color}{role.upper()}:\033[0m")
-                            for item in m.get("content", []):
+                        for m_item in new_messages:  # Renamed 'm' to 'm_item' to avoid conflict
+                            role = m_item.get("role", "unknown")
+                            role_color = C_BLUE if role == "assistant" else C_YELLOW
+                            prefix = f"{role_color}[{role}]{C_END}" 
+                            print(prefix, end=" ") 
+                            for item in m_item.get("content", []):
                                 if isinstance(item, dict):
                                     t = item.get("type")
                                     if t == "text":
-                                        print(f"  {item.get('text', '')}")
+                                        print(item.get('text', '').strip(), end=" ") 
                                     elif t in ("tool_use", "tool_use_result"):
-                                        print(f"  \033[35m[{t}]: {item.get('name', '')}\033[0m")
-                        print("\n\033[32m--- End of New Chat Messages ---\033[0m\n")
+                                        print(f"{C_MAGENTA}[{t}:{item.get('name','')}] {C_END}", end=" ")
+                            print() 
                         displayed_message_count = len(history)
-                    # Chat history handled – skip default printing
-                    return
+                    return 
             # b) Generic content (possibly big JSON) --------------------------------
             content_str = str(content_raw)
             if content_str.lstrip().startswith(('{', '[')) and len(content_str) > 500:
@@ -471,17 +483,23 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     with tempfile.NamedTemporaryFile(suffix="_content.json", delete=False, mode="w", encoding="utf-8") as tmp:
                         tmp.write(content_str)
                         path = tmp.name
-                    print(f"\n[Large content ({len(content_str)} bytes) written to {os.path.abspath(path)}]\n")
+                    print(f"{C_GREEN}[content] {len(content_str)} bytes saved to {os.path.abspath(path)}{C_END}")
                 except Exception as err:
-                    print(f"\n[Large content suppressed – error saving to file: {err}]\n")
+                    print(f"{C_RED}[content] error saving large payload: {err}{C_END}")
             else:
                 print(content_str, end="", flush=True)
+                # Add a newline if it was just plain text to separate from potential metadata below OR if it was the last thing
+                print() # Ensuring a newline after any plain text content.
 
         # 3. Extra metadata ---------------------------------------------------------
+        # Ensure metadata also has a clear separation if it's the only thing printed after content.
+        # The initial print() at the top of print_event should handle most separation needs.
+        # If app_name or commit_message is printed, they inherently add newlines.
+
         if msg.app_name:
-            print(f"\n\033[35m🚀 App Name: {msg.app_name}\033[0m")
+            print(f"{C_BOLD}{C_GREEN}🚀 [app] {msg.app_name}{C_END}")
         if msg.commit_message:
-            print(f"\033[35m📝 Commit Message: {msg.commit_message}\033[0m\n")
+            print(f"{C_BOLD}{C_GREEN}📝 [commit] {msg.commit_message}{C_END}")
 
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
