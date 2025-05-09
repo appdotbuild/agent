@@ -2,6 +2,7 @@ import os
 import re
 import anyio
 import logging
+import contextlib
 from tempfile import TemporaryDirectory
 from anyio.streams.memory import MemoryObjectSendStream
 import jinja2
@@ -10,6 +11,7 @@ from core.base_node import Node
 from core.workspace import Workspace, ExecResult
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
+from llm.utils import merge_text
 
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,16 @@ class ParseFiles:
     def __call__(self, content: str):
         matches = self.pattern.finditer(content)
         return {match.group("path"): match.group("content") for match in matches}
+
+
+def extract_tag(source: str | None, tag: str):
+    if source is None:
+        return None
+    pattern = re.compile(rf"<{tag}>(.*?)</{tag}>", re.DOTALL)
+    match = pattern.search(source)
+    if match:
+        return match.group(1).strip()
+    return None
 
 parse_files = ParseFiles()
 
@@ -79,25 +91,38 @@ async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]
     return result, TextRaw(f"Error running drizzle: {result.stderr}")
 
 
-async def run_playwright(node: Node[BaseData], entrypoint: str = "dev:client") -> tuple[ExecResult, TextRaw | None]:
+@contextlib.contextmanager
+def ensure_dir(dir_path: str | None):
+    if dir_path is not None:
+        yield dir_path
+    else:
+        with TemporaryDirectory() as temp_dir:
+            yield temp_dir
+
+async def run_playwright(
+    node: Node[BaseData],
+    entrypoint: str = "dev:client",
+    log_dir: str | None = None,
+                        ) -> tuple[ExecResult, TextRaw | None]:
     logger.info("Running Playwright tests")
+
     app_service =  (node.data.workspace.ctr
-    .with_exec(["bun", "install", "."])
-    .with_entrypoint(["bun", "run", entrypoint])
-    .with_exposed_port(5173)
-    .as_service(use_entrypoint=True)
-    )
-    with TemporaryDirectory() as temp_dir:
+        .with_exec(["bun", "install", "."])
+        .with_entrypoint(["bun", "run", entrypoint])
+        .with_exposed_port(5173)
+        .as_service(use_entrypoint=True)
+        )
+
+    with ensure_dir(log_dir) as temp_dir:
         result = await node.data.workspace.run_playwright(
             app_service,
             temp_dir,
         )
         if result.exit_code == 0:
-            logger.info("Playwright tests succeeded")
+            logger.debug("Playwright tests succeeded")
             return result, None
 
-
-        logger.info(f"Playwright tests failed with exit code {result.exit_code}")
+        logger.warning(f"Playwright tests failed with exit code {result.exit_code}")
         return result, TextRaw(f"Error running Playwright tests: {result.stderr}")
 
 
@@ -411,12 +436,15 @@ class HandlersActor(BaseTRPCActor):
 class FrontendActor(BaseTRPCActor):
     root: Node[BaseData] | None = None
 
-    def __init__(self, llm: AsyncLLM, workspace: Workspace, model_params: dict, beam_width: int = 1, max_depth: int = 5):
+    def __init__(self, llm: AsyncLLM, vlm: AsyncLLM, workspace: Workspace, model_params: dict, beam_width: int = 1, max_depth: int = 5):
         super().__init__(llm, workspace, {**model_params, "tools": self.tools}, beam_width=beam_width, max_depth=max_depth)
         self.root = None
+        self.vlm = vlm
+        self._user_prompt = None
 
     async def execute(self, user_prompt: str, server_files: dict[str, str]) -> Node[BaseData]:
         logger.info(f"Executing frontend actor with user prompt: {user_prompt}")
+        self._user_prompt = user_prompt
         await self.cmd_create(user_prompt, server_files)
         solution = await self.search(self.root)
         if solution is None:
@@ -449,6 +477,49 @@ class FrontendActor(BaseTRPCActor):
         message = Message(role="user", content=[TextRaw(user_prompt_rendered)])
         self.root = Node(BaseData(workspace, [message], {}))
 
+    async def eval_playwright(self, node: Node[BaseData]) -> list[TextRaw]:
+        messages = []
+        with TemporaryDirectory() as temp_dir:
+            result, err = await run_playwright(node, log_dir=temp_dir)
+            if err:
+                messages.append(err)
+            else:
+                browsers = ("chromium", "firefox", "webkit")
+                expected_files = [f"{browser}-screenshot.png" for browser in browsers]
+                console_logs = ""
+                for browser in browsers:
+                    console_log_file = os.path.join(temp_dir, f"{browser}-console.log")
+                    screenshot_file = os.path.join(temp_dir, f"{browser}-screenshot.png")
+                    if not os.path.exists(os.path.join(temp_dir, screenshot_file)):
+                        messages.append(TextRaw(f"Could not make screenshot: {screenshot_file}"))
+
+                    if os.path.exists(os.path.join(temp_dir, console_log_file)):
+                        with open(console_log_file, "r") as f:
+                            console_logs += f"\n{browser}:\n"
+                            console_logs += f.read()
+
+                prompt = jinja2.Environment().from_string(playbooks.FRONTEND_VALIDATION_PROMPT)
+                prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=self._user_prompt)
+                message = Message(role="user", content=[TextRaw(prompt_rendered)])
+
+                vlm_feedback = await self.vlm.completion(
+                    messages=[message],
+                    max_tokens=1024,
+                    attach_files=[os.path.join(temp_dir, file) for file in expected_files],
+                )
+                vlm_feedback, = merge_text(list(vlm_feedback.content))
+                vlm_text = vlm_feedback.text # pyright: ignore
+
+                answer = extract_tag(vlm_text, "answer") or ""
+                reason = extract_tag(vlm_text, "reason") or ""
+                if "no" in answer.lower():
+                    logger.info(f"Frontend playwright validation failed. Answer: {answer}, reason: {reason}")
+                    messages.append(TextRaw(f"Playwright validation failed with the reason: {reason}"))
+                else:
+                    logger.info(f"Frontend playwright validation succeeded. Answer: {answer}, reason: {reason}")
+        return messages
+
+
     async def eval_node(self, node: Node[BaseData]) -> bool:
         content: list[ContentBlock] = []
         content.extend(await self.run_tools(node))
@@ -463,9 +534,9 @@ class FrontendActor(BaseTRPCActor):
             node.data.messages.append(Message(role="user", content=content))
             return False
 
-        run_playwright_result, run_playwright_err = await run_playwright(node)
-        if run_playwright_err:
-            content.append(run_playwright_err)
+        playwright_feedback = await self.eval_playwright(node)
+        if playwright_feedback:
+            content += playwright_feedback
             node.data.messages.append(Message(role="user", content=content))
             return False
 

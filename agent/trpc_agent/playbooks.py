@@ -552,6 +552,28 @@ Task:
 """.strip()
 
 
+FRONTEND_VALIDATION_PROMPT = """Given the attached screenshot, decide where the frontend code is correct and relevant to the original prompt. Keep in mind that the backend is currently not implemented, so you can only validate the frontend code and ignore the backend part.
+Original prompt to generate this website: {{ user_prompt }}.
+
+Console logs from the browsers:
+{{ console_logs }}
+
+Answer "yes" or "no" wrapped in <answer> tag. Follow the example below.
+
+Example 1:
+<reason>the website looks valid</reason>
+<answer>yes</answer>
+
+Example 2:
+<reason>there is nothing on the screenshot, could be rendering issue</reason>
+<answer>no</answer>
+
+Example 3:
+<reason>the website looks okay, but displays database connection error. Given it is not frontend-related, I should answer yes</reason>
+<answer>yes</answer>
+"""
+
+
 SILLY_PROMPT = """
 Files:
 {% for file in files_ctx|sort %}{{ file }} {% endfor %}

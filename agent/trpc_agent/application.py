@@ -136,6 +136,7 @@ class FSMApplication:
             ctx.error = str(error)
 
         llm = get_llm_client()
+        vlm = get_llm_client(model_name="gemini-flash-lite")
         model_params = settings or {}
         g_llm = get_llm_client(model_name="gemini-pro")
         workspace = await Workspace.create(
@@ -147,7 +148,7 @@ class FSMApplication:
         draft_actor = DraftActor(llm, workspace.clone(), model_params)
         application_actor = ConcurrentActor(
             handlers=HandlersActor(llm, workspace.clone(), model_params, beam_width=3),
-            frontend=FrontendActor(llm, workspace.clone(), model_params, beam_width=1, max_depth=20)
+            frontend=FrontendActor(llm, vlm, workspace.clone(), model_params, beam_width=1, max_depth=20)
         )
         edit_actor = EditActor(
             g_llm,
