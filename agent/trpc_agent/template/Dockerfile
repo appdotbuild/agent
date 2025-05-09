@@ -35,11 +35,11 @@ RUN apk add --no-cache curl caddy supervisor
 WORKDIR /app
 
 # Copy built client files and Caddyfile
-COPY --from=builder /app/client/dist /app/client/dist
+COPY --from=builder /app/client/ /app/client/
 COPY --from=builder /app/client/Caddyfile /app/client/Caddyfile
 
 # Copy server files
-COPY --from=builder /app/server/dist /app/server/dist
+COPY --from=builder /app/server/ /app/server/
 COPY --from=builder /app/server/package.json /app/server/
 
 # Install server dependencies
