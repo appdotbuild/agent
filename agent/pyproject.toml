@@ -32,6 +32,17 @@ update_cache = "commands:update_cache"
 lint = "commands:run_lint"
 generate = "commands:generate"
 interactive = "commands:interactive"
+help = "commands:help_command"
+
+[tool.agent.command_docs]
+server = "Runs the API server. Example: uv run server"
+test = "Runs pytest with VCR cache in replay mode. Accepts pytest arguments. Example: uv run test -k test_specific_function"
+test_e2e = "Runs end-to-end tests (subset of 'test' focused on e2e). Example: uv run test_e2e"
+update_cache = "Updates VCR cache for tests by running pytest in record mode. Example: uv run update_cache tests/test_specific_file.py"
+lint = "Runs ruff to check and fix linting issues. Example: uv run lint"
+generate = "Generates code based on a prompt. Example: uv run generate --prompt='your app description'"
+interactive = "Starts an interactive CLI session with the agent. Example: uv run interactive"
+help = "Displays this help message. Example: uv run help"
 
 [dependency-groups]
 dev = [
