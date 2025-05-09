@@ -449,6 +449,41 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         if not msg:
             return
 
+        # 0. Report if Agent State is in this specific event and save it ------------
+        if msg.agent_state:
+            try:
+                state_timestamp = datetime.now().strftime("%H%M%S_%f")
+                state_event_filename = f"agent_state_event_{state_timestamp}.json"
+                state_event_filepath = os.path.join(tempfile.gettempdir(), state_event_filename)
+                with open(state_event_filepath, "w") as f_event_state:
+                    json.dump(msg.agent_state, f_event_state, indent=2)
+                print(f"{C_GREEN}[state] update in event, saved to: {os.path.abspath(state_event_filepath)}{C_END}")
+                
+                # Attempt to print some key details from agent_state
+                if isinstance(msg.agent_state, dict):
+                    fsm_state = msg.agent_state.get("fsm_state")
+                    if isinstance(fsm_state, dict):
+                        current_fsm_state_val = fsm_state.get("current_state", "N/A")
+                        print(f"{C_GREEN}  └─ FSM Current State: {current_fsm_state_val}{C_END}")
+                    
+                    # Example: Print up to 3 top-level keys and their types or simple values
+                    detail_count = 0
+                    for key, value in msg.agent_state.items():
+                        if key == "fsm_state": continue # Already handled
+                        if detail_count < 3:
+                            if isinstance(value, (str, int, float, bool)):
+                                print(f"{C_GREEN}  └─ {key}: {value}{C_END}")
+                            else:
+                                print(f"{C_GREEN}  └─ {key}: <{type(value).__name__}>{C_END}")
+                            detail_count += 1
+                        else:
+                            break
+                elif isinstance(msg.agent_state, (str, int, float, bool)):
+                     print(f"{C_GREEN}  └─ State Value: {msg.agent_state}{C_END}")
+
+            except Exception as e_state_save:
+                print(f"{C_RED}[state] error saving event-specific state: {e_state_save}{C_END}")
+
         # 1. Handle diff payloads --------------------------------------------------
         if msg.unified_diff:
             try:
@@ -469,24 +504,29 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 except json.JSONDecodeError:
                     history = None
 
-                if isinstance(history, list) and all(isinstance(m, dict) for m in history):
+                if isinstance(history, list) and all(isinstance(m_dict, dict) for m_dict in history):
                     new_messages = history[displayed_message_count:]
                     if new_messages:
-                        for m_item in new_messages:  # Renamed 'm' to 'm_item' to avoid conflict
+                        for m_item in new_messages:
                             role = m_item.get("role", "unknown")
                             role_color = C_BLUE if role == "assistant" else C_YELLOW
-                            prefix = f"{role_color}[{role}]{C_END}" 
-                            print(prefix, end=" ") 
+                            prefix = f"{role_color}[{role}]{C_END}"
+                            print(prefix, end=" ")
                             for item in m_item.get("content", []):
                                 if isinstance(item, dict):
                                     t = item.get("type")
                                     if t == "text":
-                                        print(item.get('text', '').strip(), end=" ") 
-                                    elif t in ("tool_use", "tool_use_result"):
-                                        print(f"{C_MAGENTA}[{t}:{item.get('name','')}] {C_END}", end=" ")
-                            print() 
+                                        print(item.get('text', '').strip(), end=" ")
+                                    elif t == "tool_use":
+                                        tool_name = item.get('name', 'unknown_tool')
+                                        tool_id = item.get('id', 'N/A')
+                                        print(f"{C_MAGENTA}[{t}:{tool_name} (id:{tool_id})] {C_END}", end=" ")
+                                    elif t == "tool_use_result":
+                                        tool_name = item.get('name', 'unknown_tool')
+                                        print(f"{C_MAGENTA}[{t}:{tool_name}] {C_END}", end=" ")
+                            print()
                         displayed_message_count = len(history)
-                    return 
+                    return
             # b) Generic content (possibly big JSON) --------------------------------
             content_str = str(content_raw)
             if content_str.lstrip().startswith(('{', '[')) and len(content_str) > 500:
