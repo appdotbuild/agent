@@ -75,7 +75,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
-            print(f"\033[33mPatch file created at: {os.path.abspath(tmp_path)}\033[0m")
+            print(f"\033[33mPatch file for apply operation created at: {os.path.abspath(tmp_path)}\033[0m")
 
         # First detect all target paths from the patch
         file_paths = []
@@ -411,8 +411,16 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         if event.message:
             if event.message.content:
                 print(event.message.content, end="", flush=True)
-            if event.message.unified_diff is not None: # Check if diff exists
-                print("\n\n\033[36m--- Diff received from agent. It will be written to a temporary file upon /apply or /run. ---\033[0m\n")
+            
+            if diff_content := event.message.unified_diff:
+                try:
+                    # Create a temporary file to store the received diff, ensuring it's not auto-deleted
+                    with tempfile.NamedTemporaryFile(suffix="_received.patch", delete=False, mode='w', encoding='utf-8') as tmp_received_diff_file:
+                        tmp_received_diff_file.write(diff_content)
+                        tmp_received_diff_file_path = tmp_received_diff_file.name
+                    print(f"\n\n\033[36m--- Diff received from agent and saved to: {os.path.abspath(tmp_received_diff_file_path)} ---\033[0m\n")
+                except Exception as e:
+                    print(f"\n\n\033[31m--- Error saving received diff to temp file: {e} ---\033[0m\n")
             
             # Display app_name and commit_message when present
             if event.message.app_name:
