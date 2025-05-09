@@ -408,6 +408,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 
     # Track how many messages from the agent chat history we've already displayed
     displayed_message_count = 0
+    last_event_time = None # Initialize to None
 
     def print_event(event: AgentSseEvent) -> None:
         """Pretty-print incoming SSE events, only showing new chat messages.
@@ -419,20 +420,30 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         – Diffs are always saved to a temp .patch file with the path printed.
         – App name / commit message banners are printed when first encountered.
         """
-        nonlocal displayed_message_count
-        
-        # Add a newline before each event's output for separation
-        print() 
+        nonlocal displayed_message_count, last_event_time
+        current_time = datetime.now()
 
-        # ANSI escape codes for colors
+        # ANSI escape codes for colors - MOVED TO THE TOP
         C_BLUE = '\033[94m'
         C_GREEN = '\033[92m'
         C_YELLOW = '\033[93m'
         C_RED = '\033[91m'
         C_MAGENTA = '\033[95m'
         C_CYAN = '\033[96m'
+        C_GREY = '\033[90m' # Added grey for timings
         C_END = '\033[0m'
         C_BOLD = '\033[1m'
+
+        # Add a newline before each event's output for separation
+        print() 
+
+        if last_event_time:
+            duration = current_time - last_event_time
+            duration_seconds = duration.total_seconds()
+            print(f"{C_GREY}(... processed in {duration_seconds:.2f} seconds ...){C_END}")
+            print() # Extra newline after timing for better separation
+        
+        last_event_time = current_time # Update for the next event
 
         msg = event.message
         if not msg:
@@ -488,14 +499,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     print(f"{C_RED}[content] error saving large payload: {err}{C_END}")
             else:
                 print(content_str, end="", flush=True)
-                # Add a newline if it was just plain text to separate from potential metadata below OR if it was the last thing
-                print() # Ensuring a newline after any plain text content.
+                # Add a newline if it was just plain text to separate from potential metadata below
+                if not (msg.app_name or msg.commit_message or msg.unified_diff):
+                    print()
 
         # 3. Extra metadata ---------------------------------------------------------
-        # Ensure metadata also has a clear separation if it's the only thing printed after content.
-        # The initial print() at the top of print_event should handle most separation needs.
-        # If app_name or commit_message is printed, they inherently add newlines.
-
         if msg.app_name:
             print(f"{C_BOLD}{C_GREEN}🚀 [app] {msg.app_name}{C_END}")
         if msg.commit_message:
