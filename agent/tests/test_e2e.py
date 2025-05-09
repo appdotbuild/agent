@@ -79,7 +79,6 @@ async def run_e2e(prompt: str, standalone: bool):
                             logs = get_container_logs([
                                 container_names["db_container_name"],
                                 container_names["app_container_name"],
-                                container_names["frontend_container_name"]
                             ])
                             for container, log in logs.items():
                                 logger.error(f"Container {container} logs: {log}")
@@ -93,9 +92,8 @@ async def run_e2e(prompt: str, standalone: bool):
                         [
                             container_names["db_container_name"],
                             container_names["app_container_name"],
-                            container_names["frontend_container_name"]
                         ],
-                        ["db", "app", "frontend"],
+                        ["db", "app"],
                         timeout=30,
                         interval=1
                     )
