@@ -18,6 +18,17 @@ from patch_ng import PatchSet
 import contextlib
 from api.docker_utils import setup_docker_env, start_docker_compose, stop_docker_compose
 
+# ANSI escape codes for colors - Module Level
+C_BLUE = '\033[94m'
+C_GREEN = '\033[92m'
+C_YELLOW = '\033[93m'
+C_RED = '\033[91m'
+C_MAGENTA = '\033[95m'
+C_CYAN = '\033[96m'
+C_GREY = '\033[90m' 
+C_END = '\033[0m'
+C_BOLD = '\033[1m'
+
 logger = get_logger(__name__)
 
 DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a single button"
@@ -67,168 +78,129 @@ def setup_readline():
         print(f"Warning: Could not configure readline history: {e}")
         return False
 
-def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
+# Helper function to copy template files, modified to support overwrite
+def _copy_template_files_recursive(base_dir, target_base, overwrite=False):
+    """
+    Copy all template files recursively, except those in excluded directories
+    and hidden files (starting with a dot).
+    If overwrite is True, existing files in target_base will be replaced.
+    """
+    excluded_dirs = ["node_modules", "dist"]
+    for root, dirs, files in os.walk(base_dir):
+        dirs[:] = [d for d in dirs if d not in excluded_dirs and not d.startswith('.')]
+        rel_path_from_template_root = os.path.relpath(root, base_dir)
+        if rel_path_from_template_root == ".":
+            rel_path_from_template_root = ""
+
+        for file_item in files: # Renamed to avoid conflict
+            if file_item.startswith('.') or file_item.endswith('.md'):
+                continue
+
+            src_file = os.path.join(root, file_item)
+            dest_file_rel_path = os.path.join(rel_path_from_template_root, file_item)
+            dest_file_abs = os.path.join(target_base, dest_file_rel_path)
+            dest_dir_abs = os.path.dirname(dest_file_abs)
+
+            os.makedirs(dest_dir_abs, exist_ok=True)
+            
+            if os.path.lexists(dest_file_abs) and overwrite:
+                try:
+                    os.remove(dest_file_abs) # Remove before copying if overwrite is true
+                except OSError as e_remove_overwrite:
+                    print(f"{C_RED}  Warning: Could not remove for overwrite {dest_file_rel_path}: {e_remove_overwrite}{C_END}")
+                    continue # Skip this file if removal fails
+            
+            if not os.path.lexists(dest_file_abs): # Copy if it doesn't exist, or if it was just removed for overwrite
+                try:
+                    shutil.copy2(src_file, dest_file_abs)
+                    if overwrite: print(f"  Overwrote from template: {dest_file_rel_path}")
+                    else: print(f"  Copied from template: {dest_file_rel_path}")
+                except Exception as cp_err:
+                    print(f"{C_RED}  Warning: Could not copy file {dest_file_rel_path}: {cp_err}{C_END}")
+
+def apply_patch(diff: str, target_dir: str, overwrite_project_from_template: bool = False) -> Tuple[bool, str]:
     try:
         print(f"Preparing to apply patch to directory: '{target_dir}'")
         target_dir = os.path.abspath(target_dir)
         os.makedirs(target_dir, exist_ok=True)
 
-        # Parse the diff to extract file information first
         with tempfile.NamedTemporaryFile(suffix='.patch', delete=False) as tmp:
             tmp.write(diff.encode('utf-8'))
             tmp_path = tmp.name
-            print(f"\033[33mPatch file for apply operation created at: {os.path.abspath(tmp_path)}\033[0m")
+            tmp_filename = os.path.basename(tmp_path)
+            print(f"{C_YELLOW}Temporary patch file '{tmp_filename}' created at: {os.path.abspath(tmp_path)}{C_END}") # Changed color to yellow
 
-        # First detect all target paths from the patch
-        file_paths = []
-        with open(tmp_path, 'rb') as patch_file:
-            patch_set = PatchSet(patch_file)
-            for item in patch_set.items:
-                # Decode the target paths and extract them
+        file_paths_in_diff = []
+        with open(tmp_path, 'rb') as patch_file_for_paths:
+            patch_set_for_paths = PatchSet(patch_file_for_paths)
+            for item in patch_set_for_paths.items:
                 if item.target:
-                    target_path = item.target.decode('utf-8')
-                    if target_path.startswith('b/'):  # Remove prefix from git style patches
-                        target_path = target_path[2:]
-                    file_paths.append(target_path)
+                    target_path_str = item.target.decode('utf-8')
+                    if target_path_str.startswith('b/'):
+                        target_path_str = target_path_str[2:]
+                    file_paths_in_diff.append(target_path_str)
+        
+        template_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../../trpc_agent/template")
+        )
 
-        # Optimisation: instead of copying the full template into the working
-        # directory (which can be slow for large trees), create *symlinks* only
-        # for the files that the diff is going to touch.  This gives patch_ng
-        # the required context while ensuring we don't modify the original
-        # template sources.
-        try:
-            if any(p.startswith(("client/", "server/")) for p in file_paths):
-                template_root = os.path.abspath(
-                    os.path.join(os.path.dirname(__file__), "../../trpc_agent/template")
-                )
+        if overwrite_project_from_template and os.path.isdir(template_root):
+            print(f"{C_YELLOW}Resetting target directory '{target_dir}' from template: {template_root}{C_END}")
+            # For a full reset, we should ideally clean relevant parts of target_dir or ensure _copy_template_files_recursive overwrites.
+            # The modified _copy_template_files_recursive now supports overwrite.
+            _copy_template_files_recursive(template_root, target_dir, overwrite=True)
+            print(f"{C_YELLOW}Target directory reset from template complete.{C_END}")
+        else:
+            # Original logic for initial setup: copy all template files if not overwriting project from template.
+            # This is for first-time setup or if template files are missing but we are not doing a full overwrite.
+            if os.path.isdir(template_root):
+                 print(f"Initial setup/check: Copying necessary template files from {template_root} to {target_dir}")
+                 _copy_template_files_recursive(template_root, target_dir, overwrite=False) # Corrected indentation
 
-                if os.path.isdir(template_root):
-                    print(f"Creating symlinks from template ({template_root})")
-
-                    # Copy all template files except specific excluded directories and hidden files
-                    excluded_dirs = ["node_modules", "dist"]
-
-                    def copy_template_files(base_dir, target_base):
-                        """
-                        Copy all template files recursively, except those in excluded directories
-                        and hidden files (starting with a dot).
-                        """
-                        for root, dirs, files in os.walk(base_dir):
-                            # Remove excluded directories and hidden directories from dirs to prevent recursion into them
-                            dirs[:] = [d for d in dirs if d not in excluded_dirs and not d.startswith('.')]
-
-                            # Get relative path from template root
-                            rel_path = os.path.relpath(root, base_dir)
-                            if rel_path == ".":
-                                rel_path = ""
-
-                            for file in files:
-                                # Skip hidden files
-                                if file.startswith('.') or file.endswith('.md'):
-                                    continue
-
-                                src_file = os.path.join(root, file)
-                                # Create relative path within target directory
-                                rel_file_path = os.path.join(rel_path, file)
-                                dest_file = os.path.join(target_base, rel_file_path)
-                                dest_dir = os.path.dirname(dest_file)
-
-                                os.makedirs(dest_dir, exist_ok=True)
-                                if not os.path.lexists(dest_file):
-                                    try:
-                                        # Directly copy the file (no symlink)
-                                        shutil.copy2(src_file, dest_file)
-                                        print(f"  ↳ copied file {rel_file_path}")
-                                    except Exception as cp_err:
-                                        print(f"Could not copy file {rel_file_path}: {cp_err}")
-
-                    # Copy all template files recursively (except excluded dirs)
-                    copy_template_files(template_root, target_dir)
-
-                    # Then handle the files from the diff patch
-                    for rel_path in file_paths:
-                        template_file = os.path.join(template_root, rel_path)
-
-                        # Only symlink existing template files; new files will be
-                        # created by the patch itself.
-                        if os.path.isfile(template_file):
-                            dest_file = os.path.join(target_dir, rel_path)
-                            dest_dir = os.path.dirname(dest_file)
-                            os.makedirs(dest_dir, exist_ok=True)
-
-                            # Skip if the symlink / file already exists.
-                            if not os.path.lexists(dest_file):
-                                try:
-                                    os.symlink(template_file, dest_file)
-                                    print(f"  ↳ symlinked {rel_path}")
-                                except Exception as link_err:
-                                    print(f"Could not symlink {rel_path}: {link_err}")
-
-                    # After creating symlinks, we immediately convert them into
-                    # *real* files (copy-once).  This still saves time because
-                    # we only copy the handful of files the diff references,
-                    # not the entire template, while guaranteeing that future
-                    # patch modifications do **not** propagate back to the
-                    # template directory.
-                    for rel_path in file_paths:
-                        dest_file = os.path.join(target_dir, rel_path)
-                        if os.path.islink(dest_file):
-                            try:
-                                # Read the target then replace link with copy.
-                                target_path = os.readlink(dest_file)
-                                os.unlink(dest_file)
-                                shutil.copy2(target_path, dest_file)
-                            except Exception as cp_err:
-                                print(f"Could not materialise copy for {rel_path}: {cp_err}")
-        except Exception as link_copy_err:
-            # Non-fatal – the patch may still succeed without template files
-            print(f"Could not prepare template symlinks: {link_copy_err}")
+        # The complex symlinking optimization is removed for now to simplify.
+        # Patches will apply directly to the copied files.
+        # If performance becomes an issue for very large templates/many files not in diff,
+        # it can be reintroduced carefully.
 
         original_dir = os.getcwd()
         try:
             os.chdir(target_dir)
             print(f"Changed to directory: {target_dir}")
 
-            # Pre-create all the directories needed for files
-            for filepath in file_paths:
-                if '/' in filepath:
-                    directory = os.path.dirname(filepath)
+            for filepath_in_diff in file_paths_in_diff:
+                if '/' in filepath_in_diff:
+                    directory = os.path.dirname(filepath_in_diff)
                     if directory:
                         os.makedirs(directory, exist_ok=True)
-                        print(f"Created directory: {directory}")
+                        # print(f"Ensured directory exists: {directory}") # Too verbose
 
-            # Apply the patch
-            print("Applying patch using python-patch-ng")
-            with open(tmp_path, 'rb') as patch_file:
-                patch_set = PatchSet(patch_file)
-                # We use strip=0 because patch_ng already handles the removal of
-                # leading "a/" and "b/" prefixes from the diff paths. Using strip=1
-                # erroneously strips the first real directory (e.g. "client"), which
-                # causes the patch to look for files in non-existent locations like
-                # "src/App.css" instead of "client/src/App.css".
-                success = patch_set.apply(strip=0)
+            print(f"{C_CYAN}Applying patch using python-patch-ng...{C_END}")
+            with open(tmp_path, 'rb') as patch_file_apply:
+                patch_set_apply = PatchSet(patch_file_apply)
+                success = patch_set_apply.apply(strip=0)
 
-            # Check if any files ended up in the wrong place and move them if needed
-            for filepath in file_paths:
-                if '/' in filepath:
-                    basename = os.path.basename(filepath)
-                    dirname = os.path.dirname(filepath)
-                    # If the file exists at the root but should be in a subdirectory
-                    if os.path.exists(basename) and not os.path.exists(filepath):
-                        print(f"Moving {basename} to correct location {filepath}")
+            # (File moving logic for misplaced files remains useful)
+            for filepath_in_diff in file_paths_in_diff:
+                if '/' in filepath_in_diff:
+                    basename = os.path.basename(filepath_in_diff)
+                    dirname = os.path.dirname(filepath_in_diff)
+                    if os.path.exists(basename) and not os.path.exists(filepath_in_diff) and dirname:
+                        print(f"{C_YELLOW}Moving {basename} to correct location {filepath_in_diff}{C_END}")
                         os.makedirs(dirname, exist_ok=True)
-                        os.rename(basename, filepath)
+                        os.rename(basename, filepath_in_diff)
 
             if success:
                 return True, f"Successfully applied the patch to the directory '{target_dir}'"
             else:
-                return False, "Failed to apply the patch (some hunks may have been rejected)"
+                # Attempt to get a more detailed error message from patch_ng if possible
+                # For now, generic message
+                return False, f"{C_RED}Failed to apply the patch to '{target_dir}' (some hunks may have been rejected or mismatched). Check patch_ng logs above.{C_END}"
         finally:
             os.chdir(original_dir)
             os.unlink(tmp_path)
     except Exception as e:
         traceback.print_exc()
-        return False, f"Error applying patch: {str(e)}"
+        return False, f"{C_RED}Error applying patch: {str(e)}{C_END}"
 
 
 def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
@@ -322,8 +294,11 @@ def apply_latest_diff(events: List[AgentSseEvent], resolved_target_dir: str) -> 
 
     try:
         print(f"Applying diff to confirmed target directory: {resolved_target_dir}")
-        
-        success, message = apply_patch(diff, resolved_target_dir)
+        should_overwrite_project = os.path.isdir(resolved_target_dir) # If dir exists, it's a re-apply or update
+        if should_overwrite_project:
+            print(f"{C_YELLOW}Target directory '{resolved_target_dir}' exists. Project will be reset from template before patching.{C_END}")
+
+        success, message = apply_patch(diff, resolved_target_dir, overwrite_project_from_template=should_overwrite_project)
 
         if success:
             return True, message, resolved_target_dir
@@ -417,16 +392,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         nonlocal displayed_message_count, last_event_time, previous_agent_state
         current_time = datetime.now()
 
-        # ANSI escape codes for colors - MOVED TO THE TOP
-        C_BLUE = '\033[94m'
-        C_GREEN = '\033[92m'
-        C_YELLOW = '\033[93m'
-        C_RED = '\033[91m'
-        C_MAGENTA = '\033[95m'
-        C_CYAN = '\033[96m'
-        C_GREY = '\033[90m' # Added grey for timings
-        C_END = '\033[0m'
-        C_BOLD = '\033[1m'
+        # ANSI escape codes for colors - MOVED TO THE TOP (now referencing module level)
+        # Definitions removed from here
 
         # Add a newline before each event's output for separation
         print() 
@@ -699,8 +666,34 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             # Ensure target directory exists (it might be a new one if user specified a non-existent path)
                             os.makedirs(target_dir_to_check, exist_ok=True)
 
-                            # Apply the patch
-                            success, message = apply_patch(diff, target_dir_to_check)
+                            # Determine if we should overwrite: if target_dir_to_check existed *before* makedirs and user confirmed if non-empty.
+                            # The confirmation logic already handles non-empty. If it's an existing empty dir, or newly created, overwrite is fine.
+                            # A simpler check for `apply_patch` is if the directory is not brand new.
+                            # This is subtly different from apply_latest_diff's check because /apply directly calls apply_patch.
+                            # For /apply, if the user specified a dir that exists, we overwrite from template.
+                            # If they specified a new dir, or used default session dir (which might be new or existing), this logic is tricky.
+                            # Let's assume for /apply, if the user confirmed overwrite for a non-empty dir, we also reset from template.
+                            # A more robust way for `apply_patch` within /apply is to pass a specific flag if the user chose to overwrite.
+                            
+                            # For now, let's keep it simple: if the dir was non-empty and user confirmed, we trigger overwrite.
+                            # This state needs to be passed to apply_patch.
+                            # The existing `target_dir_to_check` might have been created just now if it didn't exist.
+                            # A better flag: did the user confirm an overwrite of a NON-EMPTY directory?
+
+                            user_confirmed_overwrite_non_empty = False
+                            if os.path.isdir(target_dir_to_check) and os.listdir(target_dir_to_check):
+                                print(f"Warning: Directory '{target_dir_to_check}' is not empty.")
+                                confirmation = get_multiline_input("Apply changes and overwrite existing files? (yes/no): ").strip().lower()
+                                if confirmation != "yes":
+                                    print("Operation cancelled by user.")
+                                    continue
+                                user_confirmed_overwrite_non_empty = True
+                            
+                            # If user specified a directory (rest[0]) and it exists, or if they confirmed overwrite for a non-empty default dir,
+                            # then we should reset the project from template.
+                            should_reset_project_for_apply = (rest and rest[0] and os.path.isdir(target_dir_to_check)) or user_confirmed_overwrite_non_empty
+
+                            success, message = apply_patch(diff, target_dir_to_check, overwrite_project_from_template=should_reset_project_for_apply)
                             print(message)
                         except Exception as e:
                             print(f"Error applying diff: {e}")
