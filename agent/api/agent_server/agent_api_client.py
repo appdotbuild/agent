@@ -7,7 +7,9 @@ import shutil
 import subprocess
 import readline
 import atexit
-from typing import List, Optional, Tuple
+import uuid
+from typing import List, Optional, Tuple, Dict, Any
+from copy import deepcopy
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
@@ -408,19 +410,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 
     # Track how many messages from the agent chat history we've already displayed
     displayed_message_count = 0
-    last_event_time = None # Initialize to None
+    last_event_time = None
+    previous_agent_state = None # Initialize previous_agent_state
 
     def print_event(event: AgentSseEvent) -> None:
-        """Pretty-print incoming SSE events, only showing new chat messages.
-
-        – Detects when the assistant returns the entire chat history as a JSON list
-          of messages and prints only those that have not been shown yet.
-        – Large JSON/text payloads (>500 chars) are written to a temp file instead
-          of being dumped in the console.
-        – Diffs are always saved to a temp .patch file with the path printed.
-        – App name / commit message banners are printed when first encountered.
-        """
-        nonlocal displayed_message_count, last_event_time
+        nonlocal displayed_message_count, last_event_time, previous_agent_state
         current_time = datetime.now()
 
         # ANSI escape codes for colors - MOVED TO THE TOP
@@ -449,7 +443,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         if not msg:
             return
 
-        # 0. Report if Agent State is in this specific event and save it ------------
+        # 0. Report if Agent State is in this specific event, save it, and show CHANGES or initial summary
         if msg.agent_state:
             try:
                 state_timestamp = datetime.now().strftime("%H%M%S_%f")
@@ -457,32 +451,60 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                 state_event_filepath = os.path.join(tempfile.gettempdir(), state_event_filename)
                 with open(state_event_filepath, "w") as f_event_state:
                     json.dump(msg.agent_state, f_event_state, indent=2)
-                print(f"{C_GREEN}[state] update in event, saved to: {os.path.abspath(state_event_filepath)}{C_END}")
+                print(f"{C_GREEN}[state] update in event, full state saved to: {os.path.abspath(state_event_filepath)}{C_END}")
                 
-                # Attempt to print some key details from agent_state
-                if isinstance(msg.agent_state, dict):
-                    fsm_state = msg.agent_state.get("fsm_state")
-                    if isinstance(fsm_state, dict):
-                        current_fsm_state_val = fsm_state.get("current_state", "N/A")
-                        print(f"{C_GREEN}  └─ FSM Current State: {current_fsm_state_val}{C_END}")
+                current_state_dict = msg.agent_state if isinstance(msg.agent_state, dict) else {}
+                prev_state_dict = previous_agent_state if isinstance(previous_agent_state, dict) else {}
+
+                if not previous_agent_state: # First time seeing state, print a summary
+                    print(f"{C_GREEN}  Initial Agent State Summary:{C_END}")
+                    fsm_state = current_state_dict.get("fsm_state", {})
+                    curr_fsm_val = fsm_state.get("current_state")
+                    if curr_fsm_val: print(f"{C_GREEN}  ├─ FSM State: {curr_fsm_val}{C_END}")
+                    stack_p = fsm_state.get("stack_path")
+                    if stack_p: print(f"{C_GREEN}  │  └─ Stack: {stack_p}{C_END}")
+                    context = fsm_state.get("context", {})
+                    user_p = context.get("user_prompt", "")
+                    if user_p: print(f"{C_GREEN}  ├─ User Prompt: {(user_p[:70] + '...') if len(user_p) > 70 else user_p}{C_END}")
+                    files_ctx = context.get("files", {})
+                    if files_ctx: print(f"{C_GREEN}  ├─ Files in Context: {len(files_ctx)}{C_END}") 
+                    err_ctx = context.get("error")
+                    if err_ctx is not None: print(f"{C_GREEN}  └─ Error: {err_ctx}{C_END}")
+                else: # Compare with previous state and show changes
+                    print(f"{C_GREEN}  Agent State Changes:{C_END}")
+                    # FSM State & Stack
+                    curr_fsm = current_state_dict.get("fsm_state", {})
+                    prev_fsm = prev_state_dict.get("fsm_state", {})
+                    if curr_fsm.get("current_state") != prev_fsm.get("current_state"):
+                        new_fsm_state = curr_fsm.get("current_state")
+                        if new_fsm_state: print(f"{C_GREEN}  ├─ FSM State changed to: {new_fsm_state}{C_END}")
+                    if curr_fsm.get("stack_path") != prev_fsm.get("stack_path"):
+                        new_stack = curr_fsm.get("stack_path")
+                        if new_stack: print(f"{C_GREEN}  │  └─ Stack changed to: {new_stack}{C_END}")
+
+                    # Context changes
+                    curr_context = curr_fsm.get("context", {})
+                    prev_context = prev_fsm.get("context", {})
+                    if curr_context.get("user_prompt") != prev_context.get("user_prompt"):
+                        new_prompt = curr_context.get("user_prompt", "")
+                        if new_prompt: print(f"{C_GREEN}  ├─ User Prompt updated to: {(new_prompt[:70] + '...') if len(new_prompt) > 70 else new_prompt}{C_END}")
                     
-                    # Example: Print up to 3 top-level keys and their types or simple values
-                    detail_count = 0
-                    for key, value in msg.agent_state.items():
-                        if key == "fsm_state": continue # Already handled
-                        if detail_count < 3:
-                            if isinstance(value, (str, int, float, bool)):
-                                print(f"{C_GREEN}  └─ {key}: {value}{C_END}")
-                            else:
-                                print(f"{C_GREEN}  └─ {key}: <{type(value).__name__}>{C_END}")
-                            detail_count += 1
-                        else:
-                            break
-                elif isinstance(msg.agent_state, (str, int, float, bool)):
-                     print(f"{C_GREEN}  └─ State Value: {msg.agent_state}{C_END}")
+                    curr_files = set(curr_context.get("files", {}).keys())
+                    prev_files = set(prev_context.get("files", {}).keys())
+                    added_files = curr_files - prev_files
+                    removed_files = prev_files - curr_files
+                    if added_files: print(f"{C_GREEN}  ├─ Files Added: {sorted(list(added_files))}{C_END}")
+                    if removed_files: print(f"{C_GREEN}  ├─ Files Removed: {sorted(list(removed_files))}{C_END}")
+                    
+                    if curr_context.get("error") != prev_context.get("error"):
+                        new_error = curr_context.get("error")
+                        print(f"{C_GREEN}  └─ Error changed to: {new_error}{C_END}")
+                
+                previous_agent_state = deepcopy(msg.agent_state)
 
             except Exception as e_state_save:
-                print(f"{C_RED}[state] error saving event-specific state: {e_state_save}{C_END}")
+                print(f"{C_RED}[state] error processing/saving event-specific state: {e_state_save}{C_END}")
+                previous_agent_state = deepcopy(msg.agent_state) # Still update to avoid stale comparisons
 
         # 1. Handle diff payloads --------------------------------------------------
         if msg.unified_diff:
