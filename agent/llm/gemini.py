@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 from google import genai
 from google.genai import types as genai_types
@@ -7,6 +7,8 @@ from llm import common
 from log import get_logger
 
 logger = get_logger(__name__)
+
+_clients: Dict[str, genai.Client] = {}
 
 
 class GeminiLLM(common.AsyncLLM):
@@ -17,9 +19,19 @@ class GeminiLLM(common.AsyncLLM):
                  ):
         super().__init__()
 
-        _client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"], **(client_params or {}))
-        self._async_client = _client.aio
+        api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+        cache_key = str(sorted((api_key,
+                               *[(k, v) for k, v in (client_params or {}).items()])))
 
+        if cache_key not in _clients:
+            logger.info("Creating new Gemini client")
+            _clients[cache_key] = genai.Client(api_key=api_key,
+                                              **(client_params or {}))
+        else:
+            logger.info("Reusing existing Gemini client")
+
+        _client = _clients[cache_key]
+        self._async_client = _client.aio
         self.model_name = model_name
 
     async def completion(
