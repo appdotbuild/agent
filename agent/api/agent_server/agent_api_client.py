@@ -406,28 +406,82 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     else:
         base_url = None # Use ASGI transport for local testing
 
+    # Track how many messages from the agent chat history we've already displayed
+    displayed_message_count = 0
+
     def print_event(event: AgentSseEvent) -> None:
-        logger.info(f"Got an event: {event.status} {event.message.kind}")
-        if event.message:
-            if event.message.content:
-                print(event.message.content, end="", flush=True)
-            
-            if diff_content := event.message.unified_diff:
+        """Pretty-print incoming SSE events, only showing new chat messages.
+
+        – Detects when the assistant returns the entire chat history as a JSON list
+          of messages and prints only those that have not been shown yet.
+        – Large JSON/text payloads (>500 chars) are written to a temp file instead
+          of being dumped in the console.
+        – Diffs are always saved to a temp .patch file with the path printed.
+        – App name / commit message banners are printed when first encountered.
+        """
+        nonlocal displayed_message_count
+
+        msg = event.message
+        if not msg:
+            return
+
+        # 1. Handle diff payloads --------------------------------------------------
+        if msg.unified_diff:
+            try:
+                with tempfile.NamedTemporaryFile(suffix="_received.patch", delete=False, mode="w", encoding="utf-8") as tmp:
+                    tmp.write(msg.unified_diff)
+                    patch_path = tmp.name
+                print(f"\n\033[36m--- Diff saved to: {os.path.abspath(patch_path)} ---\033[0m\n")
+            except Exception as err:
+                print(f"\n\033[31mCould not save diff to temp file: {err}\033[0m\n")
+
+        # 2. Handle content ---------------------------------------------------------
+        if msg.content:
+            content_raw = msg.content  # May be str or other type
+            # a) Chat-history JSON array (string) -----------------------------------
+            if isinstance(content_raw, str) and content_raw.lstrip().startswith('['):
                 try:
-                    # Create a temporary file to store the received diff, ensuring it's not auto-deleted
-                    with tempfile.NamedTemporaryFile(suffix="_received.patch", delete=False, mode='w', encoding='utf-8') as tmp_received_diff_file:
-                        tmp_received_diff_file.write(diff_content)
-                        tmp_received_diff_file_path = tmp_received_diff_file.name
-                    print(f"\n\n\033[36m--- Diff received from agent and saved to: {os.path.abspath(tmp_received_diff_file_path)} ---\033[0m\n")
-                except Exception as e:
-                    print(f"\n\n\033[31m--- Error saving received diff to temp file: {e} ---\033[0m\n")
-            
-            # Display app_name and commit_message when present
-            if event.message.app_name:
-                print(f"\n\033[35m🚀 App Name: {event.message.app_name}\033[0m")
-            
-            if event.message.commit_message:
-                print(f"\033[35m📝 Commit Message: {event.message.commit_message}\033[0m\n")
+                    history = json.loads(content_raw)
+                except json.JSONDecodeError:
+                    history = None
+
+                if isinstance(history, list) and all(isinstance(m, dict) for m in history):
+                    new_messages = history[displayed_message_count:]
+                    if new_messages:
+                        print("\n\033[32m--- New Chat Messages ---\033[0m")
+                        for m in new_messages:  # direct order
+                            role = m.get("role", "unknown")
+                            role_color = "\033[36m" if role == "assistant" else "\033[33m"
+                            print(f"\n{role_color}{role.upper()}:\033[0m")
+                            for item in m.get("content", []):
+                                if isinstance(item, dict):
+                                    t = item.get("type")
+                                    if t == "text":
+                                        print(f"  {item.get('text', '')}")
+                                    elif t in ("tool_use", "tool_use_result"):
+                                        print(f"  \033[35m[{t}]: {item.get('name', '')}\033[0m")
+                        print("\n\033[32m--- End of New Chat Messages ---\033[0m\n")
+                        displayed_message_count = len(history)
+                    # Chat history handled – skip default printing
+                    return
+            # b) Generic content (possibly big JSON) --------------------------------
+            content_str = str(content_raw)
+            if content_str.lstrip().startswith(('{', '[')) and len(content_str) > 500:
+                try:
+                    with tempfile.NamedTemporaryFile(suffix="_content.json", delete=False, mode="w", encoding="utf-8") as tmp:
+                        tmp.write(content_str)
+                        path = tmp.name
+                    print(f"\n[Large content ({len(content_str)} bytes) written to {os.path.abspath(path)}]\n")
+                except Exception as err:
+                    print(f"\n[Large content suppressed – error saving to file: {err}]\n")
+            else:
+                print(content_str, end="", flush=True)
+
+        # 3. Extra metadata ---------------------------------------------------------
+        if msg.app_name:
+            print(f"\n\033[35m🚀 App Name: {msg.app_name}\033[0m")
+        if msg.commit_message:
+            print(f"\033[35m📝 Commit Message: {msg.commit_message}\033[0m\n")
 
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
@@ -733,7 +787,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     print("\033[92mBot> \033[0m", end="", flush=True)
                     auth_token = os.environ.get("BUILDER_TOKEN")
                     if request is None:
-                        logger.info("Sending new message")
+                        logger.info("Sending new message") # This INFO log will be suppressed by module-level WARN
                         events, request = await client.send_message(
                             content,
                             settings=settings_dict,
@@ -741,7 +795,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             stream_cb=print_event
                         )
                     else:
-                        logger.info("Sending continuation")
+                        logger.info("Sending continuation") # This INFO log will be suppressed by module-level WARN
                         events, request = await client.continue_conversation(
                             previous_events,
                             request,
@@ -756,30 +810,31 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     previous_events.extend(events)
                     
                     # Save agent state to file if present
-                    for event in reversed(events):
+                    for event_item in reversed(events): # renamed 'event' to 'event_item' to avoid conflict
                         try:
-                            if event.message and event.message.agent_state:
+                            if event_item.message and event_item.message.agent_state:
                                 # Save state to a file in temp directory
-                                state_file = os.path.join(tempfile.gettempdir(), "agent_state.json")
-                                with open(state_file, "w") as f:
-                                    json.dump(event.message.agent_state, f, indent=2)
-                                print(f"\033[32mAgent state saved to: {os.path.abspath(state_file)}\033[0m")
+                                state_file_path_temp = os.path.join(tempfile.gettempdir(), "agent_state.json") # Renamed to avoid conflict with outer state_file
+                                with open(state_file_path_temp, "w") as f_state:
+                                    json.dump(event_item.message.agent_state, f_state, indent=2)
+                                print(f"\033[32mAgent state saved to: {os.path.abspath(state_file_path_temp)}\033[0m")
                                 break  # Only save the most recent state
                         except AttributeError:
                             continue
 
                     if autosave:
-                        with open(state_file, "w") as f:
+                        with open(state_file, "w") as f_autosave: # Renamed to avoid conflict
                             json.dump({
                                 "events": [e.model_dump() for e in previous_events],
                                 "messages": previous_messages,
                                 "agent_state": request.agent_state,
                                 "timestamp": datetime.now().isoformat()
-                            }, f, indent=2)
+                            }, f_autosave, indent=2)
                 except Exception as e:
                     print(f"Error: {e}")
                     traceback.print_exc()
-
+                    
+                    
 @contextlib.contextmanager
 def spawn_local_server(command: List[str] = ["uv", "run", "server"], host: str = "localhost", port: int = 8001):
     """
