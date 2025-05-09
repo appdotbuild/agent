@@ -8,7 +8,7 @@ services:
       - "2022:2022"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres}
-    container_name: ${DB_PUSH_CONTAINER_NAME:-app}
+    container_name: ${BACKEND_CONTAINER_NAME:-app}
     depends_on:
       db-push:
         condition: service_completed_successfully
