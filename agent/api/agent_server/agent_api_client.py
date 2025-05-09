@@ -746,6 +746,19 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 
                     previous_messages.append(content)
                     previous_events.extend(events)
+                    
+                    # Save agent state to file if present
+                    for event in reversed(events):
+                        try:
+                            if event.message and event.message.agent_state:
+                                # Save state to a file in temp directory
+                                state_file = os.path.join(tempfile.gettempdir(), "agent_state.json")
+                                with open(state_file, "w") as f:
+                                    json.dump(event.message.agent_state, f, indent=2)
+                                print(f"\033[32mAgent state saved to: {os.path.abspath(state_file)}\033[0m")
+                                break  # Only save the most recent state
+                        except AttributeError:
+                            continue
 
                     if autosave:
                         with open(state_file, "w") as f:
@@ -818,7 +831,7 @@ def cli(host: str = "",
 if __name__ == "__main__":
     try:
         import coloredlogs
-        coloredlogs.install(level="INFO")
+        coloredlogs.install(level="WARN")
     except ImportError:
         pass
 
