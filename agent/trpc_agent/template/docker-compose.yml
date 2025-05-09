@@ -22,7 +22,7 @@ services:
   db-push:
     build:
       context: .
-      dockerfile: server/server.Dockerfile
+      dockerfile: Dockerfile
     container_name: ${DB_PUSH_CONTAINER_NAME:-app-db-push}
     command: ["bun", "run", "drizzle-kit", "push", "--force"]
     environment:
