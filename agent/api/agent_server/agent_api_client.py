@@ -9,7 +9,6 @@ import readline
 import atexit
 import uuid
 from typing import List, Optional, Tuple, Dict, Any
-from copy import deepcopy
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
@@ -386,10 +385,16 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     # Track how many messages from the agent chat history we've already displayed
     displayed_message_count = 0
     last_event_time = None
-    previous_agent_state = None # Initialize previous_agent_state
 
     def print_event(event: AgentSseEvent) -> None:
-        nonlocal displayed_message_count, last_event_time, previous_agent_state
+        """Pretty-print incoming SSE events.
+
+        - Handles chat history, displaying only new messages.
+        - Saves large content/diffs/agent_states to temp files and prints paths.
+        - Provides a summary of key fields if agent_state is present in an event.
+        - Displays timing between event processing.
+        """
+        nonlocal displayed_message_count, last_event_time
         current_time = datetime.now()
 
         # ANSI escape codes for colors - MOVED TO THE TOP (now referencing module level)
@@ -402,15 +407,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             duration = current_time - last_event_time
             duration_seconds = duration.total_seconds()
             print(f"{C_GREY}(... processed in {duration_seconds:.2f} seconds ...){C_END}")
-            print() # Extra newline after timing for better separation
+            print() 
         
-        last_event_time = current_time # Update for the next event
+        last_event_time = current_time
 
         msg = event.message
         if not msg:
             return
 
-        # 0. Report if Agent State is in this specific event, save it, and show CHANGES or initial summary
+        # 0. Report Agent State from this specific event (summary, not diff)
         if msg.agent_state:
             try:
                 state_timestamp = datetime.now().strftime("%H%M%S_%f")
@@ -420,58 +425,37 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     json.dump(msg.agent_state, f_event_state, indent=2)
                 print(f"{C_GREEN}[state] update in event, full state saved to: {os.path.abspath(state_event_filepath)}{C_END}")
                 
-                current_state_dict = msg.agent_state if isinstance(msg.agent_state, dict) else {}
-                prev_state_dict = previous_agent_state if isinstance(previous_agent_state, dict) else {}
+                # Print a summary of the current agent_state
+                if isinstance(msg.agent_state, dict):
+                    print(f"{C_GREEN}  Current Agent State Summary:{C_END}")
+                    fsm_state = msg.agent_state.get("fsm_state")
+                    if isinstance(fsm_state, dict):
+                        current_fsm_val = fsm_state.get("current_state")
+                        if current_fsm_val is not None: print(f"{C_GREEN}  ├─ FSM State: {current_fsm_val}{C_END}")
+                        stack_p = fsm_state.get("stack_path")
+                        if stack_p: print(f"{C_GREEN}  │  └─ Stack: {stack_p}{C_END}")
+                        
+                        context = fsm_state.get("context")
+                        if isinstance(context, dict):
+                            print(f"{C_GREEN}  ├─ Context Summary:{C_END}")
+                            user_p = context.get("user_prompt", "")
+                            if user_p: print(f"{C_GREEN}  │  ├─ User Prompt: {(user_p[:70] + '...') if len(user_p) > 70 else user_p}{C_END}")
+                            files_ctx = context.get("files", {})
+                            if files_ctx : print(f"{C_GREEN}  │  ├─ Files in Context: {len(files_ctx)} ({list(files_ctx.keys())[:3]}...){C_END}")
+                            else: print(f"{C_GREEN}  │  ├─ Files in Context: 0{C_END}")
+                            err_ctx = context.get("error")
+                            if err_ctx is not None: print(f"{C_GREEN}  │  └─ Error: {err_ctx}{C_END}")
 
-                if not previous_agent_state: # First time seeing state, print a summary
-                    print(f"{C_GREEN}  Initial Agent State Summary:{C_END}")
-                    fsm_state = current_state_dict.get("fsm_state", {})
-                    curr_fsm_val = fsm_state.get("current_state")
-                    if curr_fsm_val: print(f"{C_GREEN}  ├─ FSM State: {curr_fsm_val}{C_END}")
-                    stack_p = fsm_state.get("stack_path")
-                    if stack_p: print(f"{C_GREEN}  │  └─ Stack: {stack_p}{C_END}")
-                    context = fsm_state.get("context", {})
-                    user_p = context.get("user_prompt", "")
-                    if user_p: print(f"{C_GREEN}  ├─ User Prompt: {(user_p[:70] + '...') if len(user_p) > 70 else user_p}{C_END}")
-                    files_ctx = context.get("files", {})
-                    if files_ctx: print(f"{C_GREEN}  ├─ Files in Context: {len(files_ctx)}{C_END}") 
-                    err_ctx = context.get("error")
-                    if err_ctx is not None: print(f"{C_GREEN}  └─ Error: {err_ctx}{C_END}")
-                else: # Compare with previous state and show changes
-                    print(f"{C_GREEN}  Agent State Changes:{C_END}")
-                    # FSM State & Stack
-                    curr_fsm = current_state_dict.get("fsm_state", {})
-                    prev_fsm = prev_state_dict.get("fsm_state", {})
-                    if curr_fsm.get("current_state") != prev_fsm.get("current_state"):
-                        new_fsm_state = curr_fsm.get("current_state")
-                        if new_fsm_state: print(f"{C_GREEN}  ├─ FSM State changed to: {new_fsm_state}{C_END}")
-                    if curr_fsm.get("stack_path") != prev_fsm.get("stack_path"):
-                        new_stack = curr_fsm.get("stack_path")
-                        if new_stack: print(f"{C_GREEN}  │  └─ Stack changed to: {new_stack}{C_END}")
+                    actors = msg.agent_state.get("actors")
+                    if isinstance(actors, list):
+                        actor_paths = [str(actor.get("path", "N/A")) for actor in actors]
+                        if actor_paths: print(f"{C_GREEN}  ├─ Actors: {", ".join(actor_paths)[:100]}...{C_END}")
+                        # Further actor details (like draft summary) can be added here if concise
+                elif isinstance(msg.agent_state, (str, int, float, bool)):
+                     print(f"{C_GREEN}  └─ State Value: {msg.agent_state}{C_END}")
 
-                    # Context changes
-                    curr_context = curr_fsm.get("context", {})
-                    prev_context = prev_fsm.get("context", {})
-                    if curr_context.get("user_prompt") != prev_context.get("user_prompt"):
-                        new_prompt = curr_context.get("user_prompt", "")
-                        if new_prompt: print(f"{C_GREEN}  ├─ User Prompt updated to: {(new_prompt[:70] + '...') if len(new_prompt) > 70 else new_prompt}{C_END}")
-                    
-                    curr_files = set(curr_context.get("files", {}).keys())
-                    prev_files = set(prev_context.get("files", {}).keys())
-                    added_files = curr_files - prev_files
-                    removed_files = prev_files - curr_files
-                    if added_files: print(f"{C_GREEN}  ├─ Files Added: {sorted(list(added_files))}{C_END}")
-                    if removed_files: print(f"{C_GREEN}  ├─ Files Removed: {sorted(list(removed_files))}{C_END}")
-                    
-                    if curr_context.get("error") != prev_context.get("error"):
-                        new_error = curr_context.get("error")
-                        print(f"{C_GREEN}  └─ Error changed to: {new_error}{C_END}")
-                
-                previous_agent_state = deepcopy(msg.agent_state)
-
-            except Exception as e_state_save:
-                print(f"{C_RED}[state] error processing/saving event-specific state: {e_state_save}{C_END}")
-                previous_agent_state = deepcopy(msg.agent_state) # Still update to avoid stale comparisons
+            except Exception as e_state_process: # Renamed variable
+                print(f"{C_RED}[state] error processing/saving event-specific state: {e_state_process}{C_END}")
 
         # 1. Handle diff payloads --------------------------------------------------
         if msg.unified_diff:
