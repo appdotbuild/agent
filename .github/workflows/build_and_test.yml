@@ -36,7 +36,7 @@ jobs:
         run: |
           sleep 10
           # List of containers to check
-          containers_to_check="app-backend postgres app-frontend"
+          containers_to_check="postgres app"
           all_healthy=true
           failed_containers=""
 

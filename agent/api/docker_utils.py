@@ -21,7 +21,6 @@ def setup_docker_env(project_name: Optional[str] = None) -> Dict[str, str]:
     container_names = {
         "db_container_name": generate_random_name("postgres"),
         "app_container_name": generate_random_name("app"),
-        "frontend_container_name": generate_random_name("frontend"),
         "db_push_container_name": generate_random_name("db-push"),
         "network_name": generate_random_name("network"),
         "project_name": project_name
@@ -29,7 +28,6 @@ def setup_docker_env(project_name: Optional[str] = None) -> Dict[str, str]:
 
     os.environ["POSTGRES_CONTAINER_NAME"] = container_names["db_container_name"]
     os.environ["BACKEND_CONTAINER_NAME"] = container_names["app_container_name"]
-    os.environ["FRONTEND_CONTAINER_NAME"] = container_names["frontend_container_name"]
     os.environ["DB_PUSH_CONTAINER_NAME"] = container_names["db_push_container_name"]
     os.environ["NETWORK_NAME"] = container_names["network_name"]
     return container_names
