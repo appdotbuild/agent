@@ -207,8 +207,9 @@ Return ONLY the commit message, nothing else.""")
                 commit_message = None
                 if request.agent_state is None and self.processor_instance.fsm_app:  # This is the first request
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
-                    app_name = await self.generate_app_name(prompt, self.llm_client)
-                    commit_message = await self.generate_commit_message(prompt, self.llm_client)
+                    flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
+                    app_name = await self.generate_app_name(prompt, flash_lite_client)
+                    commit_message = await self.generate_commit_message(prompt, flash_lite_client)
                 
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
