@@ -10,6 +10,6 @@
     "input_tokens": 7,
     "output_tokens": 11,
     "stop_reason": "end_turn",
-    "thinking_tokens": 131
+    "thinking_tokens": null
   }
 }

@@ -13,16 +13,15 @@ logger = get_logger(__name__)
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
 
 
+def _get_file_hash(file_path: str, chunk_size: int = 16384) -> str:
+    hash_func = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(chunk_size):
+            hash_func.update(chunk)
+    return hash_func.hexdigest()
+
 def _normalize_repo_files(files : list[str]) -> list[str]:
-    repo_dir = Path(__file__).parent.parent.parent
-    normalized = []
-    for file in files:
-        file_path = Path(file)
-        if file_path.is_absolute() and file_path.is_relative_to(repo_dir):
-            normalized.append(file_path.relative_to(repo_dir).as_posix())
-        else:
-            normalized.append(file)
-    return normalized
+    return [_get_file_hash(file) if os.path.exists(file) else file for file in files]
 
 def normalize(obj):
     match obj:
