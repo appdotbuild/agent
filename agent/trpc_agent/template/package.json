@@ -12,7 +12,9 @@
     "dev:all": "bun run dev:server & bun run dev:client"
   },
   "dependencies": {
-    "app-build": "."
+    "@stackframe/react": "^2.8.11",
+    "app-build": ".",
+    "react-router-dom": "^7.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
