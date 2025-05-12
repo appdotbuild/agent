@@ -141,7 +141,9 @@ class FSMApplication:
         g_llm = get_llm_client(model_name="gemini-pro")
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
+            context=dagger.dag.host().directory(os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "../template")
+            )),
             setup_cmd=[["bun", "install"]],
         )
 
@@ -305,7 +307,9 @@ class FSMApplication:
 
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
         # Start with the template directory
-        context = dagger.dag.host().directory("./trpc_agent/template")
+        context = dagger.dag.host().directory(os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../template")
+        ))
 
         # Write snapshot (initial) files
         for key, value in snapshot.items():

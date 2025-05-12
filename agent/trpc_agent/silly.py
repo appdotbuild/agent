@@ -443,7 +443,9 @@ async def main(user_prompt="Add feature to create plain notes without status."):
 
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
+            context=dagger.dag.host().directory(os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "../template")
+            )),
             setup_cmd=[["bun", "install"]],
         )
 
