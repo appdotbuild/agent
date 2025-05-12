@@ -245,7 +245,7 @@ Return ONLY the commit message, nothing else.""")
                                                           app_diff is not None)) else MessageKind.REFINEMENT_REQUEST,
                         content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
-                        unifiedDiff=diff_to_send,
+                        unifiedDiff=None,
                         complete_diff_hash=current_hash,
                         diff_stat=diff_stat,
                         app_name=app_name,
