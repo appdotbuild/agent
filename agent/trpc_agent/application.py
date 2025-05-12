@@ -14,6 +14,7 @@ from trpc_agent import playbooks
 from trpc_agent.silly import EditActor
 from trpc_agent.actors import DraftActor, HandlersActor, FrontendActor, ConcurrentActor
 import dagger
+from core.diff_utils import generate_diff  # Fix: Use absolute import instead of relative
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -304,31 +305,59 @@ class FSMApplication:
         return actions
 
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
-        # Start with the template directory
-        context = dagger.dag.host().directory("./trpc_agent/template")
+        """
+        Generates a diff comparing current FSM files against the base template
+        directory and an optional file snapshot.
+        Uses the core generate_diff utility.
+        """
+        logger.info(f"Getting diff for state {self.current_state} with snapshot (size: {len(snapshot)}).")
+        base_context = dagger.dag.host().directory("./trpc_agent/template")
 
-        # Write snapshot (initial) files
-        for key, value in snapshot.items():
-            context = context.with_new_file(key, value)
+        diff = await generate_diff(
+            current_files=self.fsm.context.files,
+            base_context=base_context,
+            snapshot_files=snapshot
+        )
 
-        # Create workspace with git
-        workspace = await Workspace.create(base_image="alpine/git", context=context)
-
-        # Write current (final) files
-        for key, value in self.fsm.context.files.items():
-            workspace.write_file(key, value)
-
-        # If we're in the COMPLETE state, ensure we return a diff even if empty
         if self.current_state == FSMState.COMPLETE:
-            diff = await workspace.diff()
-            # If the diff is empty but we have files, return a special marker
             if not diff.strip() and self.fsm.context.files:
-                # Return empty string, but with special note that the system can recognize
+                logger.warning("get_diff_with: Diff is empty in COMPLETE state despite files existing. Returning special note.")
                 return "# Note: This is a valid empty diff (means no changes from template)"
-            return diff
+        
+        return diff
 
-        return await workspace.diff()
 
+    async def get_initial_template_diff(self) -> str:
+        """
+        Generates a unified diff representing all current files in the FSM context
+        as if they are newly created (i.e., diffed against an empty directory).
+        Uses the core generate_diff utility.
+        """
+        logger.info(
+            "Generating initial template diff with %s files in state %s",
+            len(self.fsm.context.files),
+            self.current_state,
+        )
+        
+        if not self.fsm.context.files:
+            logger.warning("Attempting to generate initial template diff, but FSM context has no files.")
+            return "# Note: Initial template is empty (no files in FSM context)."
+
+        empty_base_context = dagger.dag.directory()
+
+        diff_output = await generate_diff(
+            current_files=self.fsm.context.files,
+            base_context=empty_base_context,
+            snapshot_files={} # Explicitly empty snapshot
+        )
+        
+        # The generate_diff utility itself might return a note for an empty diff.
+        # Additional specific handling here if needed, but for now, we'll rely on generate_diff's output.
+        if not diff_output.strip() and self.fsm.context.files:
+             logger.warning("Initial template diff from generate_diff is empty despite FSM context having files.")
+
+        logger.info("Generated initial template diff with length %d", len(diff_output) if diff_output else 0)
+        return diff_output
 
 async def main(user_prompt="Simple todo app"):
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):

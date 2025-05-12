@@ -15,6 +15,7 @@ from datetime import datetime
 from patch_ng import PatchSet
 import contextlib
 from api.docker_utils import setup_docker_env, start_docker_compose, stop_docker_compose
+from core.diff_utils import apply_patch
 
 logger = get_logger(__name__)
 
@@ -314,8 +315,8 @@ def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = N
             - Target directory where diff was applied (string, or None if failed)
     """
     diff = latest_unified_diff(events)
-    if not diff:
-        return False, "No diff available to apply", None
+    if not diff or diff == "(No changes from template - files were created from scratch)": # Also check for the special no-diff marker
+        return False, "No applicable diff available to apply", None
 
     try:
         # Create a timestamp-based project directory name
@@ -325,23 +326,28 @@ def apply_latest_diff(events: List[AgentSseEvent], custom_dir: Optional[str] = N
         if custom_dir:
             base_dir = custom_dir
         else:
+            # Default to ~/projects, ensure it exists
             base_dir = os.path.expanduser("~/projects")
-            print(f"Using default project directory: {base_dir}")
+            os.makedirs(base_dir, exist_ok=True) 
+            logger.info(f"Using default project directory: {base_dir}")
 
         # Create the full project directory path
         target_dir = os.path.join(base_dir, project_name)
 
-        # Apply the patch
+        # Apply the patch using the imported function
         success, message = apply_patch(diff, target_dir)
 
         if success:
             return True, message, target_dir
         else:
+            # Pass the target_dir even on failure for context
             return False, message, target_dir
 
     except Exception as e:
-        error_msg = f"Error applying diff: {e}"
+        error_msg = f"Error preparing to apply diff: {e}"
+        logger.exception("Error in apply_latest_diff setup")
         traceback.print_exc()
+        # Target directory might not have been created or determined if error was early
         return False, error_msg, None
 
 
