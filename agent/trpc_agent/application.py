@@ -293,7 +293,10 @@ class FSMApplication:
                 actions = {"confirm": "Accept current output and continue"}
                 logger.debug(f"Review state detected: {self.current_state}, offering confirm action")
             case FSMState.COMPLETE:
-                actions = {"complete": "Finalize and get all artifacts"}
+                actions = {
+                    "complete": "Finalize and get all artifacts",
+                    "provide_feedback": "Submit feedback for the current FSM state and trigger revision",
+                }
                 logger.debug("FSM is in COMPLETE state, offering complete action")
             case FSMState.FAILURE:
                 actions = {"get_error": "Get error details"}
