@@ -172,7 +172,7 @@ class BaseTRPCActor(BaseActor, LLMActor):
             logger.info(f"Received {len(nodes)} nodes from LLM")
 
             for i, new_node in enumerate(nodes):
-                logger.info(f"Evaluating node {i+1}/{len(nodes)}")
+                logger.debug(f"Evaluating node {i+1}/{len(nodes)}")
                 if await self.eval_node(new_node):
                     logger.info(f"Found solution at depth {new_node.depth}")
                     solution = new_node
@@ -186,7 +186,7 @@ class BaseTRPCActor(BaseActor, LLMActor):
             return [node] * self.beam_width
 
         candidates = [n for n in node.get_all_children() if n.is_leaf and n.depth <= self.max_depth]
-        logger.info(f"Selected {len(candidates)} leaf nodes for evaluation")
+        logger.debug(f"Selected {len(candidates)} leaf nodes for evaluation")
         return candidates
 
     async def eval_node(self, node: Node[BaseData]) -> bool:

@@ -240,7 +240,7 @@ class FSMToolProcessor[T: FSMInterface]:
                             ))
                         case tool_method if isinstance(block.input, dict):
                             result = await tool_method(**block.input)
-                            logger.info(f"Tool result: {result.content}")
+                            logger.debug(f"Tool result: {result.content}")
                             tool_results.append(ToolUseResult.from_tool_use(
                                 tool_use=block,
                                 content=result.content
