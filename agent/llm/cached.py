@@ -13,10 +13,6 @@ logger = get_logger(__name__)
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
 
 
-
-def _normalize_repo_files(files : list[str]) -> list[str]:
-    return [os.path.basename(file) for file in files if os.path.isfile(file)]
-
 def normalize(obj):
     match obj:
         case list() | tuple():
@@ -27,6 +23,9 @@ def normalize(obj):
             for k, v in sorted(obj.items()):
                 if k == "id":
                     normalized_dict[k] = "__ID_PLACEHOLDER__"
+                elif k == "cache_control":
+                    # ignore cache_control field used to control caching
+                    pass
                 elif hasattr(v, "cache_key"):
                     normalized_dict[k] = v.cache_key
                 else:

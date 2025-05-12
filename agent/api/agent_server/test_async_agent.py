@@ -46,25 +46,6 @@ async def test_async_agent_message_endpoint(agent_type):
                     assert event.message.kind == MessageKind.STAGE_RESULT
 
 
-async def test_async_agent_state_continuation(trpc_agent):
-    """Test that agent state can be restored and conversation can continue."""
-    async with AgentApiClient() as client:
-        initial_events, initial_request = await client.send_message(DEFAULT_APP_REQUEST)
-        assert len(initial_events) > 0, "No initial events received"
-
-        # Continue conversation with new message
-        continuation_events, continuation_request = await client.continue_conversation(
-            previous_events=initial_events,
-            previous_request=initial_request,
-            message=DEFAULT_EDIT_REQUEST
-        )
-
-        assert len(continuation_events) > 0, "No continuation events received"
-
-        # Verify trace IDs match between initial and continuation
-        for event in continuation_events:
-            assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in continuation (model)"
-
 async def test_sequential_sse_responses(trpc_agent):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
@@ -79,22 +60,23 @@ async def test_sequential_sse_responses(trpc_agent):
             message=DEFAULT_EDIT_REQUEST,
         )
         assert len(first_continuation_events) > 0, "No first continuation events received"
+        for event in first_continuation_events:
+            assert event.message.kind == MessageKind.STAGE_RESULT, "Message kind is not STAGE_RESULT in first continuation"
+            assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in first continuation (model)"
 
         # Second continuation
         second_continuation_events, second_continuation_request = await client.continue_conversation(
             previous_events=first_continuation_events,
             previous_request=first_continuation_request,
-            message=DEFAULT_EDIT_REQUEST
+            message="Add a reset button",
         )
         assert len(second_continuation_events) > 0, "No second continuation events received"
 
-        # Verify trace IDs remain consistent across all requests
-        assert initial_request.trace_id == first_continuation_request.trace_id == second_continuation_request.trace_id, \
-            "Trace IDs don't match across sequential requests"
+        for event in second_continuation_events:
+            assert event.message.kind == MessageKind.STAGE_RESULT, "Message kind is not STAGE_RESULT in second continuation"
+            assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in second continuation (model)"
 
-        # Verify the sequence is maintained (check trace IDs in all events)
-        all_trace_ids = [event.trace_id for event in initial_events + first_continuation_events + second_continuation_events]
-        assert all(tid == initial_request.trace_id for tid in all_trace_ids), "Trace IDs inconsistent across sequential SSE responses"
+
 
 async def test_session_with_no_state(trpc_agent):
     """Test session behavior when no state is provided in continuation requests."""
@@ -123,6 +105,8 @@ async def test_session_with_no_state(trpc_agent):
         # Verify each event has the expected trace ID
         for event in first_events + second_events:
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
+            assert event.message.kind == MessageKind.STAGE_RESULT, "Message kind is not STAGE_RESULT in continuation"
+
 
 async def test_agent_reaches_idle_state(trpc_agent):
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
