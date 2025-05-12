@@ -322,7 +322,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
         while True:
             new_messages = await processor.step(current_messages, client, model_params)
 
-            logger.info(f"New messages: {new_messages}")
+            logger.debug(f"New messages: {new_messages}")
             if new_messages:
                 current_messages += new_messages
 
