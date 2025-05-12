@@ -38,6 +38,9 @@ enum MessageKind {
 
   @doc("The agent encountered an error it couldn't recover from. Retrying likely requires user intervention or infrastructure changes.")
   RuntimeError,
+
+  @doc("The final successful result indicating the application generation is complete and ready for deployment.")
+  FinalResult,
 }
 
 // --- Models ---

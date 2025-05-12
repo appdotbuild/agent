@@ -256,7 +256,7 @@ Return ONLY the commit message, nothing else.""")
                                 traceId=self.trace_id,
                                 message=AgentMessage(
                                     role="assistant",
-                                    kind=MessageKind.STAGE_RESULT,
+                                    kind=MessageKind.FINAL_RESULT,
                                     content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                     agentState={"fsm_state": fsm_state} if fsm_state else None,
                                     unifiedDiff=final_diff,
