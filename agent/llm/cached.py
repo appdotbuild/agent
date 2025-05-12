@@ -1,11 +1,11 @@
 from typing import Literal, Dict, Any, List
 import ujson as json
-import hashlib
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool
 import os
 import anyio
 from collections import OrderedDict
+import hashlib
 
 from log import get_logger
 logger = get_logger(__name__)
@@ -13,15 +13,9 @@ logger = get_logger(__name__)
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
 
 
-def _get_file_hash(file_path: str, chunk_size: int = 16384) -> str:
-    hash_func = hashlib.md5()
-    with open(file_path, 'rb') as f:
-        while chunk := f.read(chunk_size):
-            hash_func.update(chunk)
-    return hash_func.hexdigest()
 
 def _normalize_repo_files(files : list[str]) -> list[str]:
-    return [_get_file_hash(file) if os.path.exists(file) else file for file in files]
+    return [os.path.basename(file) for file in files if os.path.isfile(file)]
 
 def normalize(obj):
     match obj:
@@ -33,9 +27,8 @@ def normalize(obj):
             for k, v in sorted(obj.items()):
                 if k == "id":
                     normalized_dict[k] = "__ID_PLACEHOLDER__"
-                elif k == "attach_files":
-                    # Normalize file paths for CI
-                    normalized_dict[k] = _normalize_repo_files(v)
+                elif hasattr(v, "cache_key"):
+                    normalized_dict[k] = v.cache_key
                 else:
                     normalized_dict[k] = normalize(v)
             return normalized_dict

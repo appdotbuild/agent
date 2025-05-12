@@ -10,7 +10,7 @@ from trpc_agent import playbooks
 from core.base_node import Node
 from core.workspace import Workspace, ExecResult
 from core.actors import BaseData, BaseActor, LLMActor
-from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
+from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock, AttachedFiles
 from llm.utils import merge_text
 
 
@@ -501,11 +501,15 @@ class FrontendActor(BaseTRPCActor):
                 prompt = jinja2.Environment().from_string(playbooks.FRONTEND_VALIDATION_PROMPT)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=self._user_prompt)
                 message = Message(role="user", content=[TextRaw(prompt_rendered)])
+                attach_files = AttachedFiles(
+                files=[os.path.join(temp_dir, file) for file in expected_files],
+                _cache_key=node.data.file_cache_key
+                )
 
                 vlm_feedback = await self.vlm.completion(
                     messages=[message],
                     max_tokens=1024,
-                    attach_files=[os.path.join(temp_dir, file) for file in expected_files],
+                    attach_files=attach_files,
                 )
                 vlm_feedback, = merge_text(list(vlm_feedback.content))
                 vlm_text = vlm_feedback.text # pyright: ignore

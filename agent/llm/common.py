@@ -1,6 +1,6 @@
 from typing import Literal, Protocol, Self, Iterable, TypedDict, TypeAlias, Union, Required, NotRequired
 from dataclasses import dataclass
-
+import hashlib
 
 @dataclass
 class TextRaw:
@@ -35,6 +35,18 @@ class ToolUseResult:
     @classmethod
     def from_tool_use(cls, tool_use: ToolUse, content: str, is_error: bool | None = None) -> "ToolUseResult":
         return cls(tool_use, ToolResult(content, tool_use.id, tool_use.name, is_error))
+
+
+@dataclass
+class AttachedFiles:
+    files: list[str]
+    _cache_key: str | None = None
+
+    @property
+    def cache_key(self) -> str:
+        if self._cache_key is None:
+            return hashlib.md5("".join(sorted(self.files)).encode()).hexdigest()
+        return self._cache_key
 
 
 ContentBlock: TypeAlias = Union[TextRaw, ToolUse, ToolUseResult, ThinkingBlock]

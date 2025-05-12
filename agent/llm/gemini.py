@@ -32,7 +32,7 @@ class GeminiLLM(common.AsyncLLM):
         tool_choice: str | None = None,
         system_prompt: str | None = None,
         force_tool_use: bool = False,
-        attach_files: list[str] | None = None,
+        attach_files: common.AttachedFiles | None = None,
         *args, # consume unused args passed down
         **kwargs, # consume unused kwargs passed down
     ) -> common.Completion:
@@ -142,7 +142,7 @@ class GeminiLLM(common.AsyncLLM):
                     return False
         return False
 
-    async def _messages_into(self, messages: list[common.Message], files: List[str] | None) -> List[genai_types.Content]:
+    async def _messages_into(self, messages: list[common.Message], files: common.AttachedFiles | None) -> List[genai_types.Content]:
         theirs_messages: List[genai_types.Content] = []
         for message in messages:
             theirs_parts: List[genai_types.Part] = []
@@ -162,7 +162,7 @@ class GeminiLLM(common.AsyncLLM):
             ))
 
         if files:
-            uploaded = await self.upload_files(files)
+            uploaded = await self.upload_files(files.files)
             files_parts = [
                 genai_types.Part.from_uri(
                     file_uri=file.uri,
