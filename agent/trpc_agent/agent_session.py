@@ -17,6 +17,7 @@ from api.agent_server.models import (
     AgentMessage,
     AgentStatus,
     MessageKind,
+    DiffStatEntry,
 )
 from api.agent_server.interface import AgentInterface
 
@@ -38,6 +39,7 @@ class TrpcAgentSession(AgentInterface):
         self.model_params = {
             "max_tokens": 8192,
         }
+        self._prev_diff_hash: Optional[str] = None  # sha256 of last complete diff sent
 
     async def get_app_diff(self) -> str:
         fsm_app = self.processor_instance.fsm_app
@@ -191,6 +193,12 @@ Return ONLY the commit message, nothing else.""")
 
             while True:
                 new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+
+                # Defaults for diff-related fields
+                diff_to_send: Optional[str] = None
+                current_hash: Optional[str] = None
+                diff_stat: Optional[List[DiffStatEntry]] = None
+
                 if self.processor_instance.fsm_app is None:
                     logger.info("FSMApplication is empty")
                     fsm_state = None
@@ -199,7 +207,23 @@ Return ONLY the commit message, nothing else.""")
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     app_diff = await self.get_app_diff()
-                    # include empty diffs too as they are valid = template diff
+
+                    # Calculate hash and diff stat if diff present
+                    if app_diff is not None:
+                        current_hash = self._hash_diff(app_diff)
+                        diff_changed = current_hash != self._prev_diff_hash
+                        diff_stat = self._compute_diff_stat(app_diff) if diff_changed else None
+                    else:
+                        current_hash = None
+                        diff_changed = False
+                        diff_stat = None
+
+                    # Send full diff ONLY on the very first detected change
+                    diff_to_send = app_diff if (diff_changed and self._prev_diff_hash is None) else None
+
+                    if diff_changed:
+                        self._prev_diff_hash = current_hash
+                    # include empty diffs too as they are valid = template diff (when diff_to_send not null)
                 messages += new_messages
                 
                 # Generate app name and commit message if this is the first response
@@ -221,7 +245,9 @@ Return ONLY the commit message, nothing else.""")
                                                           app_diff is not None)) else MessageKind.REFINEMENT_REQUEST,
                         content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
-                        unifiedDiff=app_diff,
+                        unifiedDiff=diff_to_send,
+                        complete_diff_hash=current_hash,
+                        diff_stat=diff_stat,
                         app_name=app_name,
                         commit_message=commit_message
                     )
@@ -260,6 +286,8 @@ Return ONLY the commit message, nothing else.""")
                                     content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                     agentState={"fsm_state": fsm_state} if fsm_state else None,
                                     unifiedDiff=final_diff,
+                                    complete_diff_hash=self._hash_diff(final_diff),
+                                    diff_stat=self._compute_diff_stat(final_diff),
                                     app_name=app_name,  # Use the same app_name from above
                                     commit_message=commit_message  # Use the same commit_message from above
                                 )
@@ -291,3 +319,41 @@ Return ONLY the commit message, nothing else.""")
             await event_tx.send(error_event)
         finally:
             await event_tx.aclose()
+
+    # ---------------------------------------------------------------------
+    # Diff helpers
+    # ---------------------------------------------------------------------
+
+    @staticmethod
+    def _hash_diff(diff: str) -> str:
+        import hashlib
+        return hashlib.sha256(diff.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _compute_diff_stat(diff: str) -> List[DiffStatEntry]:
+        """Return a list of DiffStatEntry parsed from a unified diff string."""
+        stats: dict[str, Dict[str, int]] = {}
+        current_file: Optional[str] = None
+
+        for line in diff.splitlines():
+            if line.startswith("diff --git"):
+                parts = line.split(" ")
+                if len(parts) >= 3:
+                    # path like a/path b/path
+                    file_b = parts[3]
+                    if file_b.startswith("b/"):
+                        file_b = file_b[2:]
+                    current_file = file_b
+                    stats[current_file] = {"insertions": 0, "deletions": 0}
+            elif current_file and line.startswith("+++"):
+                # ignore header lines
+                continue
+            elif current_file and line.startswith("---"):
+                continue
+            elif current_file:
+                if line.startswith("+") and not line.startswith("+++"):
+                    stats[current_file]["insertions"] += 1
+                elif line.startswith("-") and not line.startswith("---"):
+                    stats[current_file]["deletions"] += 1
+
+        return [DiffStatEntry(path=path, insertions=s["insertions"], deletions=s["deletions"]) for path, s in stats.items()]

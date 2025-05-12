@@ -43,6 +43,20 @@ enum MessageKind {
   FinalResult,
 }
 
+// --- Diff summary ---
+
+@doc("A lightweight summary entry describing modifications to a single file in the current step.")
+model DiffStatEntry {
+  @doc("Path of the file that changed (relative to the project root).")
+  path: string;
+
+  @doc("Number of lines inserted in this file during the current step.")
+  insertions: int32;
+
+  @doc("Number of lines deleted in this file during the current step.")
+  deletions: int32;
+}
+
 // --- Models ---
 @doc("Represents a message from the agent to the user, including content, state, and any code changes.")
 model AgentMessage {
@@ -60,6 +74,12 @@ model AgentMessage {
 
   @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
   unifiedDiff: string | null;
+
+  @doc("Hash (e.g., SHA-256 hex) of the complete unified diff that corresponds to the current full application state.")
+  completeDiffHash: string | null;
+
+  @doc("A lightweight per-file summary of what changed since the previous message.")
+  diffStat: DiffStatEntry[] | null;
   
   @doc("Generated application name suitable for use as a GitHub repository name.")
   app_name: string | null;
