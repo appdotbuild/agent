@@ -128,7 +128,7 @@ async def run_playwright(
 
 class RunTests:
     def __init__(self):
-        self.test_output_normalizer = re.compile(r"\[\d+(\.\d+)?ms\]")
+        self.test_output_normalizer = re.compile(r"\[\d+(\.\d+)?(ms|s)\]")
 
     async def __call__(self, node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
         result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
@@ -137,7 +137,7 @@ class RunTests:
 
         logger.info(f"Tests failed with exit code {result.exit_code}")
         # Normalize the output
-        err = self.test_output_normalizer.sub("[DURATION]", result.stderr)
+        err = self.test_output_normalizer.sub("", result.stderr)
         return result, TextRaw(f"Error running tests: {err}")
 
 run_tests = RunTests()

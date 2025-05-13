@@ -267,8 +267,8 @@ class EditActor(SillyActor):
 
     @classmethod
     def normalize_tests(cls, stderr: str) -> str:
-        pattern = re.compile(r"\[\d+(\.\d+)?ms\]")
-        return pattern.sub("[DURATION]", stderr)
+        pattern = re.compile(r"\[\d+(\.\d+)?(ms|s)\]")
+        return pattern.sub("", stderr)
 
     async def dump(self) -> object:
         if self.root is None:
