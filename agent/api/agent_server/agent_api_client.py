@@ -7,10 +7,10 @@ import shutil
 import subprocess
 import readline
 import atexit
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
-from api.agent_server.models import AgentSseEvent
+from api.agent_server.models import AgentSseEvent, FileEntry
 from datetime import datetime
 from patch_ng import PatchSet
 import contextlib
@@ -361,6 +361,31 @@ def cleanup_docker_projects():
                 print(f"Error during cleanup of {project_dir}: {e}")
 
 atexit.register(cleanup_docker_projects)
+
+# Function to get all files from the project directory
+def get_all_files_from_project_dir(project_dir_path: str) -> List[FileEntry]:
+    local_files: List[FileEntry] = []
+    if not os.path.exists(project_dir_path):
+        # This case should ideally be handled by project_dir_context ensuring it exists
+        logger.warning(f"Project directory {project_dir_path} does not exist during file scan.")
+        return local_files
+
+    for root, _, files in os.walk(project_dir_path):
+        for filename in files:
+            # Exclude common problematic/temporary files
+            if filename.startswith('.') or filename.endswith(('.patch', '.swp', '.swo', '.rej')):
+                continue
+            
+            filepath = os.path.join(root, filename)
+            relative_path = os.path.relpath(filepath, project_dir_path)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                local_files.append(FileEntry(path=relative_path, content=content))
+            except Exception as e:
+                logger.error(f"Error reading file {filepath} for snapshot: {e}")
+    return local_files
+
 
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
@@ -725,6 +750,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     case _:
                         content = cmd
 
+                # --- Prepare allFiles from project_dir for the request ---
+                files_for_snapshot: List[FileEntry] = get_all_files_from_project_dir(project_dir)
+                logger.info(f"Preparing request with {len(files_for_snapshot)} files from {project_dir}")
+                all_files_payload = [f.model_dump() for f in files_for_snapshot] # Convert to dicts for JSON
+
                 # Send or continue conversation
                 try:
                     print("\033[92mBot> \033[0m", end="", flush=True)
@@ -733,6 +763,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         logger.info("Sending new message")
                         events, request = await client.send_message(
                             content,
+                            all_files=all_files_payload, # Pass the files
                             settings=settings_dict,
                             auth_token=auth_token,
                             stream_cb=print_event
@@ -743,6 +774,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             previous_events,
                             request,
                             content,
+                            all_files=all_files_payload, # Pass the files
                             settings=settings_dict,
                             stream_cb=print_event
                         )
