@@ -429,10 +429,19 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 if isinstance(part, dict) and part.get("type") == "text":
                                     print(part.get("text", ""), end="\n", flush=True)
                 
-            if diff := event.message.unified_diff:
+            if event.message.unified_diff:
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-                print(f"\033[36m{diff}\033[0m")
-                print("\033[36m--- End of Diff ---\033[0m\n")
+                diff_lines = event.message.unified_diff.splitlines()
+                for i in range(min(5, len(diff_lines))):
+                    print(f"\033[36m{diff_lines[i]}\033[0m")
+                if len(diff_lines) > 5:
+                    print("\033[36m... (use /diff to see full diff)\033[0m")
+            
+            if event.message.diff_stat:
+                if event.message.diff_stat:
+                    print("\033[36mDiff Statistics:\033[0m")
+                    for stat in event.message.diff_stat:
+                        print(f"\033[36m  {stat.filename}: +{stat.additions} -{stat.deletions}\033[0m")
             
             # Display app_name and commit_message when present
             if event.message.app_name:
