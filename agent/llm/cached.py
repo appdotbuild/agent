@@ -265,18 +265,18 @@ def _compare(x, y, prefix: str = ""):
         print(f"Value {prefix} not match directly")
         print(f"Value in x:\n {x}")
         print(f"Value in y:\n {y}")
-        x_diff = []
-        y_diff = []
-        idx_diff = []
-        for i in range(len(x)):
-            if x[i] != y[i]:
-                x_diff.append(x[i])
-                y_diff.append(y[i])
-                idx_diff.append(i)
+        # x_diff = []
+        # y_diff = []
+        # idx_diff = []
+        # for i in range(len(x)):
+        #     if x[i] != y[i]:
+        #         x_diff.append(x[i])
+        #         y_diff.append(y[i])
+        #         idx_diff.append(i)
 
-        print(f"Value in x:\n {''.join(x_diff)}")
-        print(f"Value in y:\n {''.join(y_diff)}")
-        print(f"Index in x:\n {','.join(map(str,idx_diff))}")
+        # print(f"Value in x:\n {''.join(x_diff)}")
+        # print(f"Value in y:\n {''.join(y_diff)}")
+        # print(f"Index in x:\n {','.join(map(str,idx_diff))}")
 
 
 
