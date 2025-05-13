@@ -6,6 +6,7 @@ import os
 import anyio
 from collections import OrderedDict
 import hashlib
+import difflib
 
 from log import get_logger
 logger = get_logger(__name__)
@@ -35,6 +36,14 @@ def normalize(obj):
             return normalize(obj.to_dict())
         case _:
             return obj
+
+
+def find_closest_str(s: str, index: list[str]) -> str:
+    # can be used for debugging cache issues; disable the hashing in _get_cache_key before
+    similarity = [difflib.SequenceMatcher(None, s, i).ratio() for i in index]
+    max_index = similarity.index(max(similarity))
+    return index[max_index]
+
 
 class CachedLLM(AsyncLLM):
     """A wrapper around AsyncLLM that provides caching functionality with four modes:
@@ -124,6 +133,7 @@ class CachedLLM(AsyncLLM):
         """generate a consistent cache key from request parameters."""
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
+        return key_str
         return hashlib.md5(key_str.encode()).hexdigest()
 
     async def completion(
@@ -216,6 +226,9 @@ class CachedLLM(AsyncLLM):
                     return Completion.from_dict(cached_response)
                 else:
                     logger.error(f"Cache miss by {self.client.__class__.__name__}: {normalize(request_params)}")
+                    closest_key = find_closest_str(cache_key, list(self._cache.keys()))
+                    logger.error(f"Closest key: {closest_key}")
+                    logger.error(f"Target key: {cache_key}")
                     raise ValueError(
                         f"No cached response found for this request in replay mode; "
                         f"run in record mode first to populate the cache. Cache_key: {cache_key}"
