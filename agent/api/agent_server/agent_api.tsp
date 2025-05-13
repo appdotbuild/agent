@@ -58,6 +58,16 @@ model DiffStatEntry {
 }
 
 // --- Models ---
+
+@doc("Represents a single file with its path and content.")
+model FileEntry {
+  @doc("The relative path of the file.")
+  path: string;
+
+  @doc("The content of the file.")
+  content: string;
+}
+
 @doc("Represents a message from the agent to the user, including content, state, and any code changes.")
 model AgentMessage {
   @doc("Fixed field for client to detect agent message in the history") 
@@ -120,6 +130,9 @@ union ConversationMessage {
 model AgentRequest {
   @doc("History of all user messages in the current conversation thread.")
   allMessages: ConversationMessage[];
+
+  @doc("All files in the workspace to be used as a base for diff generation.")
+  allFiles?: FileEntry[];
 
   @doc("Unique identifier for the application instance. Used for tracing and context.")
   applicationId: string;

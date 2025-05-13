@@ -262,10 +262,13 @@ Return ONLY the commit message, nothing else.""")
                     try:
                         logger.info(f"FSM is completed: {is_completed}")
 
-                        # We purposely generate diff against an empty snapshot to ensure
-                        # that *all* generated files are included in the final diff. Using
-                        # the current files as the snapshot would yield an empty diff.
-                        final_diff = await self.processor_instance.fsm_app.get_diff_with({})
+                        # Prepare snapshot from request.all_files if available
+                        snapshot_files = {}
+                        if request.all_files:
+                            for file_entry in request.all_files:
+                                snapshot_files[file_entry.path] = file_entry.content
+
+                        final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
                         # Always include a diff in the final state, even if empty
                         if not final_diff:
