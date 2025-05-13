@@ -194,8 +194,6 @@ Return ONLY the commit message, nothing else.""")
             while True:
                 new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
 
-                # Defaults for diff-related fields
-                diff_to_send: Optional[str] = None
                 current_hash: Optional[str] = None
                 diff_stat: Optional[List[DiffStatEntry]] = None
 
@@ -218,8 +216,6 @@ Return ONLY the commit message, nothing else.""")
                         diff_changed = False
                         diff_stat = None
 
-                    # Send full diff ONLY on the very first detected change
-                    diff_to_send = app_diff if (diff_changed and self._prev_diff_hash is None) else None
 
                     if diff_changed:
                         self._prev_diff_hash = current_hash
@@ -261,9 +257,13 @@ Return ONLY the commit message, nothing else.""")
                         fsm_app = self.processor_instance.fsm_app
                         is_completed = fsm_app.is_completed
 
+                print("check if completed")
+
                 # If the FSM is completed, ensure the diff is sent properly
                 if is_completed:
                     try:
+                        print(f"FSM is completed: {is_completed}")
+                        
                         # This is the final state - make sure we produce a proper diff
                         if self.processor_instance.fsm_app and self.processor_instance.fsm_app.current_state == FSMState.COMPLETE:
                             logger.info(f"Sending final state diff for trace {self.trace_id}")
