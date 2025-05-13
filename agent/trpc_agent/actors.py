@@ -441,6 +441,7 @@ class FrontendActor(BaseTRPCActor):
         self.root = None
         self.vlm = vlm
         self._user_prompt = None
+        self._ts_cleanup_pattern = re.compile(r'(\?v=)[a-f0-9]+(:[0-9]+:[0-9]+)?')
 
     async def execute(self, user_prompt: str, server_files: dict[str, str]) -> Node[BaseData]:
         logger.info(f"Executing frontend actor with user prompt: {user_prompt}")
@@ -496,7 +497,9 @@ class FrontendActor(BaseTRPCActor):
                     if os.path.exists(os.path.join(temp_dir, console_log_file)):
                         with open(console_log_file, "r") as f:
                             console_logs += f"\n{browser}:\n"
-                            console_logs += f.read()
+                            logs = f.read()
+                            # remove stochastic parts of the logs for caching
+                            console_logs += self._ts_cleanup_pattern.sub(r"\1", logs)
 
                 prompt = jinja2.Environment().from_string(playbooks.FRONTEND_VALIDATION_PROMPT)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=self._user_prompt)
