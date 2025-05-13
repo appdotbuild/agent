@@ -1,1 +1,0 @@
-// {{gherkin}} test cases
