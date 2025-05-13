@@ -752,8 +752,13 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
 
                 # --- Prepare allFiles from project_dir for the request ---
                 files_for_snapshot: List[FileEntry] = get_all_files_from_project_dir(project_dir)
-                logger.info(f"Preparing request with {len(files_for_snapshot)} files from {project_dir}")
-                all_files_payload = [f.model_dump() for f in files_for_snapshot] # Convert to dicts for JSON
+                print(f"Client: Preparing request. Content: '{content[:50].replace('\n', ' ')}...'. Snapshot from '{project_dir}' contains {len(files_for_snapshot)} files.")
+                if files_for_snapshot:
+                    print(f"Client: Snapshot sample paths: {[f.path for f in files_for_snapshot[:3]]}")
+                else:
+                    print("Client: Snapshot is empty.")
+                    
+                all_files_payload = [f.model_dump() for f in files_for_snapshot]
 
                 # Send or continue conversation
                 try:
@@ -793,7 +798,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 "timestamp": datetime.now().isoformat()
                             }, f, indent=2)
                 except Exception as e:
-                    print(f"Error: {e}")
+                    print(f"\nError in command/interaction cycle: {e}")
                     traceback.print_exc()
 
 @contextlib.contextmanager
