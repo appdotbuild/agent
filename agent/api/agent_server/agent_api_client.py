@@ -106,7 +106,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                     # Copy all template files except specific excluded directories and hidden files
                     excluded_dirs = ["node_modules", "dist"]
 
-                    def copy_template_files(base_dir, target_base):
+                    def copy_template_files(base_dir, target_base, dirs_only=False):
                         """
                         Copy all template files recursively, except those in excluded directories
                         and hidden files (starting with a dot).
@@ -132,7 +132,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                 dest_dir = os.path.dirname(dest_file)
 
                                 os.makedirs(dest_dir, exist_ok=True)
-                                if not os.path.lexists(dest_file):
+                                if not dirs_only and not os.path.lexists(dest_file):
                                     try:
                                         # Directly copy the file (no symlink)
                                         shutil.copy2(src_file, dest_file)
@@ -141,7 +141,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                         print(f"Warning: could not copy file {rel_file_path}: {cp_err}")
 
                     # Copy all template files recursively (except excluded dirs)
-                    copy_template_files(template_root, target_dir)
+                    copy_template_files(template_root, target_dir, dirs_only=True)
 
                     # Then handle the files from the diff patch
                     for rel_path in file_paths:
