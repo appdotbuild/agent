@@ -229,9 +229,56 @@ class CachedLLM(AsyncLLM):
                     closest_key = find_closest_str(cache_key, list(self._cache.keys()))
                     logger.error(f"Closest key: {closest_key}")
                     logger.error(f"Target key: {cache_key}")
+
+                    close = json.loads(closest_key)
+                    target = json.loads(cache_key)
+
+                    _compare(close, target)
                     raise ValueError(
                         f"No cached response found for this request in replay mode; "
                         f"run in record mode first to populate the cache. Cache_key: {cache_key}"
                     )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")
+
+
+def _compare(x, y, prefix: str = ""):
+    if isinstance(x, dict) and isinstance(y, dict):
+        for key in x:
+            if key not in y:
+                print(f"Key {key} not found in y")
+                return False
+            if not _compare(x[key], y[key], prefix=prefix + f"{key}."):
+                print(f"Value for key {key} does not match")
+                return False
+    elif isinstance(x, list) and isinstance(y, list):
+        for i in range(len(x)):
+            if i >= len(y):
+                print(f"Index {i} not found in y")
+                return False
+            if not _compare(x[i], y[i], prefix=prefix + f"[{i}]"):
+                print(f"Value at index {i} does not match")
+                return False
+
+    is_eq = x == y
+    if not is_eq:
+        print(f"Value {prefix} not match directly")
+        print(f"Value in x:\n {x}")
+        print(f"Value in y:\n {y}")
+        x_diff = []
+        y_diff = []
+        idx_diff = []
+        for i in range(len(x)):
+            if x[i] != y[i]:
+                x_diff.append(x[i])
+                y_diff.append(y[i])
+                idx_diff.append(i)
+
+        print(f"Value in x:\n {''.join(x_diff)}")
+        print(f"Value in y:\n {''.join(y_diff)}")
+        print(f"Index in x:\n {','.join(map(str,idx_diff))}")
+
+
+
+        return False
+    return True
