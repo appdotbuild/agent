@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import readline
 import atexit
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
 from api.agent_server.models import AgentSseEvent
@@ -421,7 +421,14 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         logger.info(f"Got an event: {event.status} {event.message.kind}")
         if event.message:
             if event.message.content:
-                print(event.message.content, end="", flush=True)
+                items = json.loads(event.message.content)
+                for item in items:
+                    if isinstance(item, dict):
+                        if item.get("role") == "assistant":
+                            for part in item.get("content", []):
+                                if isinstance(part, dict) and part.get("type") == "text":
+                                    print(part.get("text", ""), end="\n", flush=True)
+                
             if diff := event.message.unified_diff:
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
                 print(f"\033[36m{diff}\033[0m")
@@ -433,6 +440,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             
             if event.message.commit_message:
                 print(f"\033[35m📝 Commit Message: {event.message.commit_message}\033[0m\n")
+
 
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
