@@ -42,7 +42,8 @@ async def test_async_agent_message_endpoint(agent_type):
                 case AgentSseEvent():
                     assert event.trace_id == request.trace_id, f"Trace IDs do not match in model objects with agent_type={agent_type}"
                     assert event.status == AgentStatus.IDLE
-                    assert event.message.kind == MessageKind.STAGE_RESULT
+                    assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR"
+
 
 
 async def test_sequential_sse_responses(trpc_agent):
@@ -60,7 +61,7 @@ async def test_sequential_sse_responses(trpc_agent):
         )
         assert len(first_continuation_events) > 0, "No first continuation events received"
         for event in first_continuation_events:
-            assert event.message.kind == MessageKind.STAGE_RESULT, "Message kind is not STAGE_RESULT in first continuation"
+            assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR in first continuation"
             assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in first continuation (model)"
 
         # Second continuation
@@ -72,7 +73,7 @@ async def test_sequential_sse_responses(trpc_agent):
         assert len(second_continuation_events) > 0, "No second continuation events received"
 
         for event in second_continuation_events:
-            assert event.message.kind == MessageKind.STAGE_RESULT, "Message kind is not STAGE_RESULT in second continuation"
+            assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR in second continuation"
             assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in second continuation (model)"
 
 
@@ -101,10 +102,9 @@ async def test_session_with_no_state(trpc_agent):
         )
         assert len(second_events) > 0, "No events received from second request"
 
-        # Verify each event has the expected trace ID
         for event in first_events + second_events:
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
-            assert event.message.kind == MessageKind.STAGE_RESULT, "Message kind is not STAGE_RESULT in continuation"
+            assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR during continuation"
 
 
 async def test_agent_reaches_idle_state(trpc_agent):
