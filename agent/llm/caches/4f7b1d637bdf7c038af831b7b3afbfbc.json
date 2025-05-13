@@ -1,14 +1,14 @@
 {
-  "ff429864e93a38fb72c20e3a94a90282": {
+  "{\"max_tokens\":512,\"messages\":[{\"content\":[{\"text\":\"Hello, what are you?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":null,\"temperature\":1.0,\"tool_choice\":null,\"tools\":null}": {
     "role": "assistant",
     "content": [
       {
         "type": "text",
-        "text": "Hello! I am a large language model, trained by Google."
+        "text": "I am a large language model, trained by Google."
       }
     ],
     "input_tokens": 7,
-    "output_tokens": 13,
+    "output_tokens": 11,
     "stop_reason": "end_turn",
     "thinking_tokens": null
   }
