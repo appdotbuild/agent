@@ -304,28 +304,26 @@ class FSMApplication:
         return actions
 
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
-        # Start with the template directory
-        context = dagger.dag.host().directory("./trpc_agent/template")
+        # Initialize context as a directory first
+        context = dagger.dag.host().directory("./trpc_agent/dag-startup")
+        # Load the .gitignore file and add it to the context directory
+        gitignore_file = dagger.dag.host().file("./trpc_agent/template/.gitignore")
+        context = context.with_file(".gitignore", gitignore_file)
 
-        # Write snapshot (initial) files
+        # Write snapshot (initial) files to compare against in the diff
         for key, value in snapshot.items():
             context = context.with_new_file(key, value)
 
         # Create workspace with git
         workspace = await Workspace.create(base_image="alpine/git", context=context)
 
-        # Write current (final) files
+        # Copy the entire template directory into the workspace
+        template_dir = dagger.dag.host().directory("./trpc_agent/template")
+        workspace.ctr = workspace.ctr.with_directory(".", template_dir)
+
+        # Write current (final) files from the FSM context so they overlay any template files.
         for key, value in self.fsm.context.files.items():
             workspace.write_file(key, value)
-
-        # If we're in the COMPLETE state, ensure we return a diff even if empty
-        if self.current_state == FSMState.COMPLETE:
-            diff = await workspace.diff()
-            # If the diff is empty but we have files, return a special marker
-            if not diff.strip() and self.fsm.context.files:
-                # Return empty string, but with special note that the system can recognize
-                return "# Note: This is a valid empty diff (means no changes from template)"
-            return diff
 
         return await workspace.diff()
 
