@@ -9,6 +9,7 @@ import hashlib
 import difflib
 
 from log import get_logger
+
 logger = get_logger(__name__)
 
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
@@ -104,7 +105,7 @@ class CachedLLM(AsyncLLM):
         """load cache from file if it exists, otherwise return empty dict."""
         if (cache_file := Path(self.cache_path)).exists():
             with cache_file.open("r") as f:
-                if (content := f.read()):
+                if content := f.read():
                     return json.loads(content)
         return {}
 
@@ -127,13 +128,11 @@ class CachedLLM(AsyncLLM):
             self._cache.pop(oldest_key, None)
             logger.debug(f"Evicted oldest cache entry: {oldest_key}")
 
-
     @staticmethod
     def _get_cache_key(**kwargs) -> str:
         """generate a consistent cache key from request parameters."""
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
-        return key_str
         return hashlib.md5(key_str.encode()).hexdigest()
 
     async def completion(
@@ -171,7 +170,7 @@ class CachedLLM(AsyncLLM):
                     tools=tools,
                     tool_choice=tool_choice,
                     *args,
-                    **kwargs
+                    **kwargs,
                 )
                 return response
 
@@ -190,7 +189,7 @@ class CachedLLM(AsyncLLM):
                             temperature=temperature,
                             tools=tools,
                             tool_choice=tool_choice,
-                            **kwargs
+                            **kwargs,
                         )
                         self._cache[cache_key] = response.to_dict()
                         self._save_cache()
@@ -212,7 +211,7 @@ class CachedLLM(AsyncLLM):
                             temperature=temperature,
                             tools=tools,
                             tool_choice=tool_choice,
-                            **kwargs
+                            **kwargs,
                         )
                         self._cache[cache_key] = response.to_dict()
                         self._update_lru_cache(cache_key)
@@ -226,59 +225,9 @@ class CachedLLM(AsyncLLM):
                     return Completion.from_dict(cached_response)
                 else:
                     logger.error(f"Cache miss by {self.client.__class__.__name__}: {normalize(request_params)}")
-                    closest_key = find_closest_str(cache_key, list(self._cache.keys()))
-                    logger.error(f"Closest key: {closest_key}")
-                    logger.error(f"Target key: {cache_key}")
-
-                    close = json.loads(closest_key)
-                    target = json.loads(cache_key)
-
-                    _compare(close, target)
                     raise ValueError(
                         f"No cached response found for this request in replay mode; "
                         f"run in record mode first to populate the cache. Cache_key: {cache_key}"
                     )
             case _:
                 raise ValueError(f"unknown cache mode: {self.cache_mode}")
-
-
-def _compare(x, y, prefix: str = ""):
-    if isinstance(x, dict) and isinstance(y, dict):
-        for key in x:
-            if key not in y:
-                print(f"Key {key} not found in y")
-                return False
-            if not _compare(x[key], y[key], prefix=prefix + f"{key}."):
-                print(f"Value for key {key} does not match")
-                return False
-    elif isinstance(x, list) and isinstance(y, list):
-        for i in range(len(x)):
-            if i >= len(y):
-                print(f"Index {i} not found in y")
-                return False
-            if not _compare(x[i], y[i], prefix=prefix + f"[{i}]"):
-                print(f"Value at index {i} does not match")
-                return False
-
-    is_eq = x == y
-    if not is_eq:
-        print(f"Value {prefix} not match directly")
-        print(f"Value in x:\n {x}")
-        print(f"Value in y:\n {y}")
-        # x_diff = []
-        # y_diff = []
-        # idx_diff = []
-        # for i in range(len(x)):
-        #     if x[i] != y[i]:
-        #         x_diff.append(x[i])
-        #         y_diff.append(y[i])
-        #         idx_diff.append(i)
-
-        # print(f"Value in x:\n {''.join(x_diff)}")
-        # print(f"Value in y:\n {''.join(y_diff)}")
-        # print(f"Index in x:\n {','.join(map(str,idx_diff))}")
-
-
-
-        return False
-    return True
