@@ -6,6 +6,7 @@ from typing import Dict, Self, Optional, Literal, Any
 from dataclasses import dataclass, field
 from core.statemachine import StateMachine, State, Context
 from llm.utils import get_llm_client
+from core.path_utils import get_template_path
 from core.actors import BaseData
 from core.base_node import Node
 from core.statemachine import MachineCheckpoint
@@ -141,7 +142,9 @@ class FSMApplication:
         g_llm = get_llm_client(model_name="gemini-pro")
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
+            context=dagger.dag.host().directory(
+                get_template_path(__file__)
+            ),
             setup_cmd=[["bun", "install"]],
         )
 
@@ -308,7 +311,9 @@ class FSMApplication:
 
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
         # Start with the template directory
-        context = dagger.dag.host().directory("./trpc_agent/template")
+        context = dagger.dag.host().directory(
+            get_template_path(__file__)
+        )
 
         # Write snapshot (initial) files
         for key, value in snapshot.items():

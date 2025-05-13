@@ -7,6 +7,7 @@ from core.base_node import Node
 from core.workspace import Workspace
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
+from core.path_utils import get_template_path
 
 logger = logging.getLogger(__name__)
 
@@ -443,7 +444,9 @@ async def main(user_prompt="Add feature to create plain notes without status."):
 
         workspace = await Workspace.create(
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
+            context=dagger.dag.host().directory(
+                get_template_path(__file__)
+            ),
             setup_cmd=[["bun", "install"]],
         )
 
