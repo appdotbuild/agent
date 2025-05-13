@@ -250,9 +250,9 @@ class FSMToolProcessor[T: FSMInterface]:
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
             thread.append(Message(role="user", content=[
-                *tool_results,
-                TextRaw("Generation complete. You can now review the results and proceed with using the generated application. You can also send more messages to update the application.")
+                *tool_results
             ]))
+
         return thread
 
     def fsm_as_result(self) -> dict:
