@@ -317,10 +317,8 @@ class FSMApplication:
         else:
             logger.info("SERVER get_diff_with: Snapshot is empty. Diff will be against template + FSM context files.")
 
-        # Initialize context as a directory first
-        context_path = "./trpc_agent/dag-startup"
-        logger.debug(f"SERVER get_diff_with: Initializing Dagger context from host directory: {context_path}")
-        context = dagger.dag.host().directory(context_path)
+        logger.debug("SERVER get_diff_with: Initializing Dagger context from empty directory")
+        context = dagger.dag.directory()
         
         gitignore_path = "./trpc_agent/template/.gitignore"
         try:
