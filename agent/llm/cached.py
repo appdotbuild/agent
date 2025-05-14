@@ -1,4 +1,4 @@
-from typing import Literal, Dict, Any, List
+from typing import Literal, Dict, Any, List, Tuple
 import ujson as json
 from pathlib import Path
 from llm.common import AsyncLLM, Completion, Message, Tool
@@ -6,16 +6,14 @@ import os
 import anyio
 from collections import OrderedDict
 import hashlib
+import difflib
 
 from log import get_logger
+
 logger = get_logger(__name__)
 
 CacheMode = Literal["off", "record", "replay", "auto", "lru"]
 
-
-
-def _normalize_repo_files(files : list[str]) -> list[str]:
-    return [os.path.basename(file) for file in files if os.path.isfile(file)]
 
 def normalize(obj):
     match obj:
@@ -27,6 +25,9 @@ def normalize(obj):
             for k, v in sorted(obj.items()):
                 if k == "id":
                     normalized_dict[k] = "__ID_PLACEHOLDER__"
+                elif k == "cache_control":
+                    # ignore cache_control field used to control caching
+                    pass
                 elif hasattr(v, "cache_key"):
                     normalized_dict[k] = v.cache_key
                 else:
@@ -36,6 +37,14 @@ def normalize(obj):
             return normalize(obj.to_dict())
         case _:
             return obj
+
+
+def find_closest_str(s: str, index: list[str]) -> str:
+    # can be used for debugging cache issues; disable the hashing in _get_cache_key before
+    similarity = [difflib.SequenceMatcher(None, s, i).ratio() for i in index]
+    max_index = similarity.index(max(similarity))
+    return index[max_index]
+
 
 class CachedLLM(AsyncLLM):
     """A wrapper around AsyncLLM that provides caching functionality with four modes:
@@ -96,7 +105,7 @@ class CachedLLM(AsyncLLM):
         """load cache from file if it exists, otherwise return empty dict."""
         if (cache_file := Path(self.cache_path)).exists():
             with cache_file.open("r") as f:
-                if (content := f.read()):
+                if content := f.read():
                     return json.loads(content)
         return {}
 
@@ -119,13 +128,12 @@ class CachedLLM(AsyncLLM):
             self._cache.pop(oldest_key, None)
             logger.debug(f"Evicted oldest cache entry: {oldest_key}")
 
-
     @staticmethod
-    def _get_cache_key(**kwargs) -> str:
+    def _get_cache_key(**kwargs) -> Tuple[Any, str]:
         """generate a consistent cache key from request parameters."""
         normalized_kwargs = normalize(kwargs)
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return normalized_kwargs, hashlib.md5(key_str.encode()).hexdigest()
 
     async def completion(
         self,
@@ -162,17 +170,17 @@ class CachedLLM(AsyncLLM):
                     tools=tools,
                     tool_choice=tool_choice,
                     *args,
-                    **kwargs
+                    **kwargs,
                 )
                 return response
 
             case "record":
                 async with self.lock:
-                    cache_key = self._get_cache_key(**request_params)
+                    norm_params, cache_key = self._get_cache_key(**request_params)
                     logger.info(f"Caching response with key: {cache_key}")
                     if cache_key in self._cache:
                         logger.info("Fetching from cache")
-                        return Completion.from_dict(self._cache[cache_key])
+                        return Completion.from_dict(self._cache[cache_key]["data"])
                     else:
                         response = await self.client.completion(
                             model=model,
@@ -181,19 +189,19 @@ class CachedLLM(AsyncLLM):
                             temperature=temperature,
                             tools=tools,
                             tool_choice=tool_choice,
-                            **kwargs
+                            **kwargs,
                         )
-                        self._cache[cache_key] = response.to_dict()
+                        self._cache[cache_key] = {"data": response.to_dict(), "params": norm_params}
                         self._save_cache()
                     return response
 
             case "lru":
                 async with self.lock:
-                    cache_key = self._get_cache_key(**request_params)
+                    norm_params, cache_key = self._get_cache_key(**request_params)
                     if cache_key in self._cache:
                         logger.info(f"lru cache hit: {cache_key}")
                         self._update_lru_cache(cache_key)
-                        return Completion.from_dict(self._cache[cache_key])
+                        return Completion.from_dict(self._cache[cache_key]['data'])
                     else:
                         logger.info(f"lru cache miss: {cache_key}")
                         response = await self.client.completion(
@@ -203,17 +211,17 @@ class CachedLLM(AsyncLLM):
                             temperature=temperature,
                             tools=tools,
                             tool_choice=tool_choice,
-                            **kwargs
+                            **kwargs,
                         )
-                        self._cache[cache_key] = response.to_dict()
+                        self._cache[cache_key] = {"data": response.to_dict(), "params": norm_params}
                         self._update_lru_cache(cache_key)
                         return response
 
             case "replay":
-                cache_key = self._get_cache_key(**request_params)
+                norm_params, cache_key = self._get_cache_key(**request_params)
                 if cache_key in self._cache:
                     logger.info(f"cache hit: {cache_key}")
-                    cached_response = self._cache[cache_key]
+                    cached_response = self._cache[cache_key]["data"]
                     return Completion.from_dict(cached_response)
                 else:
                     logger.error(f"Cache miss by {self.client.__class__.__name__}: {normalize(request_params)}")

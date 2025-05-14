@@ -111,6 +111,8 @@ class AnthropicLLM(common.AsyncLLM):
                 match block:
                     case common.TextRaw(text) if text.rstrip():
                         theirs_content.append({"text": text.rstrip(), "type": "text"})
+                    case common.TextRaw(text) if not text.rstrip():
+                        continue
                     case common.ToolUse(name, input, id) if id is not None:
                         theirs_content.append({"id": id, "input": input, "name": name, "type": "tool_use"})
                     case common.ToolUseResult(tool_use, tool_result) if tool_use.id is not None:
@@ -122,5 +124,6 @@ class AnthropicLLM(common.AsyncLLM):
                         })
                     case _:
                         raise ValueError(f"Unknown block type {type(block)} for {block}")
-            theirs_messages.append({"role": message.role, "content": theirs_content})
+            if theirs_content:
+                theirs_messages.append({"role": message.role, "content": theirs_content})
         return theirs_messages
