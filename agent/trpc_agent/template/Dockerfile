@@ -1,6 +1,7 @@
 # Build stage
 FROM oven/bun:1.2.2-alpine AS builder
 
+ENV APP_DATABASE_URL=${APP_DATABASE_URL}
 # Set working directory
 WORKDIR /app
 
