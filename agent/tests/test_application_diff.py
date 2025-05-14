@@ -5,6 +5,7 @@ from trpc_agent.application import FSMApplication
 from core.statemachine import StateMachine
 from core.workspace import Workspace
 from log import get_logger
+import os
 import dagger._engine.session as _dagger_session
 
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ async def fsm_application():
     mock_fsm = MagicMock(spec=StateMachine)
     mock_fsm.context = MockApplicationContext()
     mock_fsm.dump = AsyncMock(return_value={"state": "test_state"})
-    
+
     application = FSMApplication(mock_fsm)
     yield application
 
@@ -87,23 +88,23 @@ async def test_get_diff_with_empty_snapshot(check_dagger_available):
         "client/src/App.tsx": "function App() { return <div>Test App</div>; }",
         "server/index.js": "console.log('Server starting');"
     }
-    
-    async with dagger.connection():
+
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Create FSM application with our test files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
-        
+
         # Call get_diff_with using an empty snapshot (should include all files)
         diff_result = await fsm_application.get_diff_with({})
-        
+
         # Verify we got a diff string
         assert isinstance(diff_result, str)
         assert len(diff_result) > 0
-        
+
         # Check that our FSM files appear in the diff
         for file_path in fsm_files.keys():
             # Check that file paths appear in the diff
             assert file_path in diff_result
-        
+
         # Verify that template files are included in the diff
         # The template typically includes common files like Dockerfile and package.json
         assert "Dockerfile" in diff_result
@@ -119,21 +120,21 @@ async def test_get_diff_with_identical_snapshot(check_dagger_available):
         "test_file.txt": "Hello, world!",
         "client/src/App.tsx": "function App() { return <div>Test App</div>; }"
     }
-    
-    async with dagger.connection():
+
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Create FSM application with our test files
         fsm_application = FSMApplication(create_mock_fsm(test_files))
-        
+
         # Call get_diff_with using identical snapshot
         diff_result = await fsm_application.get_diff_with(test_files)
-        
+
         # Verify we got a non-empty diff (due to template files)
         assert isinstance(diff_result, str)
         assert len(diff_result) > 0
-        
+
         # Template files should be present in the diff
         assert "Dockerfile" in diff_result
-        
+
         # But our identical files shouldn't show content changes
         assert "+Hello, world!" not in diff_result
         assert "+function App()" not in diff_result
@@ -149,27 +150,27 @@ async def test_get_diff_with_modified_files(check_dagger_available):
         "test_file.txt": "Hello, world!",
         "client/src/App.tsx": "function App() { return <div>Original App</div>; }"
     }
-    
+
     # Create modified FSM files (content has changed)
     fsm_files = {
         "test_file.txt": "Hello, modified world!",
         "client/src/App.tsx": "function App() { return <div>Modified App</div>; }"
     }
-    
-    async with dagger.connection():
+
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Create FSM application with our modified files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
-        
+
         # Call get_diff_with using the original snapshot
         diff_result = await fsm_application.get_diff_with(snapshot_files)
-        
+
         # Verify we got a diff string
         assert isinstance(diff_result, str)
         assert len(diff_result) > 0
-        
+
         # Check for template files in the diff
         assert "Dockerfile" in diff_result
-        
+
         # Verify that diff contains specific modifications of our files
         assert "Modified App" in diff_result
         assert "Original App" in diff_result
@@ -185,28 +186,28 @@ async def test_get_diff_with_added_files(check_dagger_available):
     snapshot_files = {
         "test_file.txt": "Hello, world!",
     }
-    
+
     # Create FSM with additional files
     fsm_files = {
         "test_file.txt": "Hello, world!",
         "client/src/App.tsx": "function App() { return <div>New App</div>; }",
         "server/index.js": "console.log('Server starting');"
     }
-    
-    async with dagger.connection():
+
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Create FSM application with our expanded files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
-        
+
         # Call get_diff_with using the original snapshot
         diff_result = await fsm_application.get_diff_with(snapshot_files)
-        
+
         # Verify we got a diff string
         assert isinstance(diff_result, str)
         assert len(diff_result) > 0
-        
+
         # Check for template files in the diff
         assert "Dockerfile" in diff_result
-        
+
         # Verify that our added files are in the diff
         # Since we have template files, we need to be careful about how we check
         # The added files might be overshadowed by the template files in the diff
@@ -234,7 +235,7 @@ async def test_get_diff_with_removed_files(check_dagger_available):
         "client/src/App.tsx": "function App() { return <div>App</div>; }",
     }
 
-    async with dagger.connection():
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Create FSM application with our reduced files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
 
@@ -248,10 +249,10 @@ async def test_get_diff_with_removed_files(check_dagger_available):
         # Log the full diff to debug
         logger.info(f"Diff length: {len(diff_result)}")
         logger.info(f"Diff snippet: {diff_result[:200]}")
-        
+
         # Check for template files in the diff (which dominates the output)
         assert "Dockerfile" in diff_result
-        
+
         # Note: The template addition may overshadow the file removals in the diff
         # So we don't check for specific removal markers as they might not be
         # prominently featured in the diff output
@@ -261,13 +262,13 @@ async def test_get_diff_with_exception_handling(check_dagger_available):
     """Test error handling when something goes wrong during diff generation"""
     # Create a mock FSM application
     fsm_application = FSMApplication(create_mock_fsm())
-    
+
     # Use a real Dagger connection but create conditions that will cause an error
-    async with dagger.connection():
+    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         # Call get_diff_with but cause an exception in the Workspace.diff method
         with patch.object(Workspace, 'diff', side_effect=Exception("Test diff error")):
             diff_result = await fsm_application.get_diff_with({})
-            
+
             # Verify the result contains the error message
             assert "ERROR GENERATING DIFF" in diff_result
             assert "Test diff error" in diff_result
@@ -277,14 +278,14 @@ async def test_get_diff_with_real_dagger():
     """Integration test with a real Dagger instance (requires Dagger to be available)"""
     # Skip this test by default since it requires Docker/Dagger
     try:
-        async with dagger.connection():
+        async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
             # Create FSM application
             fsm_application = FSMApplication(create_mock_fsm())
-            
+
             # Call the method with an empty snapshot
             diff_result = await fsm_application.get_diff_with({})
-            
+
             # Just check that we got a string result (might be empty or an error message)
             assert isinstance(diff_result, str)
     except Exception as e:
-        pytest.skip(f"Dagger not available: {str(e)}") 
+        pytest.skip(f"Dagger not available: {str(e)}")
