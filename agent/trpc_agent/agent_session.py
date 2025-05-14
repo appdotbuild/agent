@@ -222,14 +222,34 @@ Return ONLY the commit message, nothing else.""")
                     # include empty diffs too as they are valid = template diff (when diff_to_send not null)
                 messages += new_messages
                 
-                # Generate app name and commit message if this is the first response
                 app_name = None
                 commit_message = None
                 if request.agent_state is None and self.processor_instance.fsm_app:  # This is the first request
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
                     app_name = await self.generate_app_name(prompt, flash_lite_client)
+                    # Communicate the app name and commit message and template diff to the client
+                    initial_template_diff = await self.get_app_diff()
+                    event_out = AgentSseEvent(
+                        status=AgentStatus.IDLE,
+                        traceId=self.trace_id,
+                        message=AgentMessage(
+                            role="assistant",
+                            kind=MessageKind.STAGE_RESULT if (self.user_answered(messages) or 
+                                                            (self.processor_instance.fsm_app and 
+                                                            app_diff is not None)) else MessageKind.REFINEMENT_REQUEST,
+                            content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                            agentState={"fsm_state": fsm_state} if fsm_state else None,
+                            unifiedDiff=initial_template_diff,
+                            complete_diff_hash=current_hash,
+                            diff_stat=diff_stat,
+                            app_name=app_name,
+                            commit_message="Initial commit"
+                        )
+                    )
+                    await event_tx.send(event_out)
                     commit_message = await self.generate_commit_message(prompt, flash_lite_client)
+                    
                 
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
