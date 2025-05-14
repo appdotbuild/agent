@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, TypedDict, List
 
 from anyio.streams.memory import MemoryObjectSendStream
 
-from trpc_agent.application import FSMApplication, FSMState
+from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor

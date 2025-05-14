@@ -6,7 +6,6 @@ from httpx import AsyncClient, ASGITransport
 from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, AgentMessage, MessageKind, FileEntry
 from api.agent_server.async_server import app, CONFIG
 from log import get_logger
-from llm.common import Message
 
 logger = get_logger(__name__)
 
