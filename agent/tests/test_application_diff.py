@@ -5,14 +5,33 @@ from trpc_agent.application import FSMApplication
 from core.statemachine import StateMachine
 from core.workspace import Workspace
 from log import get_logger
+import dagger._engine.session as _dagger_session
 
 logger = get_logger(__name__)
 
 pytestmark = pytest.mark.anyio
 
-@pytest.fixture(scope="function")
-def anyio_backend():
-    return 'asyncio'
+# ---------------------------------------------------------------------------
+# Test-local optimisation: give the Dagger engine more time to shut down
+# ---------------------------------------------------------------------------
+# Each test in this file spins up its own engine via `async with dagger.connection()`.
+# The Python SDK waits `Pclose.timeout` seconds (default = 300) for the engine
+# to terminate after stdin closes.  Large diff jobs frequently exceed that and
+# pytest sees `subprocess.TimeoutExpired`.  We raise the limit to 15 minutes
+# *only for this module* to make the tests reliable.
+
+@pytest.fixture(scope="module", autouse=True)
+def _extend_dagger_shutdown_timeout():
+    """Autouse fixture that increases Dagger engine shutdown timeout.
+
+    Applied automatically to every test in this file.  The original value is
+    restored when the module's tests complete so other test-modules keep the
+    default behaviour.
+    """
+    original = _dagger_session.Pclose.timeout
+    _dagger_session.Pclose.timeout = 900  # 15 minutes
+    yield
+    _dagger_session.Pclose.timeout = original
 
 class MockApplicationContext:
     """Mock context for testing FSMApplication"""

@@ -197,14 +197,14 @@ Return ONLY the commit message, nothing else.""")
                 current_hash: Optional[str] = None
                 diff_stat: Optional[List[DiffStatEntry]] = None
 
+                fsm_state = None
+                app_diff = None
                 if self.processor_instance.fsm_app is None:
                     logger.info("FSMApplication is empty")
-                    fsm_state = None
-                    app_diff = None
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    app_diff = await self.get_app_diff()
+                    #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
 
                     # Calculate hash and diff stat if diff present
                     if app_diff is not None:
@@ -235,9 +235,7 @@ Return ONLY the commit message, nothing else.""")
                         traceId=self.trace_id,
                         message=AgentMessage(
                             role="assistant",
-                            kind=MessageKind.STAGE_RESULT if (self.user_answered(messages) or 
-                                                            (self.processor_instance.fsm_app and 
-                                                            app_diff is not None)) else MessageKind.REFINEMENT_REQUEST,
+                            kind=MessageKind.STAGE_RESULT,
                             content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                             agentState={"fsm_state": fsm_state} if fsm_state else None,
                             unifiedDiff=initial_template_diff,
