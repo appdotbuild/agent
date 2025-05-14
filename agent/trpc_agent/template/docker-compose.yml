@@ -7,7 +7,7 @@ services:
       - "80:80"
       - "2022:2022"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres}
+      - APP_DATABASE_URL=${APP_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres}
     container_name: ${BACKEND_CONTAINER_NAME:-app}
     depends_on:
       db-push:
@@ -27,7 +27,7 @@ services:
     command: ["bun", "run", "drizzle-kit", "push", "--force"]
     working_dir: /app/server
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres}
+      - APP_DATABASE_URL=${APP_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres}
     depends_on:
       postgres:
         condition: service_healthy

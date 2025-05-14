@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, TypedDict, List
 
 from anyio.streams.memory import MemoryObjectSendStream
 
-from trpc_agent.application import FSMApplication, FSMState
+from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor
@@ -17,6 +17,7 @@ from api.agent_server.models import (
     AgentMessage,
     AgentStatus,
     MessageKind,
+    DiffStatEntry,
 )
 from api.agent_server.interface import AgentInterface
 
@@ -38,6 +39,7 @@ class TrpcAgentSession(AgentInterface):
         self.model_params = {
             "max_tokens": 8192,
         }
+        self._prev_diff_hash: Optional[str] = None  # sha256 of last complete diff sent
 
     async def get_app_diff(self) -> str:
         fsm_app = self.processor_instance.fsm_app
@@ -191,25 +193,61 @@ Return ONLY the commit message, nothing else.""")
 
             while True:
                 new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+
+                current_hash: Optional[str] = None
+                diff_stat: Optional[List[DiffStatEntry]] = None
+
+                fsm_state = None
+                app_diff = None
                 if self.processor_instance.fsm_app is None:
                     logger.info("FSMApplication is empty")
-                    fsm_state = None
-                    app_diff = None
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    app_diff = await self.get_app_diff()
-                    # include empty diffs too as they are valid = template diff
+                    #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
+
+                    # Calculate hash and diff stat if diff present
+                    if app_diff is not None:
+                        current_hash = self._hash_diff(app_diff)
+                        diff_changed = current_hash != self._prev_diff_hash
+                        diff_stat = self._compute_diff_stat(app_diff) if diff_changed else None
+                    else:
+                        current_hash = None
+                        diff_changed = False
+                        diff_stat = None
+
+
+                    if diff_changed:
+                        self._prev_diff_hash = current_hash
+                    # include empty diffs too as they are valid = template diff (when diff_to_send not null)
                 messages += new_messages
                 
-                # Generate app name and commit message if this is the first response
                 app_name = None
                 commit_message = None
                 if request.agent_state is None and self.processor_instance.fsm_app:  # This is the first request
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
                     app_name = await self.generate_app_name(prompt, flash_lite_client)
+                    # Communicate the app name and commit message and template diff to the client
+                    initial_template_diff = await self.get_app_diff()
+                    event_out = AgentSseEvent(
+                        status=AgentStatus.IDLE,
+                        traceId=self.trace_id,
+                        message=AgentMessage(
+                            role="assistant",
+                            kind=MessageKind.STAGE_RESULT,
+                            content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                            agentState={"fsm_state": fsm_state} if fsm_state else None,
+                            unifiedDiff=initial_template_diff,
+                            complete_diff_hash=current_hash,
+                            diff_stat=diff_stat,
+                            app_name=app_name,
+                            commit_message="Initial commit"
+                        )
+                    )
+                    await event_tx.send(event_out)
                     commit_message = await self.generate_commit_message(prompt, flash_lite_client)
+                    
                 
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
@@ -221,7 +259,9 @@ Return ONLY the commit message, nothing else.""")
                                                           app_diff is not None)) else MessageKind.REFINEMENT_REQUEST,
                         content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
-                        unifiedDiff=app_diff,
+                        unifiedDiff=None,
+                        complete_diff_hash=current_hash,
+                        diff_stat=diff_stat,
                         app_name=app_name,
                         commit_message=commit_message
                     )
@@ -238,34 +278,37 @@ Return ONLY the commit message, nothing else.""")
                 # If the FSM is completed, ensure the diff is sent properly
                 if is_completed:
                     try:
-                        # This is the final state - make sure we produce a proper diff
-                        if self.processor_instance.fsm_app and self.processor_instance.fsm_app.current_state == FSMState.COMPLETE:
-                            logger.info(f"Sending final state diff for trace {self.trace_id}")
+                        logger.info(f"FSM is completed: {is_completed}")
 
-                            # We purposely generate diff against an empty snapshot to ensure
-                            # that *all* generated files are included in the final diff. Using
-                            # the current files as the snapshot would yield an empty diff.
-                            final_diff = await self.processor_instance.fsm_app.get_diff_with({})
+                        # Prepare snapshot from request.all_files if available
+                        snapshot_files = {}
+                        if request.all_files:
+                            for file_entry in request.all_files:
+                                snapshot_files[file_entry.path] = file_entry.content
 
-                            # Always include a diff in the final state, even if empty
-                            if not final_diff:
-                                final_diff = "# Note: This is a valid empty diff (means no changes from template)"
+                        final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
-                            completion_event = AgentSseEvent(
-                                status=AgentStatus.IDLE,
-                                traceId=self.trace_id,
-                                message=AgentMessage(
-                                    role="assistant",
-                                    kind=MessageKind.FINAL_RESULT,
-                                    content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                                    agentState={"fsm_state": fsm_state} if fsm_state else None,
-                                    unifiedDiff=final_diff,
-                                    app_name=app_name,  # Use the same app_name from above
-                                    commit_message=commit_message  # Use the same commit_message from above
-                                )
+                        # Always include a diff in the final state, even if empty
+                        if not final_diff:
+                            final_diff = "# Note: This is a valid empty diff (means no changes from template)"
+
+                        completion_event = AgentSseEvent(
+                            status=AgentStatus.IDLE,
+                            traceId=self.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.FINAL_RESULT,
+                                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                                unifiedDiff=final_diff,
+                                complete_diff_hash=self._hash_diff(final_diff),
+                                diff_stat=self._compute_diff_stat(final_diff),
+                                app_name=app_name,  # Use the same app_name from above
+                                commit_message=commit_message  # Use the same commit_message from above
                             )
-                            logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
-                            await event_tx.send(completion_event)
+                        )
+                        logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
+                        await event_tx.send(completion_event)
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
 
@@ -291,3 +334,41 @@ Return ONLY the commit message, nothing else.""")
             await event_tx.send(error_event)
         finally:
             await event_tx.aclose()
+
+    # ---------------------------------------------------------------------
+    # Diff helpers
+    # ---------------------------------------------------------------------
+
+    @staticmethod
+    def _hash_diff(diff: str) -> str:
+        import hashlib
+        return hashlib.sha256(diff.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _compute_diff_stat(diff: str) -> List[DiffStatEntry]:
+        """Return a list of DiffStatEntry parsed from a unified diff string."""
+        stats: dict[str, Dict[str, int]] = {}
+        current_file: Optional[str] = None
+
+        for line in diff.splitlines():
+            if line.startswith("diff --git"):
+                parts = line.split(" ")
+                if len(parts) >= 3:
+                    # path like a/path b/path
+                    file_b = parts[3]
+                    if file_b.startswith("b/"):
+                        file_b = file_b[2:]
+                    current_file = file_b
+                    stats[current_file] = {"insertions": 0, "deletions": 0}
+            elif current_file and line.startswith("+++"):
+                # ignore header lines
+                continue
+            elif current_file and line.startswith("---"):
+                continue
+            elif current_file:
+                if line.startswith("+") and not line.startswith("+++"):
+                    stats[current_file]["insertions"] += 1
+                elif line.startswith("-") and not line.startswith("---"):
+                    stats[current_file]["deletions"] += 1
+
+        return [DiffStatEntry(path=path, insertions=s["insertions"], deletions=s["deletions"]) for path, s in stats.items()]

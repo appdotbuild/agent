@@ -42,7 +42,7 @@ async def test_async_agent_message_endpoint(agent_type):
                 case AgentSseEvent():
                     assert event.trace_id == request.trace_id, f"Trace IDs do not match in model objects with agent_type={agent_type}"
                     assert event.status == AgentStatus.IDLE
-                    assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR"
+                    assert event.message.kind in (MessageKind.STAGE_RESULT, MessageKind.FINAL_RESULT), f"Message kind {event.message.kind} is not one of the expected kinds"
 
 
 

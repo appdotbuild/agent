@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import * as schema from './schema';
 
 const pool = new Pool({
-  connectionString: process.env['DATABASE_URL']!,
+  connectionString: process.env['APP_DATABASE_URL']!,
 });
 
 // Pass schema to drizzle for relation queries

@@ -259,7 +259,7 @@ class FSMApplication:
 
     @property
     def is_completed(self) -> bool:
-        return self.current_state == FSMState.COMPLETE or self.current_state == FSMState.FAILURE
+        return self.current_state == FSMState.REVIEW_APPLICATION or self.current_state == FSMState.FAILURE
 
     def maybe_error(self) -> str | None:
         return self.fsm.context.error
@@ -307,30 +307,70 @@ class FSMApplication:
         return actions
 
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
-        # Start with the template directory
-        context = dagger.dag.host().directory("./trpc_agent/template")
+        logger.info(f"SERVER get_diff_with: Received snapshot with {len(snapshot)} files.")
+        if snapshot:
+            # Sort keys for consistent sample logging, especially in tests
+            sorted_snapshot_keys = sorted(snapshot.keys())
+            logger.info(f"SERVER get_diff_with: Snapshot sample paths (up to 5): {sorted_snapshot_keys[:5]}")
+            if len(snapshot) > 5:
+                logger.debug(f"SERVER get_diff_with: All snapshot paths: {sorted_snapshot_keys}")
+            # Log content of a very small, specific file if it exists, for deep debugging
+            # Example: if "client/src/App.tsx" in snapshot:
+            #    logger.debug(f"SERVER get_diff_with: Content of snapshot file 'client/src/App.tsx':\n{snapshot['client/src/App.tsx'][:200]}...")
+        else:
+            logger.info("SERVER get_diff_with: Snapshot is empty. Diff will be against template + FSM context files.")
 
-        # Write snapshot (initial) files
+        logger.debug("SERVER get_diff_with: Initializing Dagger context from empty directory")
+        context = dagger.dag.directory()
+        
+        gitignore_path = "./trpc_agent/template/.gitignore"
+        try:
+            gitignore_file = dagger.dag.host().file(gitignore_path)
+            context = context.with_file(".gitignore", gitignore_file)
+            logger.info(f"SERVER get_diff_with: Added .gitignore from {gitignore_path} to Dagger context.")
+        except Exception as e:
+            logger.warning(f"SERVER get_diff_with: Could not load/add .gitignore from {gitignore_path}: {e}. Proceeding without.")
+
+        logger.info(f"SERVER get_diff_with: Writing {len(snapshot)} files from received snapshot to Dagger context.")
         for key, value in snapshot.items():
+            logger.debug(f"SERVER get_diff_with:  Adding snapshot file to Dagger context: {key}")
             context = context.with_new_file(key, value)
-
-        # Create workspace with git
+        
+        logger.info("SERVER get_diff_with: Creating Dagger workspace for diff generation.")
         workspace = await Workspace.create(base_image="alpine/git", context=context)
+        logger.debug("SERVER get_diff_with: Dagger workspace created with initial snapshot context.")
 
-        # Write current (final) files
+        template_dir_path = "./trpc_agent/template"
+        try:
+            template_dir = dagger.dag.host().directory(template_dir_path)
+            workspace.ctr = workspace.ctr.with_directory(".", template_dir)
+            logger.info(f"SERVER get_diff_with: Template directory {template_dir_path} merged into Dagger workspace root.")
+        except Exception as e:
+            logger.error(f"SERVER get_diff_with: FAILED to merge template directory {template_dir_path} into workspace: {e}")
+
+        fsm_files_count = len(self.fsm.context.files)
+        logger.info(f"SERVER get_diff_with: Writing {fsm_files_count} files from FSM context to Dagger workspace (overlaying snapshot & template).")
+        if fsm_files_count > 0:
+             logger.debug(f"SERVER get_diff_with: FSM files (sample): {list(self.fsm.context.files.keys())[:5]}")
         for key, value in self.fsm.context.files.items():
-            workspace.write_file(key, value)
-
-        # If we're in the COMPLETE state, ensure we return a diff even if empty
-        if self.current_state == FSMState.COMPLETE:
-            diff = await workspace.diff()
-            # If the diff is empty but we have files, return a special marker
-            if not diff.strip() and self.fsm.context.files:
-                # Return empty string, but with special note that the system can recognize
-                return "# Note: This is a valid empty diff (means no changes from template)"
-            return diff
-
-        return await workspace.diff()
+            logger.debug(f"SERVER get_diff_with:  Writing FSM file to Dagger workspace: {key} (Length: {len(value)})")
+            try:
+                workspace.write_file(key, value)
+            except Exception as e:
+                logger.error(f"SERVER get_diff_with: FAILED to write FSM file {key} to workspace: {e}")
+        
+        logger.info("SERVER get_diff_with: Calling workspace.diff() to generate final diff.")
+        final_diff_output = ""
+        try:
+            final_diff_output = await workspace.diff()
+            logger.info(f"SERVER get_diff_with: workspace.diff() Succeeded. Diff length: {len(final_diff_output)}")
+            if not final_diff_output:
+                 logger.warning("SERVER get_diff_with: Diff output is EMPTY. This might be expected if states match or an issue.")
+        except Exception as e:
+            logger.exception("SERVER get_diff_with: Error during workspace.diff() execution.")
+            final_diff_output = f"# ERROR GENERATING DIFF: {e}"
+        
+        return final_diff_output
 
 
 async def main(user_prompt="Simple todo app"):

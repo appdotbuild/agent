@@ -10,7 +10,7 @@ import atexit
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
-from api.agent_server.models import AgentSseEvent
+from api.agent_server.models import AgentSseEvent, FileEntry
 from datetime import datetime
 from patch_ng import PatchSet
 import contextlib
@@ -108,7 +108,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                     # Copy all template files except specific excluded directories and hidden files
                     excluded_dirs = ["node_modules", "dist"]
 
-                    def copy_template_files(base_dir, target_base):
+                    def copy_template_files(base_dir, target_base, dirs_only=False):
                         """
                         Copy all template files recursively, except those in excluded directories
                         and hidden files (starting with a dot).
@@ -134,7 +134,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                 dest_dir = os.path.dirname(dest_file)
 
                                 os.makedirs(dest_dir, exist_ok=True)
-                                if not os.path.lexists(dest_file):
+                                if not dirs_only and not os.path.lexists(dest_file):
                                     try:
                                         # Directly copy the file (no symlink)
                                         shutil.copy2(src_file, dest_file)
@@ -143,7 +143,7 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
                                         print(f"Warning: could not copy file {rel_file_path}: {cp_err}")
 
                     # Copy all template files recursively (except excluded dirs)
-                    copy_template_files(template_root, target_dir)
+                    copy_template_files(template_root, target_dir, dirs_only=True)
 
                     # Then handle the files from the diff patch
                     for rel_path in file_paths:
@@ -364,6 +364,31 @@ def cleanup_docker_projects():
 
 atexit.register(cleanup_docker_projects)
 
+# Function to get all files from the project directory
+def get_all_files_from_project_dir(project_dir_path: str) -> List[FileEntry]:
+    local_files: List[FileEntry] = []
+    if not os.path.exists(project_dir_path):
+        # This case should ideally be handled by project_dir_context ensuring it exists
+        logger.warning(f"Project directory {project_dir_path} does not exist during file scan.")
+        return local_files
+
+    for root, _, files in os.walk(project_dir_path):
+        for filename in files:
+            # Exclude common problematic/temporary files
+            if filename.startswith('.') or filename.endswith(('.patch', '.swp', '.swo', '.rej')):
+                continue
+            
+            filepath = os.path.join(root, filename)
+            relative_path = os.path.relpath(filepath, project_dir_path)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                local_files.append(FileEntry(path=relative_path, content=content))
+            except Exception as e:
+                logger.error(f"Error reading file {filepath} for snapshot: {e}")
+    return local_files
+
+
 async def run_chatbot_client(host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False) -> None:
     """
     Async interactive Agent CLI chat.
@@ -423,18 +448,34 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         logger.info(f"Got an event: {event.status} {event.message.kind}")
         if event.message:
             if event.message.content:
-                print(event.message.content, end="", flush=True)
-            if diff := event.message.unified_diff:
+                items = json.loads(event.message.content)
+                for item in items:
+                    if isinstance(item, dict):
+                        if item.get("role") == "assistant":
+                            for part in item.get("content", []):
+                                if isinstance(part, dict) and part.get("type") == "text":
+                                    print(part.get("text", ""), end="\n", flush=True)
+                
+            if event.message.unified_diff:
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
-                print(f"\033[36m{diff}\033[0m")
-                print("\033[36m--- End of Diff ---\033[0m\n")
-
+                diff_lines = event.message.unified_diff.splitlines()
+                for i in range(min(5, len(diff_lines))):
+                    print(f"\033[36m{diff_lines[i]}\033[0m")
+                if len(diff_lines) > 5:
+                    print("\033[36m... (use /diff to see full diff)\033[0m")
+            
+            if event.message.diff_stat:
+                print("\033[36mDiff Statistics:\033[0m")
+                for stat in event.message.diff_stat:
+                    print(f"\033[36m  {stat.filename}: +{stat.additions} -{stat.deletions}\033[0m")
+            
             # Display app_name and commit_message when present
             if event.message.app_name:
                 print(f"\n\033[35m🚀 App Name: {event.message.app_name}\033[0m")
 
             if event.message.commit_message:
                 print(f"\033[35m📝 Commit Message: {event.message.commit_message}\033[0m\n")
+
 
     async with AgentApiClient(base_url=base_url) as client:
         with project_dir_context() as project_dir:
@@ -710,6 +751,16 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     case _:
                         content = cmd
 
+                # --- Prepare allFiles from project_dir for the request ---
+                files_for_snapshot: List[FileEntry] = get_all_files_from_project_dir(project_dir)
+                print(f"Client: Preparing request. Content: '{content[:50].replace('\n', ' ')}...'. Snapshot from '{project_dir}' contains {len(files_for_snapshot)} files.")
+                if files_for_snapshot:
+                    print(f"Client: Snapshot sample paths: {[f.path for f in files_for_snapshot[:3]]}")
+                else:
+                    print("Client: Snapshot is empty.")
+                    
+                all_files_payload = [f.model_dump() for f in files_for_snapshot]
+
                 # Send or continue conversation
                 try:
                     print("\033[92mBot> \033[0m", end="", flush=True)
@@ -718,6 +769,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         logger.info("Sending new message")
                         events, request = await client.send_message(
                             content,
+                            all_files=all_files_payload, # Pass the files
                             settings=settings_dict,
                             auth_token=auth_token,
                             stream_cb=print_event
@@ -728,6 +780,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             previous_events,
                             request,
                             content,
+                            all_files=all_files_payload, # Pass the files
                             settings=settings_dict,
                             stream_cb=print_event
                         )
@@ -746,7 +799,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 "timestamp": datetime.now().isoformat()
                             }, f, indent=2)
                 except Exception as e:
-                    print(f"Error: {e}")
+                    print(f"\nError in command/interaction cycle: {e}")
                     traceback.print_exc()
 
 @contextlib.contextmanager

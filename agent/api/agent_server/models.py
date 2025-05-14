@@ -45,6 +45,14 @@ class UserMessage(BaseModel):
         return cls.model_validate(json.loads(json_str))
 
 
+class DiffStatEntry(BaseModel):
+    """Summary information about a single file modified in the current step."""
+
+    path: str = Field(..., description="Path of the file that changed (relative to the project root).")
+    insertions: int = Field(..., description="Number of lines inserted in this file during the current step.")
+    deletions: int = Field(..., description="Number of lines deleted in this file during the current step.")
+
+
 class AgentMessage(BaseModel):
     """The detailed message payload from the agent."""
     role: Literal["assistant"] = Field("assistant", description="Fixed field for client to detect assistant message in the history") 
@@ -59,6 +67,16 @@ class AgentMessage(BaseModel):
         None, 
         alias="unifiedDiff", 
         description="A unified diff format string representing code changes made by the agent."
+    )
+    complete_diff_hash: Optional[str] = Field(
+        None,
+        alias="completeDiffHash",
+        description="Hash (e.g., SHA-256) of the complete unified diff for the current application state."
+    )
+    diff_stat: Optional[List[DiffStatEntry]] = Field(
+        None,
+        alias="diffStat",
+        description="Lightweight per-file summary of changes since the previous message."
     )
     app_name: Optional[str] = Field(
         None,
@@ -109,11 +127,18 @@ class AgentSseEvent(BaseModel):
         return cls.model_validate(json.loads(json_str))
 
 
+class FileEntry(BaseModel):
+    """Represents a single file with its path and content."""
+    path: str = Field(..., description="The relative path of the file.")
+    content: str = Field(..., description="The content of the file.")
+
+
 class AgentRequest(BaseModel):
     """Request body for initiating or continuing interaction with the Agent Server."""
     all_messages: List[ConversationMessage] = Field(..., alias="allMessages", description="History of all messages in the current conversation thread.")
     application_id: str = Field(..., alias="applicationId", description="Unique identifier for the application instance.")
     trace_id: str = Field(..., alias="traceId", description="Unique identifier for this request/response cycle.")
+    all_files: Optional[List[FileEntry]] = Field(None, alias="allFiles", description="All files in the workspace to be used for diff generation.")
     agent_state: Optional[Dict[str, Any]] = Field(
         None, 
         alias="agentState", 
