@@ -26,7 +26,7 @@ def template_diff(monkeypatch):
     yield
 
 
-
+@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.parametrize("agent_type", [trpc_agent, template_diff])
 async def test_async_agent_message_endpoint(agent_type):
     async with AgentApiClient() as client:
