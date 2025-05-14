@@ -201,7 +201,7 @@ class CachedLLM(AsyncLLM):
                     if cache_key in self._cache:
                         logger.info(f"lru cache hit: {cache_key}")
                         self._update_lru_cache(cache_key)
-                        return Completion.from_dict(self._cache[cache_key])
+                        return Completion.from_dict(self._cache[cache_key]['data'])
                     else:
                         logger.info(f"lru cache miss: {cache_key}")
                         response = await self.client.completion(
@@ -213,7 +213,7 @@ class CachedLLM(AsyncLLM):
                             tool_choice=tool_choice,
                             **kwargs,
                         )
-                        self._cache[cache_key] = response.to_dict()
+                        self._cache[cache_key] = {"data": response.to_dict(), "params": norm_params}
                         self._update_lru_cache(cache_key)
                         return response
 

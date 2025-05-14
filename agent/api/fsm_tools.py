@@ -121,7 +121,7 @@ class FSMToolProcessor[T: FSMInterface]:
             # Check if there's an active session first
             if self.fsm_app:
                 logger.warning("There's an active FSM session already. Completing it before starting a new one.")
-                return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one", is_error=True)
+                return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one. Should you use `provide_feedback` tool instead?", is_error=True)
 
             self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description, settings=self.settings)
 
@@ -240,6 +240,7 @@ class FSMToolProcessor[T: FSMInterface]:
                             ))
                         case tool_method if isinstance(block.input, dict):
                             result = await tool_method(**block.input)
+                            logger.info(f"Tool call: {name} with input: {block.input}")
                             logger.debug(f"Tool result: {result.content}")
                             tool_results.append(ToolUseResult.from_tool_use(
                                 tool_use=block,
@@ -249,9 +250,12 @@ class FSMToolProcessor[T: FSMInterface]:
                             raise RuntimeError(f"Invalid tool call: {block}")
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
-            thread.append(Message(role="user", content=[
+            messages +=  [
+            Message(role="user", content=[
                 *tool_results
-            ]))
+            ]),
+            Message(role="assistant", content=[TextRaw("I will analyze tool result now")])
+            ]
 
         return thread
 

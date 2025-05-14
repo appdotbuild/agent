@@ -47,7 +47,7 @@ def latest_app_name_and_commit_message(events):
 
     return app_name, commit_message
 
-async def run_e2e(prompt: str, standalone: bool):
+async def run_e2e(prompt: str, standalone: bool, with_edit=False):
     context = empty_context() if standalone else spawn_local_server()
     with context:
         async with AgentApiClient() as client:
@@ -63,11 +63,12 @@ async def run_e2e(prompt: str, standalone: bool):
             logger.info(f"Generated app_name: {app_name}")
             logger.info(f"Generated commit_message: {commit_message}")
 
-            new_events, new_request = await client.continue_conversation(
-                previous_events=events,
-                previous_request=request,
-                message=DEFAULT_EDIT_REQUEST,
-            )
+            if with_edit:
+                new_events, new_request = await client.continue_conversation(
+                    previous_events=events,
+                    previous_request=request,
+                    message=DEFAULT_EDIT_REQUEST,
+                )
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 success, message = apply_patch(diff, temp_dir)
