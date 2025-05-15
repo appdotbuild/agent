@@ -7,8 +7,10 @@ Provides a centralized logging configuration used by various components
 import logging
 import logging.handlers
 import logging.config
+import json
 import sentry_sdk
 import os
+import socket
 
 # Configure root logger to avoid duplicate handlers
 root_logger = logging.getLogger()
@@ -16,10 +18,42 @@ if root_logger.handlers:
     for handler in root_logger.handlers:
         root_logger.removeHandler(handler)
 
-# Single formatter definition
-_FORMATTER = logging.Formatter(
+# Check if running in ECS environment
+def is_running_in_ecs() -> bool:
+    return bool(os.getenv('ECS_CONTAINER_METADATA_URI') or
+               os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_ECS'))
+
+# JSON formatter for structured logging
+class JsonFormatter(logging.Formatter):
+    def __init__(self):
+        super().__init__()
+        self.hostname = socket.gethostname()
+
+    def format(self, record) -> str:
+        log_data = {
+            'timestamp': self.formatTime(record),
+            'level': record.levelname,
+            'logger': record.name,
+            'file': record.filename,
+            'line': record.lineno,
+            'message': record.getMessage(),
+            'hostname': self.hostname,
+            "session_id": os.getenv("SESSION_ID", "default"),
+        }
+
+        # Add exception info if available
+        if record.exc_info:
+            log_data['exception'] = self.formatException(record.exc_info)
+
+        return json.dumps(log_data)
+
+# Standard text formatter
+_TEXT_FORMATTER = logging.Formatter(
     '%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s'
 )
+
+# Choose formatter based on environment
+_FORMATTER = JsonFormatter() if is_running_in_ecs() else _TEXT_FORMATTER
 
 
 def _init_logging():
@@ -82,7 +116,7 @@ def configure_uvicorn_logging():
         "disable_existing_loggers": False,
         "formatters": {
             "standard": {
-                "format": _FORMATTER._fmt,
+                "format": _TEXT_FORMATTER._fmt,
             },
         },
         "loggers": {
