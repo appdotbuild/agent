@@ -1,4 +1,4 @@
-name: Build and Test
+name: CI Pipeline
 
 on:
   push:
@@ -15,7 +15,27 @@ env:
   AWS_REGION: us-west-2
 
 jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.3"
+
+      - name: Run linters
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: ">=0.11.5"
+          args: check .
+
   build-template:
+    name: Build Template
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -68,29 +88,48 @@ jobs:
             exit 1
           fi
 
-  build-and-test-codegen:
+      - name: Clean up Docker Compose services
+        working-directory: ./agent/trpc_agent/template/
+        if: always()
+        run: |
+          echo "Stopping and removing Docker Compose services..."
+          docker compose down -v --remove-orphans
+          echo "Cleanup complete."
+
+  # not really unit for now, but should be at some point!
+  unit-tests:
+    name: Run Other Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    permissions:
-      contents: read
-
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           version: "0.7.3"
 
-      - name: Run linters
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: ">=0.11.5"
-          args: check .
+      - name: Run tests
+        working-directory: ./agent/
+        run: |
+          echo "Running tests..."
+          uv run test --verbose --exclude e2e
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "Tests failed with exit code $exit_code"
+            exit $exit_code
+          else
+            echo "Tests passed successfully!"
+          fi
+
+  health-check:
+    name: Container Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -102,21 +141,9 @@ jobs:
         working-directory: ./agent/
         run: docker compose up -d --build
 
-      - name: Run tests
-        working-directory: ./agent/
-        run: |
-          echo "Running tests..."
-          uv run test --verbose
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "Tests failed with exit code $exit_code"
-            exit $exit_code
-          else
-            echo "Tests passed successfully!"
-          fi
-
       - name: Check Container Health
         run: |
+          sleep 30
           echo "Checking health of container: ${{ env.CONTAINER_NAME }}"
           status=$(docker inspect --format='{{.State.Health.Status}}' ${{ env.CONTAINER_NAME }})
 
@@ -130,6 +157,72 @@ jobs:
             exit 1
           fi
 
+      # Cleanup even if the job fails
+      - name: Clean up Docker Compose services
+        working-directory: ./agent/
+        if: always()
+        run: |
+          echo "Stopping and removing Docker Compose services..."
+          docker compose down -v --remove-orphans
+          echo "Cleanup complete."
+
+  e2e-tests:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.3"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Start Docker Compose services
+        working-directory: ./agent/
+        run: docker compose up -d --build
+
+      - name: Run E2E tests
+        working-directory: ./agent/
+        run: |
+          echo "Running E2E tests..."
+          uv run test_e2e
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "E2E tests failed with exit code $exit_code"
+            exit $exit_code
+          else
+            echo "E2E tests passed successfully!"
+          fi
+
+      # Cleanup even if the job fails
+      - name: Clean up Docker Compose services
+        working-directory: ./agent/
+        if: always()
+        run: |
+          echo "Stopping and removing Docker Compose services..."
+          docker compose down -v --remove-orphans
+          echo "Cleanup complete."
+
+  # 6. Build and push to ECR (only runs if previous jobs succeed)
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-template, unit-tests, health-check, e2e-tests, lint]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
       - name: Determine if Release Build is Needed
         id: check_release
         run: |
@@ -137,8 +230,10 @@ jobs:
           # we check two commits because the first commit is the merge commit
           if git log -2 --pretty=%s | tail -n 1 | grep -q "release"; then
             is_release="true"
+            echo "Release build detected based on commit message."
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             is_release="true"
+            echo "Release build detected based on push to main branch."
           fi
 
           echo "is_release=${is_release}" >> $GITHUB_OUTPUT
@@ -187,12 +282,3 @@ jobs:
             --push \
             .
           echo "Docker image built and pushed successfully!"
-
-      # This step will run even if the health check step fails
-      - name: Clean up Docker Compose services
-        working-directory: ./agent/
-        if: always() # Ensures this step runs even if previous steps fail
-        run: |
-          echo "Stopping and removing Docker Compose services..."
-          docker compose down -v --remove-orphans # Stop, remove containers, networks, AND volumes (-v)
-          echo "Cleanup complete."

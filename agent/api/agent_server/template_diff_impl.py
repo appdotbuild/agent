@@ -83,7 +83,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
                 traceId=self.trace_id,
                 message=AgentMessage(
                     role="assistant",
-                    kind=MessageKind.FINAL_RESULT,
+                    kind=MessageKind.REVIEW_RESULT,
                     content=f"Counter application generated successfully with {len(server_files)} server files and {len(frontend_files)} frontend files.",
                     agentState=self.state,
                     unifiedDiff=unified_diff
