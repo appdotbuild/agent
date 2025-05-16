@@ -33,14 +33,14 @@ enum MessageKind {
   @doc("An intermediate result/update while the agent is still running. The platform should not typically query API during this state unless restoring after a failure.")
   StageResult,
 
-  @doc("The agent has paused and requires feedback or input from the user.")
-  FeedbackResponse,
+  @doc("The agent has paused and requires feedback or additional information from the user.")
+  RefinementRequest,
 
   @doc("The agent encountered an error it couldn't recover from. Retrying likely requires user intervention or infrastructure changes.")
   RuntimeError,
 
-  @doc("The final successful result indicating the application generation is complete and ready for deployment.")
-  FinalResult,
+  @doc("The final successful result indicating the application generation is complete and ready for review.")
+  ReviewResult,
 }
 
 // --- Diff summary ---
