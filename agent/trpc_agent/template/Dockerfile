@@ -1,7 +1,6 @@
 # Build stage
 FROM oven/bun:1.2.2-alpine AS builder
 
-ENV APP_DATABASE_URL=${APP_DATABASE_URL}
 # Set working directory
 WORKDIR /app
 
@@ -30,6 +29,9 @@ RUN cd server && bun run build
 # Production stage
 FROM oven/bun:1.2.2-alpine
 
+# Env vars for the end image should be here
+ENV APP_DATABASE_URL=${APP_DATABASE_URL}
+ENV SERVER_PORT=${SERVER_PORT}
 # Install curl for healthcheck, Caddy, and supervisor
 RUN apk add --no-cache curl caddy supervisor
 
@@ -43,6 +45,9 @@ COPY --from=builder /app/client/Caddyfile /app/client/Caddyfile
 COPY --from=builder /app/server/ /app/server/
 COPY --from=builder /app/server/package.json /app/server/
 
+# Copy root package.json
+COPY --from=builder /app/package.json /app
+
 # Install server dependencies
 WORKDIR /app/server
 RUN bun install --frozen-lockfile
@@ -51,6 +56,6 @@ RUN bun install --frozen-lockfile
 WORKDIR /app
 COPY supervisord.conf /etc/supervisord.conf
 
-EXPOSE 2022 80
+EXPOSE ${SERVER_PORT} 80
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["sh", "-c", "bun db:push && /usr/bin/supervisord -c /etc/supervisord.conf"]

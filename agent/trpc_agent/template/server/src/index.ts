@@ -31,7 +31,7 @@ function healthCheckMiddleware(req: IncomingMessage, res: ServerResponse, next: 
 }
 
 async function start() {
-  const port = process.env['PORT'] || 2022;
+  const port = process.env['SERVER_PORT'] || 2022;
   const server = createHTTPServer({
     middleware: (req, res, next) => {
       healthCheckMiddleware(req, res, next);
