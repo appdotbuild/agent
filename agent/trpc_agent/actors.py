@@ -136,8 +136,8 @@ class RunTests:
             return result, None
 
         logger.info(f"Tests failed with exit code {result.exit_code}")
-        # Normalize the output
         err = self.test_output_normalizer.sub("", result.stderr)
+        err = "\n".join([x.rstrip() for x in err.splitlines()])
         return result, TextRaw(f"Error running tests: {err}")
 
 run_tests = RunTests()

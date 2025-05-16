@@ -6,7 +6,7 @@ from anyio.streams.memory import MemoryObjectSendStream
 from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
-from api.fsm_tools import FSMToolProcessor
+from api.fsm_tools import FSMToolProcessor, FSMStatus
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
 import ujson as json
@@ -188,7 +188,8 @@ Return ONLY the commit message, nothing else.""")
 
             work_in_progress = False
             while True:
-                new_messages, work_in_progress = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                work_in_progress = fsm_status == FSMStatus.WIP
 
                 current_hash: Optional[str] = None
                 diff_stat: Optional[List[DiffStatEntry]] = None

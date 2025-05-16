@@ -2,6 +2,7 @@ from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict,
 import anyio
 from fire import Fire
 
+import enum
 from core.application import ApplicationBase
 from llm.utils import AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
@@ -23,6 +24,12 @@ class FSMInterface(ApplicationBase, Protocol):
     def base_execution_plan(cls) -> str: ...
     @property
     def available_actions(self) -> dict[str, str]: ...# FSMTools Specific
+
+
+
+class FSMStatus(enum.Enum):
+    WIP = "WIP"
+    IDLE = "IDLE"
 
 
 class FSMToolProcessor[T: FSMInterface]:
@@ -218,7 +225,7 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.exception(f"Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
-    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> Tuple[list[Message], bool]:
+    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> Tuple[list[Message], FSMStatus]:
         model_args = {
             "system_prompt": self.system_prompt,
             "tools": self.tool_definitions,
@@ -264,7 +271,7 @@ class FSMToolProcessor[T: FSMInterface]:
             if res.tool_use.name == "complete_fsm" or res.tool_result.is_error:
                 work_in_progress = False
 
-        return thread, work_in_progress
+        return thread, FSMStatus.WIP if work_in_progress else FSMStatus.IDLE
 
     def fsm_as_result(self) -> dict:
         if self.fsm_app is None:
