@@ -1,4 +1,4 @@
-from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any
+from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any, Tuple
 import anyio
 from fire import Fire
 
@@ -218,7 +218,7 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.exception(f"Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
-    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> list[Message]:
+    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> Tuple[list[Message], bool]:
         model_args = {
             "system_prompt": self.system_prompt,
             "tools": self.tool_definitions,
@@ -226,6 +226,7 @@ class FSMToolProcessor[T: FSMInterface]:
         }
         response = await llm.completion(messages, **model_args)
         tool_results = []
+        work_in_progress = False
         for block in response.content:
             match block:
                 case TextRaw(text):
@@ -248,16 +249,22 @@ class FSMToolProcessor[T: FSMInterface]:
                             ))
                         case _:
                             raise RuntimeError(f"Invalid tool call: {block}")
+
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
-            messages +=  [
+            work_in_progress = True
+            thread +=  [
             Message(role="user", content=[
                 *tool_results
             ]),
             Message(role="assistant", content=[TextRaw("I will analyze tool result now")])
             ]
 
-        return thread
+        for res in tool_results:
+            if res.tool_use.name == "complete_fsm" or res.tool_result.is_error:
+                work_in_progress = False
+
+        return thread, work_in_progress
 
     def fsm_as_result(self) -> dict:
         if self.fsm_app is None:

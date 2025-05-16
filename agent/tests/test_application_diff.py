@@ -5,7 +5,6 @@ from trpc_agent.application import FSMApplication
 from core.statemachine import StateMachine
 from core.workspace import Workspace
 from log import get_logger
-import os
 import dagger._engine.session as _dagger_session
 
 logger = get_logger(__name__)

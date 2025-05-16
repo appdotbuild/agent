@@ -21,6 +21,9 @@ class ExecResult:
             stderr=await ctr.stderr(),
         )
 
+def _sorted_set(s: set[str]) -> list[str]:
+    return sorted(list(s))
+
 
 @object_type
 class Workspace:
@@ -64,7 +67,7 @@ class Workspace:
     def rm(self, path: str) -> Self:
         protected = self.protected - self.allowed # allowed take precedence
         if any(path.startswith(p) for p in protected):
-            raise PermissionError(f"Attempted to remove {path} which is in protected paths: {protected}")
+            raise PermissionError(f"Attempted to remove {path} which is in protected paths: {_sorted_set(protected)}")
         self.ctr = self.ctr.without_file(path)
         return self
 
@@ -87,9 +90,9 @@ class Workspace:
         if not force:
             protected = self.protected - self.allowed # allowed take precedence
             if self.allowed and not any(path.startswith(p) for p in self.allowed):
-                raise PermissionError(f"Attempted to write {path} which is not in allowed paths: {self.allowed}")
+                raise PermissionError(f"Attempted to write {path} which is not in allowed paths: {_sorted_set(self.allowed)}")
             if any(path.startswith(p) for p in protected):
-                raise PermissionError(f"Attempted to write {path} which is in protected paths: {protected}")
+                raise PermissionError(f"Attempted to write {path} which is in protected paths: {_sorted_set(protected)}")
         self.ctr = self.ctr.with_new_file(path, contents)
         return self
 
