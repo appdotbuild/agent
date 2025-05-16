@@ -301,38 +301,40 @@ Return ONLY the commit message, nothing else.""")
 
                         diff_hash = self._hash_diff(final_diff)
 
-                        # Skip sending if we already sent the same diff for this FSM state
+                        # Skip setting diff hash for this state if it has already been emitted
+                        skip_diff = False
                         if self._state_diff_hash.get(self.processor_instance.fsm_app.current_state) == diff_hash:
                             logger.info(
                                 "Diff for state %s unchanged (hash=%s), skipping duplicate event",
                                 self.processor_instance.fsm_app.current_state,
                                 diff_hash,
                             )
+                            skip_diff = True
                         else:
                             # Cache hash for this state to prevent future duplicates
                             self._state_diff_hash[self.processor_instance.fsm_app.current_state] = diff_hash
 
-                            completion_event = AgentSseEvent(
-                                status=AgentStatus.IDLE,
-                                traceId=self.trace_id,
-                                message=AgentMessage(
-                                    role="assistant",
-                                    kind=MessageKind.REVIEW_RESULT,
-                                    content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                                    agentState={"fsm_state": fsm_state} if fsm_state else None,
-                                    unifiedDiff=final_diff,
-                                    complete_diff_hash=diff_hash,
-                                    diff_stat=self._compute_diff_stat(final_diff),
-                                    app_name=app_name,
-                                    commit_message=commit_message
-                                )
+                        completion_event = AgentSseEvent(
+                            status=AgentStatus.IDLE,
+                            traceId=self.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.REVIEW_RESULT,
+                                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                                unifiedDiff=None if skip_diff else final_diff,
+                                complete_diff_hash=diff_hash,
+                                diff_stat=self._compute_diff_stat(final_diff),
+                                app_name=app_name,
+                                commit_message=commit_message
                             )
-                            logger.info(
-                                "Sending completion event with diff (length: %d) for state %s",
-                                len(final_diff),
-                                self.processor_instance.fsm_app.current_state,
-                            )
-                            await event_tx.send(completion_event)
+                        )
+                        logger.info(
+                            "Sending completion event with diff (length: %d) for state %s",
+                            len(final_diff),
+                            self.processor_instance.fsm_app.current_state,
+                        )
+                        await event_tx.send(completion_event)
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
 
