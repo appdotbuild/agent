@@ -27,7 +27,7 @@ class MessageKind(str, Enum):
     STAGE_RESULT = "StageResult"  # tool was used, and FSM state is expected to be updated
     RUNTIME_ERROR = "RuntimeError"  #  things went wrong!
     REFINEMENT_REQUEST = "RefinementRequest"  # no tool was used, meaning the agent is asking for more information
-    FINAL_RESULT = "FinalResult"  # generation completed successfully
+    REVIEW_RESULT = "ReviewResult"  # generation completed successfully
 
 
 class UserMessage(BaseModel):

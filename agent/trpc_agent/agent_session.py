@@ -235,7 +235,7 @@ Return ONLY the commit message, nothing else.""")
                         traceId=self.trace_id,
                         message=AgentMessage(
                             role="assistant",
-                            kind=MessageKind.STAGE_RESULT,
+                            kind=MessageKind.REVIEW_RESULT,
                             content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                             agentState={"fsm_state": fsm_state} if fsm_state else None,
                             unifiedDiff=initial_template_diff,
@@ -294,7 +294,7 @@ Return ONLY the commit message, nothing else.""")
                             traceId=self.trace_id,
                             message=AgentMessage(
                                 role="assistant",
-                                kind=MessageKind.FINAL_RESULT,
+                                kind=MessageKind.REVIEW_RESULT,
                                 content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                 agentState={"fsm_state": fsm_state} if fsm_state else None,
                                 unifiedDiff=final_diff,
@@ -317,7 +317,7 @@ Return ONLY the commit message, nothing else.""")
                             traceId=self.trace_id,
                             message=AgentMessage(
                                 role="assistant",
-                                kind=MessageKind.FINAL_RESULT,
+                                kind=MessageKind.STAGE_RESULT,
                                 content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                 agentState={"fsm_state": fsm_state} if fsm_state else None,
                                 unifiedDiff=None,
@@ -334,7 +334,6 @@ Return ONLY the commit message, nothing else.""")
 
                 if not self.user_answered(new_messages) or is_completed:
                     break
-
 
         except Exception as e:
             logger.exception(f"Error in process: {str(e)}")
