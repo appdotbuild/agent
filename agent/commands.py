@@ -18,11 +18,14 @@ def _n_workers():
     return str(min(os.cpu_count() or 1, 4))
 
 
-def _run_tests_with_cache(dest=".", n_workers=_n_workers(), verbose=False):
+def _run_tests_with_cache(dest=".", n_workers=_n_workers(), verbose=False, exclude: str | None = None):
     os.environ["LLM_VCR_CACHE_MODE"] = "replay"
     os.chdir(_current_dir())
     flag = "-vs" if verbose else "-v"
-    code = pytest.main([flag, "-n", str(n_workers), dest])
+    params = [flag, "-n", str(n_workers), dest, exclude]
+    if exclude:
+        params += ["-k", f"not {exclude}"]
+    code = pytest.main(params)
     if code != 0:
         raise RuntimeError(f"pytest failed with code {code}")
 
