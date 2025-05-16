@@ -41,6 +41,18 @@ class TrpcAgentSession(AgentInterface):
         }
         self._prev_diff_hash: Optional[str] = None  # sha256 of last complete diff sent
 
+        # Track whether the initial template diff has already been sent for this session.
+        # The template diff is a large unified diff between the generated project (at draft stage)
+        # and an empty snapshot. We only want to send it once per session to avoid duplicating
+        # large payloads on every iteration when the state has not changed.
+        self._template_diff_sent: bool = False
+
+        # Cache mapping FSM state name -> diff hash that was last sent for that state. This lets
+        # us avoid re-computing and re-sending identical diffs when the agent remains in the same
+        # state and no underlying file changes have occurred (e.g. during multiple refinement
+        # passes where the code has not changed).
+        self._state_diff_hash: Dict[str, str] = {}
+
     async def get_app_diff(self) -> str:
         fsm_app = self.processor_instance.fsm_app
         match fsm_app:
@@ -221,12 +233,18 @@ Return ONLY the commit message, nothing else.""")
 
                 app_name = None
                 commit_message = None
-                if request.agent_state is None and self.processor_instance.fsm_app:  # This is the first request
+                if (not self._template_diff_sent
+                    and request.agent_state is None
+                    and self.processor_instance.fsm_app):
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
                     app_name = await self.generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
                     initial_template_diff = await self.get_app_diff()
+
+                    # Mark template diff as sent so subsequent iterations do not resend it.
+                    self._template_diff_sent = True
+
                     event_out = AgentSseEvent(
                         status=AgentStatus.IDLE,
                         traceId=self.trace_id,
@@ -281,23 +299,40 @@ Return ONLY the commit message, nothing else.""")
 
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
-                        completion_event = AgentSseEvent(
-                            status=AgentStatus.IDLE,
-                            traceId=self.trace_id,
-                            message=AgentMessage(
-                                role="assistant",
-                                kind=MessageKind.REVIEW_RESULT,
-                                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                                agentState={"fsm_state": fsm_state} if fsm_state else None,
-                                unifiedDiff=final_diff,
-                                complete_diff_hash=self._hash_diff(final_diff),
-                                diff_stat=self._compute_diff_stat(final_diff),
-                                app_name=app_name,
-                                commit_message=commit_message
+                        diff_hash = self._hash_diff(final_diff)
+
+                        # Skip sending if we already sent the same diff for this FSM state
+                        if self._state_diff_hash.get(self.processor_instance.fsm_app.current_state) == diff_hash:
+                            logger.info(
+                                "Diff for state %s unchanged (hash=%s), skipping duplicate event",
+                                self.processor_instance.fsm_app.current_state,
+                                diff_hash,
                             )
-                        )
-                        logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
-                        await event_tx.send(completion_event)
+                        else:
+                            # Cache hash for this state to prevent future duplicates
+                            self._state_diff_hash[self.processor_instance.fsm_app.current_state] = diff_hash
+
+                            completion_event = AgentSseEvent(
+                                status=AgentStatus.IDLE,
+                                traceId=self.trace_id,
+                                message=AgentMessage(
+                                    role="assistant",
+                                    kind=MessageKind.REVIEW_RESULT,
+                                    content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                                    agentState={"fsm_state": fsm_state} if fsm_state else None,
+                                    unifiedDiff=final_diff,
+                                    complete_diff_hash=diff_hash,
+                                    diff_stat=self._compute_diff_stat(final_diff),
+                                    app_name=app_name,
+                                    commit_message=commit_message
+                                )
+                            )
+                            logger.info(
+                                "Sending completion event with diff (length: %d) for state %s",
+                                len(final_diff),
+                                self.processor_instance.fsm_app.current_state,
+                            )
+                            await event_tx.send(completion_event)
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
 
