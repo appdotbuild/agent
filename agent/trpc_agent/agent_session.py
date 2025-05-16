@@ -274,8 +274,8 @@ Return ONLY the commit message, nothing else.""")
                         is_diff_state = False
                     case FSMApplication():
                         fsm_app = self.processor_instance.fsm_app
-                        is_completed = fsm_app.is_completed()
-                        is_diff_state = fsm_app.is_diff_state()
+                        is_completed = fsm_app.is_completed
+                        is_diff_state = fsm_app.is_diff_state
 
                 if is_diff_state:
                     try:
@@ -327,7 +327,7 @@ Return ONLY the commit message, nothing else.""")
                                 commit_message=None
                             )
                         )
-                        logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
+                        logger.info("Sending completion event without diff (FSM completed with no diff state)")
                         await event_tx.send(completion_event)
                     except Exception as e:
                         logger.exception(f"Error sending final event: {e}")
