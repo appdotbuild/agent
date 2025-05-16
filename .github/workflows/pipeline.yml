@@ -38,7 +38,6 @@ jobs:
     name: Build Template
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -97,12 +96,11 @@ jobs:
           docker compose down -v --remove-orphans
           echo "Cleanup complete."
 
-  # not really unit for now, but should be at some point! 
+  # not really unit for now, but should be at some point!
   unit-tests:
     name: Run Other Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -129,7 +127,6 @@ jobs:
     name: Container Health Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -173,7 +170,6 @@ jobs:
     name: Run E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -220,7 +216,7 @@ jobs:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [build-template, unit-tests, health-check, e2e-tests]
+    needs: [build-template, unit-tests, health-check, e2e-tests, lint]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
