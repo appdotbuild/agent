@@ -271,12 +271,13 @@ Return ONLY the commit message, nothing else.""")
                 match self.processor_instance.fsm_app:
                     case None:
                         is_completed = False
+                        is_diff_state = False
                     case FSMApplication():
                         fsm_app = self.processor_instance.fsm_app
-                        is_completed = fsm_app.is_completed
+                        is_completed = fsm_app.is_completed()
+                        is_diff_state = fsm_app.is_diff_state()
 
-                # If the FSM is completed, ensure the diff is sent properly
-                if is_completed:
+                if is_diff_state:
                     try:
                         logger.info(f"FSM is completed: {is_completed}")
 
@@ -287,10 +288,6 @@ Return ONLY the commit message, nothing else.""")
                                 snapshot_files[file_entry.path] = file_entry.content
 
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
-
-                        # Always include a diff in the final state, even if empty
-                        if not final_diff:
-                            final_diff = "# Note: This is a valid empty diff (means no changes from template)"
 
                         completion_event = AgentSseEvent(
                             status=AgentStatus.IDLE,
@@ -303,14 +300,37 @@ Return ONLY the commit message, nothing else.""")
                                 unifiedDiff=final_diff,
                                 complete_diff_hash=self._hash_diff(final_diff),
                                 diff_stat=self._compute_diff_stat(final_diff),
-                                app_name=app_name,  # Use the same app_name from above
-                                commit_message=commit_message  # Use the same commit_message from above
+                                app_name=app_name,
+                                commit_message=commit_message
                             )
                         )
                         logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
                         await event_tx.send(completion_event)
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
+                elif is_completed: # is it possible to complete the FSM without a diff?
+                    try:
+                        logger.info(f"FSM is completed: {is_completed}")
+
+                        completion_event = AgentSseEvent(
+                            status=AgentStatus.IDLE,
+                            traceId=self.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.FINAL_RESULT,
+                                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                                unifiedDiff=None,
+                                complete_diff_hash=None,
+                                diff_stat=None,
+                                app_name=app_name,
+                                commit_message=None
+                            )
+                        )
+                        logger.info(f"Sending completion event with diff (length: {len(final_diff)})")
+                        await event_tx.send(completion_event)
+                    except Exception as e:
+                        logger.exception(f"Error sending final event: {e}")
 
                 if not self.user_answered(new_messages) or is_completed:
                     break
