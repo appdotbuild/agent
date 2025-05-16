@@ -170,7 +170,7 @@ class CachedLLM(AsyncLLM):
                     x_dec = eval(x)
                     y_dec = eval(y)
                     _compare(x_dec, y_dec, prefix + "(eval)")
-                except (SyntaxError, NameError):
+                except (SyntaxError, NameError, UnicodeEncodeError):
                     eq = x == y
                     if not eq:
                         logger.info(f"Mismatch at {prefix}")
