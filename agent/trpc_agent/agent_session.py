@@ -204,7 +204,7 @@ Return ONLY the commit message, nothing else.""")
                 work_in_progress = fsm_status == FSMStatus.WIP
 
                 current_hash: Optional[str] = None
-                diff_stat: Optional[List[DiffStatEntry]] = None
+                diff_stat: Optional[List[DiffStatEntry]] = []
 
                 fsm_state = None
                 app_diff = None
