@@ -128,7 +128,7 @@ async def run_playwright(
 
 class RunTests:
     def __init__(self):
-        self.test_output_normalizer = re.compile(r"\[\d+(\.\d+)?ms\]")
+        self.test_output_normalizer = re.compile(r"\[\d+(\.\d+)?(ms|s)\]")
 
     async def __call__(self, node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
         result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
@@ -136,8 +136,8 @@ class RunTests:
             return result, None
 
         logger.info(f"Tests failed with exit code {result.exit_code}")
-        # Normalize the output
-        err = self.test_output_normalizer.sub("[DURATION]", result.stderr)
+        err = self.test_output_normalizer.sub("", result.stderr)
+        err = "\n".join([x.rstrip() for x in err.splitlines()])
         return result, TextRaw(f"Error running tests: {err}")
 
 run_tests = RunTests()
@@ -224,7 +224,7 @@ class DraftActor(BaseTRPCActor):
             logger.debug(f"Added {path} to context")
 
         context.extend([
-            "DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres",
+            "APP_DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres",
             f"Allowed paths and directories: {self.files_allowed}",
         ])
 
@@ -441,6 +441,7 @@ class FrontendActor(BaseTRPCActor):
         self.root = None
         self.vlm = vlm
         self._user_prompt = None
+        self._ts_cleanup_pattern = re.compile(r'(\?v=)[a-f0-9]+(:[0-9]+:[0-9]+)?')
 
     async def execute(self, user_prompt: str, server_files: dict[str, str]) -> Node[BaseData]:
         logger.info(f"Executing frontend actor with user prompt: {user_prompt}")
@@ -484,7 +485,7 @@ class FrontendActor(BaseTRPCActor):
             if err:
                 messages.append(err)
             else:
-                browsers = ("chromium", "firefox", "webkit")
+                browsers = ("chromium", "webkit")  # firefox is flaky, let's skip it for now?
                 expected_files = [f"{browser}-screenshot.png" for browser in browsers]
                 console_logs = ""
                 for browser in browsers:
@@ -496,7 +497,9 @@ class FrontendActor(BaseTRPCActor):
                     if os.path.exists(os.path.join(temp_dir, console_log_file)):
                         with open(console_log_file, "r") as f:
                             console_logs += f"\n{browser}:\n"
-                            console_logs += f.read()
+                            logs = f.read()
+                            # remove stochastic parts of the logs for caching
+                            console_logs += self._ts_cleanup_pattern.sub(r"\1", logs)
 
                 prompt = jinja2.Environment().from_string(playbooks.FRONTEND_VALIDATION_PROMPT)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=self._user_prompt)

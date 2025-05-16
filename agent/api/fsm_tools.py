@@ -1,7 +1,8 @@
-from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any
+from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any, Tuple
 import anyio
 from fire import Fire
 
+import enum
 from core.application import ApplicationBase
 from llm.utils import AsyncLLM
 from llm.common import Message, ToolUse, ToolResult as CommonToolResult
@@ -23,6 +24,12 @@ class FSMInterface(ApplicationBase, Protocol):
     def base_execution_plan(cls) -> str: ...
     @property
     def available_actions(self) -> dict[str, str]: ...# FSMTools Specific
+
+
+
+class FSMStatus(enum.Enum):
+    WIP = "WIP"
+    IDLE = "IDLE"
 
 
 class FSMToolProcessor[T: FSMInterface]:
@@ -121,7 +128,7 @@ class FSMToolProcessor[T: FSMInterface]:
             # Check if there's an active session first
             if self.fsm_app:
                 logger.warning("There's an active FSM session already. Completing it before starting a new one.")
-                return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one", is_error=True)
+                return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one. Should you use `provide_feedback` tool instead?", is_error=True)
 
             self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description, settings=self.settings)
 
@@ -218,7 +225,7 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.exception(f"Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
-    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> list[Message]:
+    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> Tuple[list[Message], FSMStatus]:
         model_args = {
             "system_prompt": self.system_prompt,
             "tools": self.tool_definitions,
@@ -226,6 +233,7 @@ class FSMToolProcessor[T: FSMInterface]:
         }
         response = await llm.completion(messages, **model_args)
         tool_results = []
+        work_in_progress = False
         for block in response.content:
             match block:
                 case TextRaw(text):
@@ -240,20 +248,30 @@ class FSMToolProcessor[T: FSMInterface]:
                             ))
                         case tool_method if isinstance(block.input, dict):
                             result = await tool_method(**block.input)
-                            logger.info(f"Tool result: {result.content}")
+                            logger.info(f"Tool call: {name} with input: {block.input}")
+                            logger.debug(f"Tool result: {result.content}")
                             tool_results.append(ToolUseResult.from_tool_use(
                                 tool_use=block,
                                 content=result.content
                             ))
                         case _:
                             raise RuntimeError(f"Invalid tool call: {block}")
+
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
-            thread.append(Message(role="user", content=[
-                *tool_results,
-                TextRaw("Generation complete. You can now review the results and proceed with using the generated application. You can also send more messages to update the application.")
-            ]))
-        return thread
+            work_in_progress = True
+            thread +=  [
+            Message(role="user", content=[
+                *tool_results
+            ]),
+            Message(role="assistant", content=[TextRaw("I will analyze tool result now")])
+            ]
+
+        for res in tool_results:
+            if res.tool_use.name == "complete_fsm" or res.tool_result.is_error:
+                work_in_progress = False
+
+        return thread, FSMStatus.WIP if work_in_progress else FSMStatus.IDLE
 
     def fsm_as_result(self) -> dict:
         if self.fsm_app is None:
@@ -322,7 +340,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
         while True:
             new_messages = await processor.step(current_messages, client, model_params)
 
-            logger.info(f"New messages: {new_messages}")
+            logger.debug(f"New messages: {new_messages}")
             if new_messages:
                 current_messages += new_messages
 

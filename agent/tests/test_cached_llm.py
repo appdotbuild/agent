@@ -1,7 +1,7 @@
 import pytest
 import tempfile
 from llm.cached import CachedLLM, AsyncLLM
-from llm.common import Message, TextRaw, Completion, Tool
+from llm.common import Message, TextRaw, Completion, Tool, AttachedFiles
 from llm.utils import get_llm_client, merge_text
 import uuid
 import ujson as json
@@ -137,7 +137,7 @@ async def test_gemini_with_image():
     resp = await client.completion(
         messages=[Message(role="user", content=[TextRaw("Answer only what is written in the image, single word")])],
         max_tokens=512,
-        attach_files=[image_path]
+        attach_files=AttachedFiles(files=[image_path], _cache_key="test")
     )
     text, = merge_text(resp.content)
 

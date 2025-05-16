@@ -6,7 +6,7 @@ from anyio.streams.memory import MemoryObjectSendStream
 from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
-from api.fsm_tools import FSMToolProcessor
+from api.fsm_tools import FSMToolProcessor, FSMStatus
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
 import ujson as json
@@ -73,33 +73,28 @@ class TrpcAgentSession(AgentInterface):
             logger.exception(f"Error generating diff: {e}")
             return f"Error generating diff: {e}"
 
-    @staticmethod
-    def user_answered(messages: List[Message]) -> bool:
-        if not messages:
-              return False
-        return messages[-1].role == "user"
-        
+
     @staticmethod
     async def generate_app_name(prompt: str, llm_client: AsyncLLM) -> str:
         """Generate a GitHub repository name from the application description"""
         try:
             logger.info(f"Generating app name from prompt: {prompt[:50]}...")
-            
+
             messages = [
                 Message(role="user", content=[
-                    TextRaw(f"""Based on this application description, generate a short, concise name suitable for use as a GitHub repository name. 
+                    TextRaw(f"""Based on this application description, generate a short, concise name suitable for use as a GitHub repository name.
 The name should be lowercase with words separated by hyphens (kebab-case) and should not include any special characters.
 Application description: "{prompt}"
 Return ONLY the name, nothing else.""")
                 ])
             ]
-            
+
             completion = await llm_client.completion(
                 messages=messages,
                 max_tokens=50,
                 temperature=0.7
             )
-            
+
             generated_name = ""
             for block in completion.content:
                 if isinstance(block, TextRaw):
@@ -110,23 +105,23 @@ Return ONLY the name, nothing else.""")
                     name = name.strip('-')
                     generated_name = name
                     break
-            
+
             if not generated_name:
                 logger.warning("Failed to generate app name, using default")
                 return "generated-application"
-                
+
             logger.info(f"Generated app name: {generated_name}")
             return generated_name
         except Exception as e:
             logger.exception(f"Error generating app name: {e}")
             return "generated-application"
-            
+
     @staticmethod
     async def generate_commit_message(prompt: str, llm_client: AsyncLLM) -> str:
         """Generate a Git commit message from the application description"""
         try:
             logger.info(f"Generating commit message from prompt: {prompt[:50]}...")
-            
+
             messages = [
                 Message(role="user", content=[
                     TextRaw(f"""Based on this application description, generate a concise Git commit message that follows best practices.
@@ -135,24 +130,24 @@ Application description: "{prompt}"
 Return ONLY the commit message, nothing else.""")
                 ])
             ]
-            
+
             completion = await llm_client.completion(
                 messages=messages,
                 max_tokens=100,
                 temperature=0.7
             )
-            
+
             commit_message = ""
             for block in completion.content:
                 if isinstance(block, TextRaw):
                     message = block.text.strip().strip('"\'')
                     commit_message = message
                     break
-            
+
             if not commit_message:
                 logger.warning("Failed to generate commit message, using default")
                 return "Initial commit"
-                
+
             logger.info(f"Generated commit message: {commit_message}")
             return commit_message
         except Exception as e:
@@ -191,8 +186,10 @@ Return ONLY the commit message, nothing else.""")
                 for m in request.all_messages
             ]
 
+            work_in_progress = False
             while True:
-                new_messages = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                work_in_progress = fsm_status == FSMStatus.WIP
 
                 current_hash: Optional[str] = None
                 diff_stat: Optional[List[DiffStatEntry]] = None
@@ -221,7 +218,7 @@ Return ONLY the commit message, nothing else.""")
                         self._prev_diff_hash = current_hash
                     # include empty diffs too as they are valid = template diff (when diff_to_send not null)
                 messages += new_messages
-                
+
                 app_name = None
                 commit_message = None
                 if request.agent_state is None and self.processor_instance.fsm_app:  # This is the first request
@@ -247,16 +244,13 @@ Return ONLY the commit message, nothing else.""")
                     )
                     await event_tx.send(event_out)
                     commit_message = await self.generate_commit_message(prompt, flash_lite_client)
-                    
-                
+
                 event_out = AgentSseEvent(
                     status=AgentStatus.IDLE,
                     traceId=self.trace_id,
                     message=AgentMessage(
                         role="assistant",
-                        kind=MessageKind.STAGE_RESULT if (self.user_answered(messages) or 
-                                                         (self.processor_instance.fsm_app and 
-                                                          app_diff is not None)) else MessageKind.REFINEMENT_REQUEST,
+                        kind=MessageKind.STAGE_RESULT if work_in_progress else MessageKind.REFINEMENT_REQUEST,
                         content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
                         unifiedDiff=None,
@@ -307,7 +301,7 @@ Return ONLY the commit message, nothing else.""")
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
 
-                if not self.user_answered(new_messages) or is_completed:
+                if not work_in_progress or is_completed:
                     break
 
         except Exception as e:

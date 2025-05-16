@@ -19,6 +19,8 @@ from api.docker_utils import setup_docker_env, start_docker_compose, stop_docker
 logger = get_logger(__name__)
 
 DEFAULT_APP_REQUEST = "Implement a simple app with a counter of clicks on a single button"
+DEFAULT_EDIT_REQUEST = "Add message with emojis to the app to make it more fun"
+
 
 @contextlib.contextmanager
 def project_dir_context():
@@ -463,15 +465,14 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     print("\033[36m... (use /diff to see full diff)\033[0m")
             
             if event.message.diff_stat:
-                if event.message.diff_stat:
-                    print("\033[36mDiff Statistics:\033[0m")
-                    for stat in event.message.diff_stat:
-                        print(f"\033[36m  {stat.filename}: +{stat.additions} -{stat.deletions}\033[0m")
+                print("\033[36mDiff Statistics:\033[0m")
+                for stat in event.message.diff_stat:
+                    print(f"\033[36m  {stat.filename}: +{stat.additions} -{stat.deletions}\033[0m")
             
             # Display app_name and commit_message when present
             if event.message.app_name:
                 print(f"\n\033[35m🚀 App Name: {event.message.app_name}\033[0m")
-            
+
             if event.message.commit_message:
                 print(f"\033[35m📝 Commit Message: {event.message.commit_message}\033[0m\n")
 
@@ -527,7 +528,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     case "/info":
                         app_name = None
                         commit_message = None
-                        
+
                         # Look for app_name and commit_message in the events
                         for evt in reversed(previous_events):
                             try:
@@ -540,12 +541,12 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                         break
                             except AttributeError:
                                 continue
-                        
+
                         if app_name:
                             print(f"\033[35m🚀 App Name: {app_name}\033[0m")
                         else:
                             print("\033[33mNo app name available\033[0m")
-                            
+
                         if commit_message:
                             print(f"\033[35m📝 Commit Message: {commit_message}\033[0m")
                         else:

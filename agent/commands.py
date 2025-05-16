@@ -49,6 +49,7 @@ def run_e2e_tests():
     _run_tests_with_cache("tests/test_e2e.py", n_workers="0", verbose=True)
 
 def generate():
+    os.environ["LLM_VCR_CACHE_MODE"] = "lru"
     return Fire(_generate)
 
 def _generate(prompt=DEFAULT_APP_REQUEST):
@@ -117,7 +118,7 @@ def help_command():
             if not help_text:
                 # Generic fallback if no specific help string is found
                 help_text = f"uv run {name} (Target: {target})"
-            
+
             print(f"{name:<{max_len}} {help_text}")
 
         print("\nNote: Some commands might accept additional arguments. Refer to their implementations or detailed docs.")

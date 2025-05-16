@@ -55,7 +55,7 @@ class SillyActor(BaseActor, LLMActor):
             return [node] * self.beam_width
 
         candidates = [n for n in node.get_all_children() if n.is_leaf and n.depth <= self.max_depth]
-        logger.info(f"Selected {len(candidates)} leaf nodes for evaluation")
+        logger.debug(f"Selected {len(candidates)} leaf nodes for evaluation")
         return candidates
 
     @classmethod
@@ -267,8 +267,8 @@ class EditActor(SillyActor):
 
     @classmethod
     def normalize_tests(cls, stderr: str) -> str:
-        pattern = re.compile(r"\[\d+(\.\d+)?ms\]")
-        return pattern.sub("[DURATION]", stderr)
+        pattern = re.compile(r"\[\d+(\.\d+)?(ms|s)\]")
+        return pattern.sub("", stderr)
 
     async def dump(self) -> object:
         if self.root is None:

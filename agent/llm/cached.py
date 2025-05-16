@@ -39,6 +39,19 @@ def normalize(obj):
             return obj
 
 
+def find_closest_dict(target: dict, candidates: list[dict]):
+    if not candidates:
+        return None
+
+    target_str = json.dumps(target, sort_keys=True)
+    candidate_strs = [json.dumps(c, sort_keys=True) for c in candidates]
+    similarity = [difflib.SequenceMatcher(None, target_str, c_str).ratio()
+                  for c_str in candidate_strs]
+
+    max_index = similarity.index(max(similarity))
+    return max_index
+
+
 def find_closest_str(s: str, index: list[str]) -> str:
     # can be used for debugging cache issues; disable the hashing in _get_cache_key before
     similarity = [difflib.SequenceMatcher(None, s, i).ratio() for i in index]
@@ -135,6 +148,40 @@ class CachedLLM(AsyncLLM):
         key_str = json.dumps(normalized_kwargs, sort_keys=True)
         return normalized_kwargs, hashlib.md5(key_str.encode()).hexdigest()
 
+    def report_closest_cache_key(self, cache_key: str, norm_params: dict) -> None:
+        cache = list(self._cache.items())
+        idx = find_closest_dict(norm_params, [x[1]['params'] for x in cache])
+        if idx is None:
+            logger.error(f"Cache miss by {self.client.__class__.__name__} - probably empty cache")
+            return
+        cache_params = cache[idx][1]['params']
+
+        def _compare(x, y, prefix=""):
+            if isinstance(x, dict):
+                for k in x:
+                    _compare(x[k], y[k], prefix + f".{k}")
+            elif isinstance(x, list):
+                if not len(x) == len(y):
+                    logger.info(f"Length mismatch at {prefix}: {len(x)} != {len(y)}")
+                for i in range(min(len(x), len(y))):
+                    _compare(x[i], y[i], prefix + f"[{i}]")
+            elif isinstance(x, str):
+                try:
+                    x_dec = eval(x)
+                    y_dec = eval(y)
+                    _compare(x_dec, y_dec, prefix + "(eval)")
+                except (SyntaxError, NameError):
+                    eq = x == y
+                    if not eq:
+                        logger.info(f"Mismatch at {prefix}")
+            else:
+                eq = x == y
+                if not eq:
+                    logger.info(f"Mismatch at {prefix}")
+
+        _compare(norm_params, cache_params)
+        return cache_params
+
     async def completion(
         self,
         messages: List[Message],
@@ -224,6 +271,7 @@ class CachedLLM(AsyncLLM):
                     cached_response = self._cache[cache_key]["data"]
                     return Completion.from_dict(cached_response)
                 else:
+                    self.report_closest_cache_key(cache_key, norm_params)
                     logger.error(f"Cache miss by {self.client.__class__.__name__}: {normalize(request_params)}")
                     raise ValueError(
                         f"No cached response found for this request in replay mode; "
