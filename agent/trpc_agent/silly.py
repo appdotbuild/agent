@@ -7,6 +7,7 @@ from core.base_node import Node
 from core.workspace import Workspace
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
+from trpc_agent.actors import run_playwright, run_tests, run_tsc_compile
 
 logger = logging.getLogger(__name__)
 
@@ -246,32 +247,26 @@ class EditActor(SillyActor):
         return solution
 
     async def run_checks(self, node: Node[BaseData]) -> str | None:
-        errors: list[str] = []
-        logger.info("Running server tsc compile")
-        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
-        if tsc_result.exit_code != 0:
-            errors.append(f"Error running tsc: {tsc_result.stdout}")
+        error = ""
+        _, tsc_compile_err = await run_tsc_compile(node)
 
-        logger.info("Running client tsc compile")
+        # client tsc compile - should be refactored for the consistency
         tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
         if tsc_result.exit_code != 0:
-            errors.append(f"Error running tsc: {tsc_result.stdout}")
+            error += f"Error running client tsc: {tsc_result.stdout}\n"
 
-        if errors:
-            return "\n".join(errors)
+        _, test_result = await run_tests(node)
+        # it only checks for status code, to analyze the output we need to parse it - to be implemented
+        _, playwright_result = await run_playwright(node, entrypoint="dev:all")
 
-        logger.info("Running server tests")
-        test_result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
-        if test_result.exit_code != 0:
-            normalized = self.normalize_tests(test_result.stderr)
-            errors.append(f"Error running tests: {normalized}")
+        if tsc_compile_err:
+            error += f"TypeScript compile errors:\n{tsc_compile_err.text}\n"
+        if test_result:
+            error += f"Test errors:\n{test_result.text}\n"
+        if playwright_result:
+            error += f"Playwright errors:\n{playwright_result.text}\n"
 
-        return "\n".join(errors) if errors else None
-
-    @classmethod
-    def normalize_tests(cls, stderr: str) -> str:
-        pattern = re.compile(r"\[\d+(\.\d+)?(ms|s)\]")
-        return pattern.sub("", stderr)
+        return error if error else None
 
     async def dump(self) -> object:
         if self.root is None:

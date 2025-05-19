@@ -77,6 +77,7 @@ def start_docker_compose(
 
         if res.returncode != 0:
             error_msg = f"Failed to start Docker containers: return code {res.returncode}, stderr: {res.stderr}"
+            print(res.stdout)
             logger.error(error_msg)
             return False, error_msg
 
@@ -150,7 +151,7 @@ def stop_docker_compose(
             capture_output=True,
             text=True
         )
-        
+
         if result.returncode != 0:
             logger.error(f"Failed to stop Docker containers: {result.stderr}")
     except Exception as e:

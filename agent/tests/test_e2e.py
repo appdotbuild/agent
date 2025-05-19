@@ -69,8 +69,11 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True):
                     previous_request=request,
                     message=DEFAULT_EDIT_REQUEST,
                 )
+                diff = latest_unified_diff(new_events)
+                assert diff, "No diff was generated in the agent response after edit"
 
             with tempfile.TemporaryDirectory() as temp_dir:
+
                 success, message = apply_patch(diff, temp_dir)
                 assert success, f"Failed to apply patch: {message}"
 
