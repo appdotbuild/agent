@@ -1,4 +1,5 @@
 import os
+import sys
 import pytest
 import subprocess
 import tomllib
@@ -27,8 +28,7 @@ def _run_tests_with_cache(dest=".", n_workers=_n_workers(), verbose=False, exclu
     if exclude:
         params += ["-k", f"not {exclude}"]
     code = pytest.main(params)
-    if code != 0:
-        raise RuntimeError(f"pytest failed with code {code}")
+    sys.exit(code)
 
 
 def run_tests_with_cache():
@@ -45,9 +45,18 @@ def update_cache(dest="."):
 
 def run_lint():
     os.chdir(_current_dir())
-    code = subprocess.run("ruff check . --fix".split())
-    if code.returncode != 0:
-        raise RuntimeError(f"ruff failed with code {code.returncode}")
+    code = subprocess.run("uv run ruff check . --fix".split())
+    sys.exit(code.returncode)
+
+
+def _run_format(dest="."):
+    os.chdir(_current_dir())
+    code = subprocess.run(f"uv run ruff format {dest}".split())
+    sys.exit(code.returncode)
+
+
+def run_format():
+    Fire(_run_format)
 
 
 def run_e2e_tests():
@@ -71,6 +80,11 @@ def interactive():
     Fire(_run_interactive)
 
 
+def type_check():
+    code = subprocess.run("uv run pyright .".split())
+    sys.exit(code.returncode)
+
+
 def help_command():
     """Displays all available custom uv run commands with examples."""
     if tomllib is None:
@@ -85,10 +99,11 @@ def help_command():
         "interactive": "uv run interactive (Starts an interactive CLI session with the agent)",
     }
 
-    try:
-        current_script_path = Path(__file__).resolve()
-        pyproject_path = current_script_path.parent / "pyproject.toml"
+    # Define pyproject_path at the top level so it's accessible in the exception handlers
+    current_script_path = Path(__file__).resolve()
+    pyproject_path = current_script_path.parent / "pyproject.toml"
 
+    try:
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
 

@@ -3,6 +3,7 @@ import subprocess
 import random
 import string
 import docker
+from docker.errors import NotFound
 import anyio
 from typing import Dict, List, Optional, Tuple
 from log import get_logger
@@ -111,7 +112,7 @@ async def wait_for_healthy_containers(
                         all_healthy = False
                         break
                     logger.info(f"{kind} container is healthy.")
-                except docker.errors.NotFound:
+                except NotFound:
                     logger.info(f"{kind} container not found")
                     all_healthy = False
                     break
