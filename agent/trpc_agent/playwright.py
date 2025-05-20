@@ -57,6 +57,7 @@ class PlaywrightRunner:
                 entrypoint = "dev:client"
                 postgresdb = None
             case "full":
+                # FixMe: this logic belongs to the workspace?
                 postgresdb = (
                     dag.container()
                     .from_("postgres:17.0-alpine")
