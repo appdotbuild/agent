@@ -1,5 +1,4 @@
 import os
-import re
 import anyio
 import jinja2
 import logging

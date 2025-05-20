@@ -1,22 +1,18 @@
 import os
 import re
-import anyio
 import logging
 import contextlib
 from typing import Literal
 from tempfile import TemporaryDirectory
-from anyio.streams.memory import MemoryObjectSendStream
 import jinja2
 from trpc_agent import playbooks
 from core.base_node import Node
-from core.workspace import Workspace, ExecResult
-from core.actors import BaseData, BaseActor, LLMActor
-from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock, AttachedFiles
+from core.workspace import ExecResult
+from core.actors import BaseData
+from llm.common import AsyncLLM, Message, TextRaw, AttachedFiles
 from llm.utils import merge_text
 
-import uuid
-import dagger
-from dagger import dag, PortForward
+from dagger import dag
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +37,8 @@ def ensure_dir(dir_path: str | None):
 
 
 class PlaywrightRunner:
-    def __init__(self, vlm : AsyncLLM):
-        self._ts_cleanup_pattern = re.compile(r'(\?v=)[a-f0-9]+(:[0-9]+:[0-9]+)?')
+    def __init__(self, vlm: AsyncLLM):
+        self._ts_cleanup_pattern = re.compile(r"(\?v=)[a-f0-9]+(:[0-9]+:[0-9]+)?")
         self.vlm = vlm
 
     @staticmethod
@@ -50,7 +46,7 @@ class PlaywrightRunner:
         node: Node[BaseData],
         mode: Literal["client", "full"] = "client",
         log_dir: str | None = None,
-                            ) -> tuple[ExecResult, str | None]:
+    ) -> tuple[ExecResult, str | None]:
         logger.info("Running Playwright tests")
 
         workspace = node.data.workspace
@@ -69,20 +65,20 @@ class PlaywrightRunner:
                     .with_env_variable("POSTGRES_DB", "postgres")
                     .as_service(use_entrypoint=True)
                 )
-                push_result = await workspace.exec_with_pg(["bun", "run", "drizzle-kit", "push", "--force"], cwd="server")
+                push_result = await workspace.exec_with_pg(
+                    ["bun", "run", "drizzle-kit", "push", "--force"], cwd="server"
+                )
                 if push_result.exit_code != 0:
                     raise RuntimeError(f"Drizzle kit push failed: {push_result.stderr}")
                 entrypoint = "dev:all"
 
-        app_ctr = await (ctr
-            .with_entrypoint(["bun", "run", entrypoint])
-            .with_exposed_port(5173)
-            )
+        app_ctr = await ctr.with_entrypoint(["bun", "run", entrypoint]).with_exposed_port(5173)
 
         if postgresdb:
-            app_ctr = (app_ctr.with_service_binding("postgres", postgresdb)
-            .with_exposed_port(2022)
-            .with_env_variable("APP_DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
+            app_ctr = (
+                app_ctr.with_service_binding("postgres", postgresdb)
+                .with_exposed_port(2022)
+                .with_env_variable("APP_DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
             )
 
         status = await ExecResult.from_ctr(app_ctr)
@@ -102,7 +98,9 @@ class PlaywrightRunner:
             logger.warning(f"Playwright tests failed with exit code {result.exit_code}")
             return result, f"Error running Playwright tests: {result.stderr}"
 
-    async def evaluate(self, node: Node[BaseData], user_prompt: str, mode: Literal["client", "full"] = "client") -> list[str]:
+    async def evaluate(
+        self, node: Node[BaseData], user_prompt: str, mode: Literal["client", "full"] = "client"
+    ) -> list[str]:
         errors = []
         with TemporaryDirectory() as temp_dir:
             match mode:
@@ -132,22 +130,20 @@ class PlaywrightRunner:
                             logs = f.read()
                             # remove stochastic parts of the logs for caching
                             console_logs += self._ts_cleanup_pattern.sub(r"\1", logs)
-                breakpoint()
 
                 prompt = jinja2.Environment().from_string(prompt_template)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=user_prompt)
                 message = Message(role="user", content=[TextRaw(prompt_rendered)])
                 attach_files = AttachedFiles(
-                files=[os.path.join(temp_dir, file) for file in expected_files],
-                _cache_key=node.data.file_cache_key
+                    files=[os.path.join(temp_dir, file) for file in expected_files], _cache_key=node.data.file_cache_key
                 )
                 vlm_feedback = await self.vlm.completion(
                     messages=[message],
                     max_tokens=1024,
                     attach_files=attach_files,
                 )
-                vlm_feedback, = merge_text(list(vlm_feedback.content))
-                vlm_text = vlm_feedback.text # pyright: ignore
+                (vlm_feedback,) = merge_text(list(vlm_feedback.content))
+                vlm_text = vlm_feedback.text  # pyright: ignore
 
                 answer = extract_tag(vlm_text, "answer") or ""
                 reason = extract_tag(vlm_text, "reason") or ""
