@@ -1,3 +1,4 @@
+import os
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import dagger
@@ -5,34 +6,10 @@ from trpc_agent.application import FSMApplication
 from core.statemachine import StateMachine
 from core.workspace import Workspace
 from log import get_logger
-import dagger._engine.session as _dagger_session
 
 logger = get_logger(__name__)
 
 pytestmark = pytest.mark.anyio
-
-# ---------------------------------------------------------------------------
-# Test-local optimisation: give the Dagger engine more time to shut down
-# ---------------------------------------------------------------------------
-# Each test in this file spins up its own engine via `async with dagger.connection()`.
-# The Python SDK waits `Pclose.timeout` seconds (default = 300) for the engine
-# to terminate after stdin closes.  Large diff jobs frequently exceed that and
-# pytest sees `subprocess.TimeoutExpired`.  We raise the limit to 15 minutes
-# *only for this module* to make the tests reliable.
-
-@pytest.fixture(scope="module", autouse=True)
-def _extend_dagger_shutdown_timeout():
-    """Autouse fixture that increases Dagger engine shutdown timeout.
-
-    Applied automatically to every test in this file.  The original value is
-    restored when the module's tests complete so other test-modules keep the
-    default behaviour.
-    """
-    original = _dagger_session.Pclose.timeout
-    _dagger_session.Pclose.timeout = 900  # 15 minutes
-    yield
-    _dagger_session.Pclose.timeout = original
-
 
 @pytest.fixture(scope="function")
 def anyio_backend():
@@ -54,7 +31,9 @@ def create_mock_fsm(files=None):
     mock_fsm.dump = AsyncMock(return_value={"state": "test_state"})
     return mock_fsm
 
-@pytest.mark.skip(reason="Temporarily disabled")
+def create_dagger_connection():
+    return dagger.connection(dagger.Config(log_output=open(os.devnull, "w")))
+
 @pytest.fixture(scope="function")
 async def fsm_application():
     """Create a mock FSMApplication instance for testing"""
@@ -65,21 +44,9 @@ async def fsm_application():
     application = FSMApplication(mock_fsm)
     yield application
 
-@pytest.mark.skip(reason="Temporarily disabled")
-@pytest.fixture
-def check_dagger_available():
-    """Check if Dagger is available or skip the test"""
-    try:
-        import docker
-        client = docker.from_env()
-        # Check if Docker is running by listing containers
-        client.containers.list()
-    except (ImportError, Exception) as e:
-        pytest.skip(f"Docker/Dagger not available: {str(e)}")
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
-async def test_get_diff_with_empty_snapshot(check_dagger_available):
+async def test_get_diff_with_empty_snapshot():
     """
     Test get_diff_with with an empty snapshot (complete template scenario)
     This should generate a diff with all files in the FSM and all files from the template
@@ -91,29 +58,21 @@ async def test_get_diff_with_empty_snapshot(check_dagger_available):
         "server/index.js": "console.log('Server starting');"
     }
     
-    async with dagger.connection(dagger.Config(execute_timeout=900)):
-        # Create FSM application with our test files
+    async with create_dagger_connection():
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
 
-        # Call get_diff_with using an empty snapshot (should include all files)
         diff_result = await fsm_application.get_diff_with({})
 
-        # Verify we got a diff string
         assert isinstance(diff_result, str)
         assert len(diff_result) > 0
 
-        # Check that our FSM files appear in the diff
         for file_path in fsm_files.keys():
-            # Check that file paths appear in the diff
             assert file_path in diff_result
 
-        # Verify that template files are included in the diff
-        # The template typically includes common files like Dockerfile and package.json
         assert "Dockerfile" in diff_result
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
-async def test_get_diff_with_identical_snapshot(check_dagger_available):
+async def test_get_diff_with_identical_snapshot():
     """
     Test get_diff_with when snapshot is identical to FSM files
     This should still include template files in the diff even if user files don't change
@@ -124,7 +83,7 @@ async def test_get_diff_with_identical_snapshot(check_dagger_available):
         "client/src/App.tsx": "function App() { return <div>Test App</div>; }"
     }
     
-    async with dagger.connection(dagger.Config(execute_timeout=900)):
+    async with create_dagger_connection():
         # Create FSM application with our test files
         fsm_application = FSMApplication(create_mock_fsm(test_files))
 
@@ -142,9 +101,8 @@ async def test_get_diff_with_identical_snapshot(check_dagger_available):
         assert "+Hello, world!" not in diff_result
         assert "+function App()" not in diff_result
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
-async def test_get_diff_with_modified_files(check_dagger_available):
+async def test_get_diff_with_modified_files():
     """
     Test get_diff_with when files are modified between snapshot and FSM
     This should generate a diff with modifications and template files
@@ -161,7 +119,7 @@ async def test_get_diff_with_modified_files(check_dagger_available):
         "client/src/App.tsx": "function App() { return <div>Modified App</div>; }"
     }
     
-    async with dagger.connection(dagger.Config(execute_timeout=900)):
+    async with create_dagger_connection():
         # Create FSM application with our modified files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
 
@@ -180,9 +138,8 @@ async def test_get_diff_with_modified_files(check_dagger_available):
         assert "Original App" in diff_result
         assert "Hello, modified world" in diff_result
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
-async def test_get_diff_with_added_files(check_dagger_available):
+async def test_get_diff_with_added_files():
     """
     Test get_diff_with when files are added in FSM compared to snapshot
     This should generate a diff with added files and template files
@@ -199,7 +156,7 @@ async def test_get_diff_with_added_files(check_dagger_available):
         "server/index.js": "console.log('Server starting');"
     }
     
-    async with dagger.connection(dagger.Config(execute_timeout=900)):
+    async with create_dagger_connection():
         # Create FSM application with our expanded files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
 
@@ -220,9 +177,8 @@ async def test_get_diff_with_added_files(check_dagger_available):
         assert "client/src/App.tsx" in diff_result
         assert "server/index.js" in diff_result
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
-async def test_get_diff_with_removed_files(check_dagger_available):
+async def test_get_diff_with_removed_files():
     """
     Test get_diff_with when files are removed in FSM compared to snapshot
     This should generate a diff that contains both removed files and template files
@@ -241,7 +197,7 @@ async def test_get_diff_with_removed_files(check_dagger_available):
         "client/src/App.tsx": "function App() { return <div>App</div>; }",
     }
 
-    async with dagger.connection(dagger.Config(execute_timeout=900)):
+    async with create_dagger_connection():
         # Create FSM application with our reduced files
         fsm_application = FSMApplication(create_mock_fsm(fsm_files))
 
@@ -263,15 +219,14 @@ async def test_get_diff_with_removed_files(check_dagger_available):
         # So we don't check for specific removal markers as they might not be
         # prominently featured in the diff output
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
-async def test_get_diff_with_exception_handling(check_dagger_available):
+async def test_get_diff_with_exception_handling():
     """Test error handling when something goes wrong during diff generation"""
     # Create a mock FSM application
     fsm_application = FSMApplication(create_mock_fsm())
 
     # Use a real Dagger connection but create conditions that will cause an error
-    async with dagger.connection(dagger.Config(execute_timeout=900)):
+    async with create_dagger_connection():
         # Call get_diff_with but cause an exception in the Workspace.diff method
         with patch.object(Workspace, 'diff', side_effect=Exception("Test diff error")):
             diff_result = await fsm_application.get_diff_with({})
@@ -280,13 +235,12 @@ async def test_get_diff_with_exception_handling(check_dagger_available):
             assert "ERROR GENERATING DIFF" in diff_result
             assert "Test diff error" in diff_result
 
-@pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.anyio
 async def test_get_diff_with_real_dagger():
     """Integration test with a real Dagger instance (requires Dagger to be available)"""
     # Skip this test by default since it requires Docker/Dagger
     try:
-        async with dagger.connection(dagger.Config(execute_timeout=900)):
+        async with create_dagger_connection():
             # Create FSM application
             fsm_application = FSMApplication(create_mock_fsm())
 
