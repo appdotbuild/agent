@@ -299,6 +299,7 @@ b. Decide whether to confirm the output or provide feedback for improvement.
 c. Use the appropriate tool (confirm_state or provide_feedback) based on your decision.
 3. Repeat step 2 until all components have been generated and confirmed.
 4. Use the complete_fsm tool to finalize the process and retrieve all artifacts.
+5. If you need to change the app, use the provide_feedback tool to get user prompt for the change to apply to the app.
 
 During your review process, consider the following questions:
 - Does the code correctly implement the application requirements?
