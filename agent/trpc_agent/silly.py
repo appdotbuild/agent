@@ -7,7 +7,8 @@ from core.base_node import Node
 from core.workspace import Workspace
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
-from trpc_agent.actors import run_playwright, run_tests, run_tsc_compile
+from trpc_agent.actors import run_tests, run_tsc_compile
+from trpc_agent.playwright import PlaywrightRunner
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,9 @@ class SillyActor(BaseActor, LLMActor):
                         tool_content = await node.data.workspace.read_file(block.input["path"]) # pyright: ignore[reportIndexIssue]
                         result.append(ToolUseResult.from_tool_use(block, tool_content))
                     case "write_file":
-                        node.data.workspace.write_file(block.input["path"], block.input["content"]) # pyright: ignore[reportIndexIssue]
+                        filepath = block.input["path"]  # pyright: ignore[reportIndexIssue]
+                        logger.info(f"Writing file {filepath}")
+                        node.data.workspace.write_file(filepath, block.input["content"]) # pyright: ignore[reportIndexIssue]
                         result.append(ToolUseResult.from_tool_use(block, "success"))
                         node.data.files[block.input["path"]] = block.input["content"] # pyright: ignore[reportIndexIssue]
                     case "delete_file":
@@ -184,6 +187,7 @@ class EditActor(SillyActor):
     def __init__(
         self,
         llm: AsyncLLM,
+        vlm: AsyncLLM,
         workspace: Workspace,
         prompt_template: str,
         beam_width: int = 1,
@@ -199,6 +203,7 @@ class EditActor(SillyActor):
         self.protected = ws_protected
         self.injected = ws_injected
         self.visible = ws_visible
+        self.playwright = PlaywrightRunner(vlm)
 
     async def execute(
         self,
@@ -246,27 +251,31 @@ class EditActor(SillyActor):
             raise ValueError("No solution found")
         return solution
 
-    async def run_checks(self, node: Node[BaseData]) -> str | None:
-        error = ""
+    async def run_checks(self, node: Node[BaseData], user_prompt: str = "") -> str | None:
         _, tsc_compile_err = await run_tsc_compile(node)
+        if tsc_compile_err:
+            return f"TypeScript compile errors (backend):\n{tsc_compile_err.text}\n"
 
         # client tsc compile - should be refactored for the consistency
         tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
         if tsc_result.exit_code != 0:
-            error += f"Error running client tsc: {tsc_result.stdout}\n"
+            return f"TypeScript compile errors (frontend): {tsc_result.stdout}"
 
         _, test_result = await run_tests(node)
-        # it only checks for status code, to analyze the output we need to parse it - to be implemented
-        _, playwright_result = await run_playwright(node, entrypoint="dev:all")
-
-        if tsc_compile_err:
-            error += f"TypeScript compile errors:\n{tsc_compile_err.text}\n"
         if test_result:
-            error += f"Test errors:\n{test_result.text}\n"
-        if playwright_result:
-            error += f"Playwright errors:\n{playwright_result.text}\n"
+            return f"Test errors:\n{test_result.text}\n"
 
-        return error if error else None
+        result = await node.data.workspace.exec(["bun", "run", "build"], cwd="client")
+        if result.exit_code != 0:
+            # FixMe: normalize as with run_tests to reduce cache misses
+            return f"Build errors:\n{result.stderr}\n"
+
+        # FixMe: propagate user prompt and edit prompt to the check
+        # FixMe: run full app check, not just client
+        playwright_result = await self.playwright.evaluate(node, user_prompt, mode="client")
+        if playwright_result:
+            return "\n".join(playwright_result)
+        return None
 
     async def dump(self) -> object:
         if self.root is None:
@@ -346,6 +355,7 @@ class EditSetActor(SillyActor):
                         result.append(ToolUseResult.from_tool_use(block, "success"))
                         node.data.files[block.input["path"]] = block.input["content"] # pyright: ignore[reportIndexIssue]
                     case "run_checks":
+                        # FixMe: propagate user prompt to the check
                         check_err = await self.run_checks(node)
                         result.append(ToolUseResult.from_tool_use(block, check_err or "success"))
                     case "mark_changeset":

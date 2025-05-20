@@ -572,7 +572,25 @@ Example 3:
 <reason>the website looks okay, but displays database connection error. Given it is not frontend-related, I should answer yes</reason>
 <answer>yes</answer>
 """
+FULL_UI_VALIDATION_PROMPT = """Given the attached screenshot and browser logs, decide where the app is correct and working.
+{% if user_prompt %} User prompt: {{ user_prompt }} {% endif %}
+Console logs from the browsers:
+{{ console_logs }}
 
+Answer "yes" or "no" wrapped in <answer> tag. Follow the example below.
+
+Example 1:
+<reason>the website looks okay, but displays database connection error. Given we evaluate full app, I should answer no</reason>
+<answer>no</answer>
+
+Example 2:
+<reason>there is nothing on the screenshot, could be rendering issue</reason>
+<answer>no</answer>
+
+Example 3:
+<reason>the website looks valid</reason>
+<answer>yes</answer>
+"""
 
 SILLY_PROMPT = """
 Files:
