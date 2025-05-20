@@ -30,6 +30,8 @@ test = "commands:run_tests_with_cache"
 test_e2e = "commands:run_e2e_tests"
 update_cache = "commands:update_cache"
 lint = "commands:run_lint"
+type_check = "commands:type_check"
+format = "commands:run_format"
 generate = "commands:generate"
 interactive = "commands:interactive"
 help = "commands:help_command"
@@ -40,6 +42,8 @@ test = "Runs pytest with VCR cache in replay mode. Accepts pytest arguments. Exa
 test_e2e = "Runs end-to-end tests (subset of 'test' focused on e2e). Example: uv run test_e2e"
 update_cache = "Updates VCR cache for tests by running pytest in record mode. Example: uv run update_cache tests/test_specific_file.py"
 lint = "Runs ruff to check and fix linting issues. Example: uv run lint"
+type_check = "Runs type checking with pyright. Example: uv run type_check"
+format = "Runs ruff to format code, optionally accepts target. Example: uv run format [file.py]"
 generate = "Generates code based on a prompt. Example: uv run generate --prompt='your app description'"
 interactive = "Starts an interactive CLI session with the agent. Example: uv run interactive"
 help = "Displays this help message. Example: uv run help"
@@ -53,6 +57,7 @@ dev = [
     "ruff>=0.11.5",
     "pytest-xdist>=3.6.1",
     "ipython>=9.2.0",
+    "pyright>=1.1.400",
 ]
 google = ["google-genai>=1.7.0"]
 openai = ["openai>=1.68.2"]

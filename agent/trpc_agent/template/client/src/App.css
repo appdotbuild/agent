@@ -40,3 +40,52 @@
 .read-the-docs {
   color: #888;
 }
+
+.construction-container {
+  display: flex;
+  min-height: 100vh;
+  justify-content: center;
+  align-items: center;
+  background: white;
+  padding: 20px;
+}
+
+.construction-content {
+  text-align: center;
+  padding: 2rem 3rem;
+  max-width: 600px;
+  width: 100%;
+}
+
+h1 {
+  color: #2d3748;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  font-weight: bold;
+}
+
+p {
+  color: #4a5568;
+  font-size: 1.25rem;
+  line-height: 1.6;
+  margin: 1rem 0;
+}
+
+.construction-animation {
+  margin-top: 2rem;
+}
+
+.gear {
+  font-size: 4rem;
+  animation: spin 4s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -133,6 +133,8 @@ class SillyActor(BaseActor, LLMActor):
             if not isinstance(block, ToolUse):
                 continue
             try:
+                logger.info(f"Running tool {block.name}")
+
                 match block.name:
                     case "read_file":
                         tool_content = await node.data.workspace.read_file(block.input["path"]) # pyright: ignore[reportIndexIssue]
@@ -204,6 +206,7 @@ class EditActor(SillyActor):
         edit_set: list[str] | None = None,
     ) -> Node[BaseData]:
         workspace = self.workspace.clone()
+        logger.info(f"Start EditActor execution with files: {files.keys()}")
         for file_path, content in files.items():
             workspace.write_file(file_path, content)
         if edit_set:
@@ -233,6 +236,7 @@ class EditActor(SillyActor):
             protected=self.protected,
             user_prompt=user_prompt,
         )
+
         message = Message(role="user", content=[TextRaw(text=text)])
         self.root = Node(BaseData(workspace, [message], {}))
 
@@ -243,7 +247,6 @@ class EditActor(SillyActor):
 
     async def run_checks(self, node: Node[BaseData]) -> str | None:
         errors: list[str] = []
-
         logger.info("Running server tsc compile")
         tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
         if tsc_result.exit_code != 0:
@@ -341,6 +344,7 @@ class EditSetActor(SillyActor):
             if not isinstance(block, ToolUse):
                 continue
             try:
+                logger.info(f"Running tool: {block.name}")
                 match block.name:
                     case "write_file":
                         node.data.workspace.write_file(block.input["path"], block.input["content"]) # pyright: ignore[reportIndexIssue]

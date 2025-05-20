@@ -1,9 +1,15 @@
-import { Button } from '@/components/ui/button';
+import './App.css';
 
 function App() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-svh">
-      <Button>Click me</Button>
+    <div className="construction-container">
+      <div className="construction-content">
+        <h1>🚧 Under Construction 🚧</h1>
+        <p>Your app is under construction. It's being built right now!</p>
+        <div className="construction-animation">
+          <div className="gear">⚙️</div>
+        </div>
+      </div>
     </div>
   );
 }

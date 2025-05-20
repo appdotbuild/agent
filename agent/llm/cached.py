@@ -159,7 +159,7 @@ class CachedLLM(AsyncLLM):
         def _compare(x, y, prefix=""):
             if isinstance(x, dict):
                 for k in x:
-                    _compare(x[k], y[k], prefix + f".{k}")
+                    _compare(x[k], y[k], prefix + f"['{k}']")
             elif isinstance(x, list):
                 if not len(x) == len(y):
                     logger.info(f"Length mismatch at {prefix}: {len(x)} != {len(y)}")
@@ -170,7 +170,7 @@ class CachedLLM(AsyncLLM):
                     x_dec = eval(x)
                     y_dec = eval(y)
                     _compare(x_dec, y_dec, prefix + "(eval)")
-                except (SyntaxError, NameError):
+                except (SyntaxError, NameError, UnicodeEncodeError):
                     eq = x == y
                     if not eq:
                         logger.info(f"Mismatch at {prefix}")
