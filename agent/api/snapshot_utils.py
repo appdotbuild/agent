@@ -1,21 +1,29 @@
 import os
 import json
 import boto3
+from log import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class FSMSnapshotSaver:
-    _instance = None
+    def __init__(self):
+        self.bucket_name = os.getenv("SNAPSHOT_BUCKET", "fsm_snapshots")
+        self.is_available = self.check_bucket_available()
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(FSMSnapshotSaver, cls).__new__(cls)
-        return cls._instance
-
-    @property
-    def bucket_name(self) -> str:
-        return os.getenv("SNAPSHOT_BUCKET", "fsm_snapshots")
+    def check_bucket_available(self) -> bool:
+        try:
+            boto3.resource('s3').meta.client.head_bucket(Bucket=self.bucket_name)
+            logger.info("Saving snapshots enabled.")
+            return True
+        except Exception as e:
+            logger.info(f"Saving snapshots disabled {e}")
+            return False
 
     def save_snapshot(self, trace_id: str, key: str, data: object):
+        if not self.is_available:
+            return
         file_key = f"{trace_id}/{key}.json"
         boto3.resource('s3').Bucket(self.bucket_name).put_object(Key=file_key, Body=json.dumps(data))
 
