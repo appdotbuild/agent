@@ -193,7 +193,6 @@ Return ONLY the commit message, nothing else.""")
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
             if self.processor_instance.fsm_app is not None:
-                logger.info(f"Storing fsm_enter snapshot for trace {self.trace_id}")
                 snapshot_saver.save_snapshot(
                     trace_id=self.trace_id,
                     key="fsm_enter",
@@ -368,7 +367,6 @@ Return ONLY the commit message, nothing else.""")
             await event_tx.send(error_event)
         finally:
             if self.processor_instance.fsm_app is not None:
-                logger.info(f"Storing fsm_exit snapshot for trace {self.trace_id}")
                 snapshot_saver.save_snapshot(
                     trace_id=self.trace_id,
                     key="fsm_exit",

@@ -24,6 +24,7 @@ class FSMSnapshotSaver:
     def save_snapshot(self, trace_id: str, key: str, data: object):
         if not self.is_available:
             return
+        logger.info(f"Storing snapshot for trace: {trace_id}/{key}")
         file_key = f"{trace_id}/{key}.json"
         boto3.resource('s3').Bucket(self.bucket_name).put_object(Key=file_key, Body=json.dumps(data))
 
