@@ -150,10 +150,9 @@ async def run_agent[T: AgentInterface](
                             )
                         )
                         
-                        logger.debug(f"Sending keep-alive event for {request.application_id}:{request.trace_id}")
                         await keep_alive_tx.send(keep_alive_event)
             except Exception as e:
-                logger.debug(f"Keep-alive task ended: {str(e)}")
+                pass
             finally:
                 await keep_alive_tx.aclose()
 
@@ -176,7 +175,6 @@ async def run_agent[T: AgentInterface](
 
                         if event.status == AgentStatus.IDLE:
                             keep_alive_running = False
-                            logger.debug(f"Agent idle, stopping keep-alive for {request.application_id}:{request.trace_id}")
                             
                             # Only log that we'll clean up later - don't do the actual cleanup here
                             # The actual cleanup happens in the finally block
