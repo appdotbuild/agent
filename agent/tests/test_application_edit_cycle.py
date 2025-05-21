@@ -1,5 +1,4 @@
 import pytest
-import dagger
 
 from tests.test_application_diff import create_mock_fsm, create_dagger_connection
 from trpc_agent.application import FSMApplication

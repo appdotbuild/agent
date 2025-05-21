@@ -1,7 +1,7 @@
 import pytest
 import os
 import dagger
-from trpc_agent.application import FSMApplication, FSMState, FSMEvent
+from trpc_agent.application import FSMApplication, FSMState
 from log import get_logger
 
 logger = get_logger(__name__)
@@ -32,14 +32,6 @@ async def test_fsm_edit_and_diff_generation():
     initial_prompt = "Create a simple counter app with a button that increments a number."
     edit_feedback = "Change the button text to 'Increment Me!'"
 
-    # Settings to potentially speed up the test by reducing LLM search space if needed
-    # For now, using default settings by passing None or empty dict.
-    test_settings = {
-        "DraftActor": {"beam_width": 1, "max_depth": 3}, # Faster draft
-        "HandlersActor": {"beam_width": 1, "max_depth": 3}, # Faster handlers
-        "FrontendActor": {"beam_width": 1, "max_depth": 5}, # Faster frontend
-        "EditActor": {"beam_width": 1, "max_depth": 10} # Faster edit
-    }
     # Using None for default settings, enable above for potentially faster local runs if LLM calls are slow
     # current_settings = test_settings 
     current_settings = None
