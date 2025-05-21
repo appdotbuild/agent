@@ -35,7 +35,7 @@ from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
 
-from log import get_logger, init_sentry, configure_uvicorn_logging
+from log import get_logger, init_sentry, configure_uvicorn_logging, set_trace_id, clear_trace_id
 
 logger = get_logger(__name__)
 
@@ -172,6 +172,7 @@ async def run_agent[T: AgentInterface](
             if request.agent_state is None and (final_state is None or final_state == {}):
                 logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
                 session_manager.cleanup_session(request.application_id, request.trace_id)
+                clear_trace_id()
 
 
 @app.post("/message", response_model=None)
@@ -204,9 +205,8 @@ async def message(
     """
     try:
         logger.info(f"Received message request for application {request.application_id}, trace {request.trace_id}")
-
-        # Start the SSE stream
-        logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
+        set_trace_id(request.trace_id)
+        logger.info("Starting SSE stream for application")
         agent_type = {
             "template_diff": TemplateDiffAgentImplementation,
             "trpc_agent": TrpcAgentSession,
