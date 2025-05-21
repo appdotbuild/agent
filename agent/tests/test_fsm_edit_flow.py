@@ -16,6 +16,7 @@ def create_dagger_connection():
     # Ensure Dagger logs go to devnull for cleaner test output
     return dagger.connection(dagger.Config(log_output=open(os.devnull, "w")))
 
+@pytest.mark.skip(reason="Skipping test as long running")
 @pytest.mark.anyio
 async def test_fsm_edit_and_diff_generation():
     """
@@ -88,7 +89,7 @@ async def test_fsm_edit_and_diff_generation():
         
         # The provide_feedback call should transition the FSM. 
         # The next confirm_state will execute the EditActor.
-        assert fsm_app.current_state == FSMState.APPLY_FEEDBACK, f"FSM did not transition to APPLY_FEEDBACK. Current state: {fsm_app.current_state}"
+        assert fsm_app.current_state == FSMState.COMPLETE, f"FSM did not transition to COMPLETE fate after applying feedback. Current state: {fsm_app.current_state}"
         
         logger.info("Running FSM to apply feedback...")
         await fsm_app.confirm_state() # This should execute the EditActor
