@@ -149,7 +149,6 @@ class PlaywrightRunner:
                 answer = extract_tag(vlm_text, "answer") or ""
                 reason = extract_tag(vlm_text, "reason") or ""
                 if "no" in answer.lower():
-                    breakpoint()
                     logger.info(f"Playwright validation failed. Answer: {answer}, reason: {reason}")
                     errors.append(f"Playwright validation failed with the reason: {reason}")
                 else:
