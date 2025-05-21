@@ -129,25 +129,29 @@ async def run_agent[T: AgentInterface](
         keep_alive_tx = event_tx.clone()  # Clone the sender for use in the keep-alive task
         final_state = None
         
+        # Use this flag to control the keep-alive task
+        keep_alive_running = True
+        
         async def send_keep_alive():
             try:
-                while True:
+                while keep_alive_running:
                     await anyio.sleep(30)
                     
-                    keep_alive_event = AgentSseEvent(
-                        status=AgentStatus.RUNNING,
-                        traceId=request.trace_id,
-                        message=AgentMessage(
-                            role="assistant",
-                            kind=MessageKind.KEEP_ALIVE,
-                            content="",
-                            agentState=None,
-                            unifiedDiff=None
+                    if keep_alive_running:
+                        keep_alive_event = AgentSseEvent(
+                            status=AgentStatus.RUNNING,
+                            traceId=request.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.KEEP_ALIVE,
+                                content="",
+                                agentState=None,
+                                unifiedDiff=None
+                            )
                         )
-                    )
-                    
-                    logger.debug(f"Sending keep-alive event for {request.application_id}:{request.trace_id}")
-                    await keep_alive_tx.send(keep_alive_event)
+                        
+                        logger.debug(f"Sending keep-alive event for {request.application_id}:{request.trace_id}")
+                        await keep_alive_tx.send(keep_alive_event)
             except Exception as e:
                 logger.debug(f"Keep-alive task ended: {str(e)}")
             finally:
@@ -170,10 +174,14 @@ async def run_agent[T: AgentInterface](
                         # This ensures compatibility with SSE standard
                         yield f"data: {event.to_json()}\n\n"
 
-                        # Only log that we'll clean up later - don't do the actual cleanup here
-                        # The actual cleanup happens in the finally block
-                        if event.status == AgentStatus.IDLE and request.agent_state is None:
-                            logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
+                        if event.status == AgentStatus.IDLE:
+                            keep_alive_running = False
+                            logger.debug(f"Agent idle, stopping keep-alive for {request.application_id}:{request.trace_id}")
+                            
+                            # Only log that we'll clean up later - don't do the actual cleanup here
+                            # The actual cleanup happens in the finally block
+                            if request.agent_state is None:
+                                logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
 
         except* Exception as excgroup:
             for e in excgroup.exceptions:
