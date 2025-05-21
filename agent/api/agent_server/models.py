@@ -28,6 +28,7 @@ class MessageKind(str, Enum):
     RUNTIME_ERROR = "RuntimeError"  #  things went wrong!
     REFINEMENT_REQUEST = "RefinementRequest"  # no tool was used, meaning the agent is asking for more information
     REVIEW_RESULT = "ReviewResult"  # generation completed successfully
+    KEEP_ALIVE = "KeepAlive"  # empty event to keep the connection alive
 
 
 class UserMessage(BaseModel):

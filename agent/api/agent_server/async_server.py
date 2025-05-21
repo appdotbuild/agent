@@ -126,11 +126,40 @@ async def run_agent[T: AgentInterface](
         agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
 
         event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
+        keep_alive_tx = event_tx.clone()  # Clone the sender for use in the keep-alive task
         final_state = None
+        
+        async def send_keep_alive():
+            try:
+                while True:
+                    await anyio.sleep(30)
+                    
+                    keep_alive_event = AgentSseEvent(
+                        status=AgentStatus.RUNNING,
+                        traceId=request.trace_id,
+                        message=AgentMessage(
+                            role="assistant",
+                            kind=MessageKind.KEEP_ALIVE,
+                            content="",
+                            agentState=None,
+                            unifiedDiff=None
+                        )
+                    )
+                    
+                    logger.debug(f"Sending keep-alive event for {request.application_id}:{request.trace_id}")
+                    await keep_alive_tx.send(keep_alive_event)
+            except Exception as e:
+                logger.exception(f"Error in keep-alive task: {str(e)}")
+            finally:
+                await keep_alive_tx.aclose()
 
         try:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(agent.process, request, event_tx)
+                
+                # Start the keep-alive task
+                tg.start_soon(send_keep_alive)
+                
                 async with event_rx:
                     async for event in event_rx:
                         # Keep track of the last state in events with non-null state
