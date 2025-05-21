@@ -70,7 +70,7 @@ def generate():
 
 
 def _generate(prompt=DEFAULT_APP_REQUEST):
-    # coloredlogs.install(level="INFO")
+    coloredlogs.install(level="INFO")
     anyio.run(run_e2e, prompt, True)
 
 
