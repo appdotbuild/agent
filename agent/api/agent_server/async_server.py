@@ -151,7 +151,7 @@ async def run_agent[T: AgentInterface](
                         )
                         
                         await keep_alive_tx.send(keep_alive_event)
-            except Exception as e:
+            except Exception:
                 pass
             finally:
                 await keep_alive_tx.aclose()
