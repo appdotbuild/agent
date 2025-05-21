@@ -75,9 +75,16 @@ class TrpcAgentSession(AgentInterface):
 
         try:
             diff = await fsm_app.get_diff_with(snapshot)
-            # Log the diff length to help diagnose issues
             if diff:
-                logger.info("Generated diff with length %d", len(diff))
+                diff_hash = self._hash_diff(diff)
+                hash_changed = diff_hash != self._prev_diff_hash
+                logger.info(
+                    "Generated diff: length=%d, sha256=%s, changed=%s",
+                    len(diff),
+                    diff_hash,
+                    hash_changed,
+                )
+                self._prev_diff_hash = diff_hash
             else:
                 logger.warning("Generated empty diff")
             return diff

@@ -2,6 +2,8 @@ from typing import Self
 import uuid
 import dagger
 from dagger import dag, function, object_type, Container, Directory, ReturnType
+import logging
+import hashlib
 
 class ExecResult:
     exit_code: int
@@ -114,12 +116,30 @@ class Workspace:
                 .with_exec(["git", "add", "."])
                 .with_exec(["git", "commit", "-m", "'initial'"])
             )
-        return (
+        diff_output = (
             await start.with_directory(".", self.ctr.directory("."))
             .with_exec(["git", "add", "."])
             .with_exec(["git", "diff", "HEAD"])
             .stdout()
         )
+
+        # ------------------- Added verbose logging -------------------
+        logger = logging.getLogger(__name__)
+        diff_len = len(diff_output)
+        diff_hash = hashlib.sha256(diff_output.encode("utf-8")).hexdigest()
+        logger.info(
+            "workspace.diff: Generated diff (length=%d, sha256=%s)",
+            diff_len,
+            diff_hash,
+        )
+        if diff_output:
+            preview_lines = "\n".join(diff_output.splitlines()[20:])
+            logger.debug("workspace.diff preview (last 20 lines):\n%s", preview_lines)
+        else:
+            logger.debug("workspace.diff: Diff output is empty.")
+        # -------------------------------------------------------------
+
+        return diff_output
 
     @function
     async def exec(self, command: list[str], cwd: str = ".") -> ExecResult:
