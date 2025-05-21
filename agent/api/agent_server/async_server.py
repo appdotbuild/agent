@@ -149,7 +149,7 @@ async def run_agent[T: AgentInterface](
                     logger.debug(f"Sending keep-alive event for {request.application_id}:{request.trace_id}")
                     await keep_alive_tx.send(keep_alive_event)
             except Exception as e:
-                logger.exception(f"Error in keep-alive task: {str(e)}")
+                logger.debug(f"Keep-alive task ended: {str(e)}")
             finally:
                 await keep_alive_tx.aclose()
 
