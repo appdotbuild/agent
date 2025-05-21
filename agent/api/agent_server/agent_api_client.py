@@ -505,17 +505,17 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         return
                     case "/help":
                         print(
-                            "Commands:\n"
-                            "/help       Show this help\n"
-                            "/exit, /quit Exit chat\n"
-                            "/clear      Clear conversation\n"
+                            "Commands:\\n"
+                            "/help       Show this help\\n"
+                            "/exit, /quit Exit chat\\n"
+                            "/clear      Clear conversation\\n"
                             "/save       Save state to file"
-                            "\n"
-                            "/diff       Show the latest unified diff\n"
-                            f"/apply [dir] Apply the latest diff to directory (default: {project_dir})\n"
-                            "/export     Export the latest diff to a patchfile\n"
-                            "/run [dir]  Apply diff, install deps, and start dev server\n"
-                            "/stop       Stop the currently running server\n"
+                            "\\n"
+                            "/diff       Show the latest unified diff\\n"
+                            f"/apply [target_path] Apply diff to [target_path]. If no path, applies to project folder ({project_dir}).\\n"
+                            "/export     Export the latest diff to a patchfile\\n"
+                            "/run [dir]  Apply diff, install deps, and start dev server\\n"
+                            "/stop       Stop the currently running server\\n"
                             "/info       Show the app name and commit message"
                         )
                         continue
@@ -587,20 +587,15 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print("No diff available to apply")
                             continue
                         try:
-                            # Create a timestamp-based project directory name
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            project_name = f"project_{timestamp}"
-
+                            target_dir: str
                             if rest and rest[0]:
-                                base_dir = rest[0]
+                                target_dir = os.path.abspath(rest[0])
+                                print(f"Target directory for applying patch: {target_dir}")
                             else:
-                                base_dir = project_dir
-                                print(f"Using default project directory: {base_dir}")
+                                target_dir = project_dir # project_dir is already absolute
+                                print(f"Applying patch directly to current project folder: {target_dir}")
 
-                            # Create the full project directory path
-                            target_dir = os.path.join(base_dir, project_name)
-
-                            # Apply the patch
+                            # Apply the patch directly to target_dir
                             success, message = apply_patch(diff, target_dir)
                             print(message)
                         except Exception as e:
