@@ -519,15 +519,24 @@ class FrontendActor(BaseTRPCActor):
 
     async def dump(self) -> object:
         if self.root is None:
-            return []
-        return await self.dump_node(self.root)
+            node = []
+        else:
+            node = await self.dump_node(self.root)
+        return {
+            "node": node,
+            "user_prompt": self._user_prompt,
+        }
 
     async def load(self, data: object):
-        if not isinstance(data, list):
-            raise ValueError(f"Expected list got {type(data)}")
-        if not data:
-            return
-        self.root = await self.load_node(data)
+        match data:
+            case dict():
+                node = data.get("node")
+                if not isinstance(node, list):
+                    raise ValueError(f"Expected list got {type(node)}")
+                self.root = await self.load_node(node)
+                self._user_prompt = data.get("user_prompt")
+            case _:
+                raise ValueError(f"Expected dict got {type(data)}")
 
 
 class ConcurrentActor(BaseTRPCActor):

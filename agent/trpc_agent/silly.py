@@ -203,6 +203,7 @@ class EditActor(SillyActor):
         self.injected = ws_injected
         self.visible = ws_visible
         self.playwright = PlaywrightRunner(vlm)
+        self._user_prompt = ""
 
     async def execute(
         self,
@@ -210,6 +211,7 @@ class EditActor(SillyActor):
         user_prompt: str,
         edit_set: list[str] | None = None,
     ) -> Node[BaseData]:
+        self._user_prompt = user_prompt
         workspace = self.workspace.clone()
         logger.info(f"Start EditActor execution with files: {files.keys()}")
         for file_path, content in files.items():
@@ -250,7 +252,7 @@ class EditActor(SillyActor):
             raise ValueError("No solution found")
         return solution
 
-    async def run_checks(self, node: Node[BaseData], user_prompt: str = "") -> str | None:
+    async def run_checks(self, node: Node[BaseData]) -> str | None:
         _, tsc_compile_err = await run_tsc_compile(node)
         if tsc_compile_err:
             return f"TypeScript compile errors (backend):\n{tsc_compile_err.text}\n"
@@ -268,9 +270,9 @@ class EditActor(SillyActor):
         if build_result:
             return build_result
 
-        # FixMe: propagate user prompt and edit prompt to the check
         # FixMe: run full app check, not just client
-        playwright_result = await self.playwright.evaluate(node, user_prompt, mode="client")
+        # FixMe: propagate original user prompt to the check
+        playwright_result = await self.playwright.evaluate(node, self._user_prompt, mode="client")
         if playwright_result:
             return "\n".join(playwright_result)
         return None
@@ -284,6 +286,7 @@ class EditActor(SillyActor):
             "protected": self.protected,
             "injected": self.injected,
             "visible": self.visible,
+            "user_prompt": self._user_prompt,
         }
 
     async def load(self, data: object):
@@ -296,6 +299,7 @@ class EditActor(SillyActor):
         self.protected = data.get("protected", [])
         self.injected = data.get("injected", [])
         self.visible = data.get("visible", [])
+        self._user_prompt = data.get("user_prompt", "")
 
 
 class EditSetActor(SillyActor):
