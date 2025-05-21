@@ -6,7 +6,7 @@ from core.base_node import Node
 from core.workspace import Workspace
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
-from trpc_agent.actors import run_tests, run_tsc_compile
+from trpc_agent.actors import run_tests, run_tsc_compile, run_frontend_build
 from trpc_agent.playwright import PlaywrightRunner
 
 logger = logging.getLogger(__name__)
@@ -264,10 +264,9 @@ class EditActor(SillyActor):
         if test_result:
             return f"Test errors:\n{test_result.text}\n"
 
-        result = await node.data.workspace.exec(["bun", "run", "build"], cwd="client")
-        if result.exit_code != 0:
-            # FixMe: normalize as with run_tests to reduce cache misses
-            return f"Build errors:\n{result.stderr}\n"
+        build_result = await run_frontend_build(node)
+        if build_result:
+            return build_result
 
         # FixMe: propagate user prompt and edit prompt to the check
         # FixMe: run full app check, not just client

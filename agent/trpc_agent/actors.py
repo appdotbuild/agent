@@ -96,6 +96,19 @@ class RunTests:
 
 run_tests = RunTests()
 
+class RunFrontendBuild:
+    def __init__(self):
+        self.build_output_normalizer = re.compile(r"\d+(\.\d+)?(ms|s)")
+
+    async def __call__(self, node: Node[BaseData]) -> str | None:
+        result = await node.data.workspace.exec(["bun", "run", "build"], cwd="client")
+        if result.exit_code != 0:
+            err = self.build_output_normalizer.sub("", result.stderr)
+            return f"Build errors:\n{err}\n"
+        return None
+
+run_frontend_build = RunFrontendBuild()
+
 class BaseTRPCActor(BaseActor, LLMActor):
     model_params: dict
 
@@ -443,6 +456,12 @@ class FrontendActor(BaseTRPCActor):
             if tsc_result.exit_code != 0:
                 content.append(TextRaw(f"Error running tsc: {tsc_result.stdout}"))
         if content:
+            node.data.messages.append(Message(role="user", content=content))
+            return False
+
+        build_err = await run_frontend_build(node)
+        if build_err:
+            content.append(TextRaw(build_err))
             node.data.messages.append(Message(role="user", content=content))
             return False
 
