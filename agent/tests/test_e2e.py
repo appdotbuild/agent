@@ -6,7 +6,7 @@ import contextlib
 
 from fire import Fire
 from api.agent_server.agent_client import AgentApiClient
-from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST, DEFAULT_EDIT_REQUEST, spawn_local_server
+from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST, DEFAULT_EDIT_REQUEST, spawn_local_server, latest_diff_stat
 from api.docker_utils import setup_docker_env, start_docker_compose, wait_for_healthy_containers, stop_docker_compose, get_container_logs
 from log import get_logger
 
@@ -62,6 +62,12 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True):
             assert commit_message is not None, "No commit_message was generated in the agent response"
             logger.info(f"Generated app_name: {app_name}")
             logger.info(f"Generated commit_message: {commit_message}")
+
+            # Check that diff_stat is present and valid in the response
+            diff_stat = latest_diff_stat(events)
+            assert diff_stat is not None, "No diff_stat was generated in the agent response"
+            assert isinstance(diff_stat, list), "diff_stat should be a list"
+            assert all('path' in entry.dict() and 'insertions' in entry.dict() and 'deletions' in entry.dict() for entry in diff_stat), "Each diff_stat entry should have path, insertions, and deletions"
 
             if with_edit:
                 new_events, new_request = await client.continue_conversation(

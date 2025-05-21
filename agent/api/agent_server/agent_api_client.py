@@ -231,6 +231,18 @@ def apply_patch(diff: str, target_dir: str) -> Tuple[bool, str]:
         return False, f"Error applying patch: {str(e)}"
 
 
+def latest_diff_stat(events: List[AgentSseEvent]) -> Optional[List]:
+    """Return the most recent diff_stat found in events, if any."""
+    for evt in reversed(events):
+        try:
+            diff_stat_val = evt.message.diff_stat
+            if diff_stat_val is not None:
+                return diff_stat_val
+        except AttributeError:
+            continue
+    return None
+
+
 def latest_unified_diff(events: List[AgentSseEvent]) -> Optional[str]:
     """Return the most recent unified diff found in events, if any."""
     for evt in reversed(events):
@@ -467,7 +479,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
             if event.message.diff_stat:
                 print("\033[36mDiff Statistics:\033[0m")
                 for stat in event.message.diff_stat:
-                    print(f"\033[36m  {stat.filename}: +{stat.additions} -{stat.deletions}\033[0m")
+                    # stat may be a pydantic model or dict, handle both
+                    if hasattr(stat, 'path') and hasattr(stat, 'insertions') and hasattr(stat, 'deletions'):
+                        print(f"\033[36m  {stat.path}: +{stat.insertions} -{stat.deletions}\033[0m")
+                    elif isinstance(stat, dict):
+                        print(f"\033[36m  {stat.get('path')}: +{stat.get('insertions')} -{stat.get('deletions')}\033[0m")
             
             # Display app_name and commit_message when present
             if event.message.app_name:

@@ -204,7 +204,7 @@ Return ONLY the commit message, nothing else.""")
                 work_in_progress = fsm_status == FSMStatus.WIP
 
                 current_hash: Optional[str] = None
-                diff_stat: Optional[List[DiffStatEntry]] = None
+                diff_stat: Optional[List[DiffStatEntry]] = []
 
                 fsm_state = None
                 app_diff = None
@@ -213,18 +213,11 @@ Return ONLY the commit message, nothing else.""")
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
-
-                    # Calculate hash and diff stat if diff present
-                    if app_diff is not None:
-                        current_hash = self._hash_diff(app_diff)
-                        diff_changed = current_hash != self._prev_diff_hash
-                        diff_stat = self._compute_diff_stat(app_diff) if diff_changed else None
-                    else:
-                        current_hash = None
-                        diff_changed = False
-                        diff_stat = None
-
+                    # Always compute app_diff and diff_stat if FSMApplication is present
+                    app_diff = await self.get_app_diff()
+                    current_hash = self._hash_diff(app_diff) if app_diff is not None else None
+                    diff_changed = current_hash != self._prev_diff_hash if current_hash is not None else False
+                    diff_stat = self._compute_diff_stat(app_diff) if app_diff is not None else None
 
                     if diff_changed:
                         self._prev_diff_hash = current_hash
