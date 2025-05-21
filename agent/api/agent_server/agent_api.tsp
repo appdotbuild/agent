@@ -41,6 +41,9 @@ enum MessageKind {
 
   @doc("The final successful result indicating the application generation is complete and ready for review.")
   ReviewResult,
+
+  @doc("Empty event sent periodically to keep the connection alive during long periods of inactivity.")
+  KeepAlive,
 }
 
 // --- Diff summary ---
