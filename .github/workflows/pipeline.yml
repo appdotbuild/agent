@@ -266,6 +266,9 @@ jobs:
         with:
           registry: ${{ env.ECR_REGISTRY }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Build and push Docker image to ECR
         if: steps.check_release.outputs.is_release == 'true'
         working-directory: ./agent/

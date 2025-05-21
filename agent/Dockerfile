@@ -1,4 +1,4 @@
-FROM alpine:3.21.3 AS prod
+FROM --platform=linux/arm64 alpine:3.21.3 AS prod
 
 RUN apk add --update --no-cache curl python3 docker
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
