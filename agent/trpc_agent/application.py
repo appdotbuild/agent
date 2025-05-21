@@ -152,6 +152,7 @@ class FSMApplication:
         )
         edit_actor = EditActor(
             g_llm,
+            vlm,
             workspace.clone(),
             playbooks.SILLY_PROMPT,
             ws_allowed=[
@@ -322,7 +323,7 @@ class FSMApplication:
 
         logger.debug("SERVER get_diff_with: Initializing Dagger context from empty directory")
         context = dagger.dag.directory()
-        
+
         gitignore_path = "./trpc_agent/template/.gitignore"
         try:
             gitignore_file = dagger.dag.host().file(gitignore_path)
@@ -335,7 +336,7 @@ class FSMApplication:
         for key, value in snapshot.items():
             logger.debug(f"SERVER get_diff_with:  Adding snapshot file to Dagger context: {key}")
             context = context.with_new_file(key, value)
-        
+
         logger.info("SERVER get_diff_with: Creating Dagger workspace for diff generation.")
         workspace = await Workspace.create(base_image="alpine/git", context=context)
         logger.debug("SERVER get_diff_with: Dagger workspace created with initial snapshot context.")
@@ -358,7 +359,7 @@ class FSMApplication:
                 workspace.write_file(key, value)
             except Exception as e:
                 logger.error(f"SERVER get_diff_with: FAILED to write FSM file {key} to workspace: {e}")
-        
+
         logger.info("SERVER get_diff_with: Calling workspace.diff() to generate final diff.")
         final_diff_output = ""
         try:
@@ -369,7 +370,7 @@ class FSMApplication:
         except Exception as e:
             logger.exception("SERVER get_diff_with: Error during workspace.diff() execution.")
             final_diff_output = f"# ERROR GENERATING DIFF: {e}"
-        
+
         return final_diff_output
 
 

@@ -11,6 +11,7 @@ import json
 import sentry_sdk
 import os
 import socket
+from contextvars import ContextVar
 
 # Configure root logger to avoid duplicate handlers
 root_logger = logging.getLogger()
@@ -18,18 +19,44 @@ if root_logger.handlers:
     for handler in root_logger.handlers:
         root_logger.removeHandler(handler)
 
-# Check if running in ECS environment
+trace_id_var = ContextVar('trace_id', default=None)
+
+
+def get_trace_id():
+    return trace_id_var.get()
+
+
+def set_trace_id(trace_id):
+    if trace_id:
+        trace_id_var.set(trace_id)
+
+def clear_trace_id():
+    trace_id_var.set(None)
+
+
 def is_running_in_ecs() -> bool:
     return bool(os.getenv('ECS_CONTAINER_METADATA_URI') or
                os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_ECS'))
 
-# JSON formatter for structured logging
+
+class TracedLogRecord(logging.LogRecord):
+    def __init__(self, *args, trace_id: str = "unk", **kwargs, ):
+        super().__init__(*args, **kwargs)
+        self.trace_id = trace_id
+
+class TraceLogFactory:
+    def __call__(self, *args, **kwargs):
+        record = TracedLogRecord(*args,trace_id=get_trace_id() or "unk",  **kwargs )
+        return record
+
+logging.setLogRecordFactory(TraceLogFactory())
+
 class JsonFormatter(logging.Formatter):
     def __init__(self):
         super().__init__()
         self.hostname = socket.gethostname()
 
-    def format(self, record) -> str:
+    def format(self, record: TracedLogRecord) -> str:  # type: ignore
         log_data = {
             'timestamp': self.formatTime(record),
             'level': record.levelname,
@@ -38,7 +65,7 @@ class JsonFormatter(logging.Formatter):
             'line': record.lineno,
             'message': record.getMessage(),
             'hostname': self.hostname,
-            "session_id": os.getenv("SESSION_ID", "default"),
+            "trace_id": record.trace_id,
         }
 
         # Add exception info if available
@@ -49,7 +76,7 @@ class JsonFormatter(logging.Formatter):
 
 # Standard text formatter
 _TEXT_FORMATTER = logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s'
+    '%(asctime)s - %(levelname)s - %(name)s - %(trace_id)s - %(filename)s:%(lineno)d - %(message)s'
 )
 
 # Choose formatter based on environment
@@ -84,6 +111,7 @@ _init_logging()
 def get_logger(name):
     _logger = logging.getLogger(name)
     return _logger
+
 
 logger = get_logger(__name__)
 

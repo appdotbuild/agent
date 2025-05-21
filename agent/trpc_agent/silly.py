@@ -1,5 +1,4 @@
 import os
-import re
 import anyio
 import jinja2
 import logging
@@ -7,6 +6,8 @@ from core.base_node import Node
 from core.workspace import Workspace
 from core.actors import BaseData, BaseActor, LLMActor
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult
+from trpc_agent.actors import run_tests, run_tsc_compile, run_frontend_build
+from trpc_agent.playwright import PlaywrightRunner
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,9 @@ class SillyActor(BaseActor, LLMActor):
                         tool_content = await node.data.workspace.read_file(block.input["path"]) # pyright: ignore[reportIndexIssue]
                         result.append(ToolUseResult.from_tool_use(block, tool_content))
                     case "write_file":
-                        node.data.workspace.write_file(block.input["path"], block.input["content"]) # pyright: ignore[reportIndexIssue]
+                        filepath = block.input["path"]  # pyright: ignore[reportIndexIssue]
+                        logger.info(f"Writing file {filepath}")
+                        node.data.workspace.write_file(filepath, block.input["content"]) # pyright: ignore[reportIndexIssue]
                         result.append(ToolUseResult.from_tool_use(block, "success"))
                         node.data.files[block.input["path"]] = block.input["content"] # pyright: ignore[reportIndexIssue]
                     case "delete_file":
@@ -183,6 +186,7 @@ class EditActor(SillyActor):
     def __init__(
         self,
         llm: AsyncLLM,
+        vlm: AsyncLLM,
         workspace: Workspace,
         prompt_template: str,
         beam_width: int = 1,
@@ -198,6 +202,8 @@ class EditActor(SillyActor):
         self.protected = ws_protected
         self.injected = ws_injected
         self.visible = ws_visible
+        self.playwright = PlaywrightRunner(vlm)
+        self._user_prompt = ""
 
     async def execute(
         self,
@@ -205,6 +211,7 @@ class EditActor(SillyActor):
         user_prompt: str,
         edit_set: list[str] | None = None,
     ) -> Node[BaseData]:
+        self._user_prompt = user_prompt
         workspace = self.workspace.clone()
         logger.info(f"Start EditActor execution with files: {files.keys()}")
         for file_path, content in files.items():
@@ -246,32 +253,29 @@ class EditActor(SillyActor):
         return solution
 
     async def run_checks(self, node: Node[BaseData]) -> str | None:
-        errors: list[str] = []
-        logger.info("Running server tsc compile")
-        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
-        if tsc_result.exit_code != 0:
-            errors.append(f"Error running tsc: {tsc_result.stdout}")
+        _, tsc_compile_err = await run_tsc_compile(node)
+        if tsc_compile_err:
+            return f"TypeScript compile errors (backend):\n{tsc_compile_err.text}\n"
 
-        logger.info("Running client tsc compile")
+        # client tsc compile - should be refactored for the consistency
         tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
         if tsc_result.exit_code != 0:
-            errors.append(f"Error running tsc: {tsc_result.stdout}")
+            return f"TypeScript compile errors (frontend): {tsc_result.stdout}"
 
-        if errors:
-            return "\n".join(errors)
+        _, test_result = await run_tests(node)
+        if test_result:
+            return f"Test errors:\n{test_result.text}\n"
 
-        logger.info("Running server tests")
-        test_result = await node.data.workspace.exec_with_pg(["bun", "test"], cwd="server")
-        if test_result.exit_code != 0:
-            normalized = self.normalize_tests(test_result.stderr)
-            errors.append(f"Error running tests: {normalized}")
+        build_result = await run_frontend_build(node)
+        if build_result:
+            return build_result
 
-        return "\n".join(errors) if errors else None
-
-    @classmethod
-    def normalize_tests(cls, stderr: str) -> str:
-        pattern = re.compile(r"\[\d+(\.\d+)?(ms|s)\]")
-        return pattern.sub("", stderr)
+        # FixMe: run full app check, not just client
+        # FixMe: propagate original user prompt to the check
+        playwright_result = await self.playwright.evaluate(node, self._user_prompt, mode="client")
+        if playwright_result:
+            return "\n".join(playwright_result)
+        return None
 
     async def dump(self) -> object:
         if self.root is None:
@@ -282,6 +286,7 @@ class EditActor(SillyActor):
             "protected": self.protected,
             "injected": self.injected,
             "visible": self.visible,
+            "user_prompt": self._user_prompt,
         }
 
     async def load(self, data: object):
@@ -294,6 +299,7 @@ class EditActor(SillyActor):
         self.protected = data.get("protected", [])
         self.injected = data.get("injected", [])
         self.visible = data.get("visible", [])
+        self._user_prompt = data.get("user_prompt", "")
 
 
 class EditSetActor(SillyActor):
@@ -351,6 +357,7 @@ class EditSetActor(SillyActor):
                         result.append(ToolUseResult.from_tool_use(block, "success"))
                         node.data.files[block.input["path"]] = block.input["content"] # pyright: ignore[reportIndexIssue]
                     case "run_checks":
+                        # FixMe: propagate user prompt to the check
                         check_err = await self.run_checks(node)
                         result.append(ToolUseResult.from_tool_use(block, check_err or "success"))
                     case "mark_changeset":

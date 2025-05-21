@@ -46,6 +46,18 @@ async def test_async_agent_message_endpoint(agent_type):
 
 
 
+async def test_tracing(caplog, template_diff):
+    """Test that sequential SSE responses work properly within a session."""
+    async with AgentApiClient() as client:
+        initial_events, initial_request = await client.send_message(DEFAULT_APP_REQUEST, trace_id="test-tracing")
+        record = caplog.records[-1]
+        assert record.trace_id == "test-tracing", f"Trace ID mismatch: {record.trace_id} != test-tracing"
+
+        more_events, more_request = await client.send_message(DEFAULT_APP_REQUEST, trace_id="test-tracing-more")
+        record = caplog.records[-1]
+        assert record.trace_id == "test-tracing-more", f"Trace ID mismatch: {record.trace_id} != test-tracing-more"
+
+
 async def test_sequential_sse_responses(trpc_agent):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:

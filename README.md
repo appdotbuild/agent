@@ -66,7 +66,7 @@ The framework exposes four high-level tools for LLM-guided application generatio
 ### Testing with debug client on prod servers
 
 1. Make sure you have the `uv` package installed (https://docs.astral.sh/uv/getting-started/installation/)
-2. `uv run agent/api/agent_server/agent_api_client.py --host prod-agent-service-alb-999031216.us-west-2.elb.amazonaws.com --port 80` (or change the host if needed);
+2. `uv run interactive --host prod-agent-service-alb-999031216.us-west-2.elb.amazonaws.com --port 80` (or change the host if needed);
 3. In the client, prompt for your app.
 4. Waste some time, get some tea.
 5. After getting a large output, use `/apply`

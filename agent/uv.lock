@@ -336,6 +336,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic", extra = ["bedrock"] },
     { name = "anyio" },
+    { name = "boto3" },
     { name = "dagger-io" },
     { name = "fastapi" },
     { name = "fire" },
@@ -369,6 +370,7 @@ openai = [
 requires-dist = [
     { name = "anthropic", extras = ["bedrock"], specifier = ">=0.49.0" },
     { name = "anyio", specifier = ">=4.9.0" },
+    { name = "boto3", specifier = ">=1.37.18" },
     { name = "dagger-io", specifier = ">=0.17.1" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fire", specifier = ">=0.7.0" },

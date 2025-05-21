@@ -7,6 +7,7 @@ from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from llm.common import Message, TextRaw
 from api.fsm_tools import FSMToolProcessor, FSMStatus
+from api.snapshot_utils import snapshot_saver
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
 import ujson as json
@@ -198,6 +199,13 @@ Return ONLY the commit message, nothing else.""")
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
+            if self.processor_instance.fsm_app is not None:
+                snapshot_saver.save_snapshot(
+                    trace_id=self.trace_id,
+                    key="fsm_enter",
+                    data=await self.processor_instance.fsm_app.fsm.dump(),
+                )
+
             # Process the initial step
             # TODO: Convert messages properly
             messages = [
@@ -365,6 +373,12 @@ Return ONLY the commit message, nothing else.""")
             )
             await event_tx.send(error_event)
         finally:
+            if self.processor_instance.fsm_app is not None:
+                snapshot_saver.save_snapshot(
+                    trace_id=self.trace_id,
+                    key="fsm_exit",
+                    data=await self.processor_instance.fsm_app.fsm.dump(),
+                )
             await event_tx.aclose()
 
     # ---------------------------------------------------------------------
