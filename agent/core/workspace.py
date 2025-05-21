@@ -1,9 +1,12 @@
+from os import name
 from typing import Self
 import uuid
 import dagger
 from dagger import dag, function, object_type, Container, Directory, ReturnType
-import logging
+from log import get_logger
 import hashlib
+
+logger = get_logger(name)
 
 class ExecResult:
     exit_code: int
@@ -124,7 +127,6 @@ class Workspace:
         )
 
         # ------------------- Added verbose logging -------------------
-        logger = logging.getLogger(__name__)
         diff_len = len(diff_output)
         diff_hash = hashlib.sha256(diff_output.encode("utf-8")).hexdigest()
         logger.info(
