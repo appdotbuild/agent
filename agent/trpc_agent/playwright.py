@@ -10,7 +10,7 @@ from core.base_node import Node
 from core.workspace import ExecResult
 from core.actors import BaseData
 from llm.common import AsyncLLM, Message, TextRaw, AttachedFiles
-from llm.utils import merge_text
+from llm.utils import merge_text, get_llm_client
 
 from dagger import dag
 
@@ -138,19 +138,36 @@ class PlaywrightRunner:
                 attach_files = AttachedFiles(
                     files=[os.path.join(temp_dir, file) for file in expected_files], _cache_key=node.data.file_cache_key
                 )
-                vlm_feedback = await self.vlm.completion(
-                    messages=[message],
-                    max_tokens=1024,
-                    attach_files=attach_files,
-                )
-                (vlm_feedback,) = merge_text(list(vlm_feedback.content))
-                vlm_text = vlm_feedback.text  # pyright: ignore
+                
+                # MODIFICATION: Re-initialize VLM client to potentially address event loop issue
+                # This is a diagnostic step. A proper fix might involve better async context management.
+                temp_vlm_for_eval = get_llm_client(model_name="gemini-flash-lite") # Assuming this is the correct model for VLM tasks
 
-                answer = extract_tag(vlm_text, "answer") or ""
-                reason = extract_tag(vlm_text, "reason") or ""
-                if "no" in answer.lower():
-                    logger.info(f"Playwright validation failed. Answer: {answer}, reason: {reason}")
-                    errors.append(f"Playwright validation failed with the reason: {reason}")
-                else:
-                    logger.info(f"Playwright validation succeeded. Answer: {answer}, reason: {reason}")
+                try:
+                    logger.info("Attempting VLM completion for Playwright evaluation...")
+                    vlm_feedback = await temp_vlm_for_eval.completion( # Use the temporary client
+                        messages=[message],
+                        max_tokens=1024,
+                        attach_files=attach_files,
+                    )
+                    (vlm_feedback,) = merge_text(list(vlm_feedback.content))
+                    vlm_text = vlm_feedback.text  # pyright: ignore
+
+                    answer = extract_tag(vlm_text, "answer") or ""
+                    reason = extract_tag(vlm_text, "reason") or ""
+                    if "no" in answer.lower():
+                        logger.info(f"Playwright validation failed. Answer: {answer}, reason: {reason}")
+                        errors.append(f"Playwright validation failed with the reason: {reason}")
+                    else:
+                        logger.info(f"Playwright validation succeeded. Answer: {answer}, reason: {reason}")
+                finally:
+                    # Explicitly close the temporary client if it has an aclose method
+                    if hasattr(temp_vlm_for_eval, 'aclose') and callable(temp_vlm_for_eval.aclose):
+                        await temp_vlm_for_eval.aclose()
+                        logger.info("Closed temporary VLM client used in Playwright evaluation.")
+                    elif hasattr(temp_vlm_for_eval, 'client') and hasattr(temp_vlm_for_eval.client, 'aclose') and callable(temp_vlm_for_eval.client.aclose):
+                        # Handle cases where the actual httpx client is nested
+                        await temp_vlm_for_eval.client.aclose()
+                        logger.info("Closed nested HTTP client of temporary VLM client used in Playwright evaluation.")
+
         return errors
