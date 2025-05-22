@@ -309,6 +309,7 @@ During your review process, consider the following questions:
 
 When providing feedback, be specific and actionable. If you're unsure about any aspect, always ask for clarification before proceeding.
 FSM is an internal API, you don't need to know how it works under the hood or expose its details to the user.
+Prefer simple solutions, build an app with very basic features only first unless the user explicitly asks for something more complex.
 
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
 

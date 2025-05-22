@@ -7,7 +7,7 @@ Provides a centralized logging configuration used by various components
 import logging
 import logging.handlers
 import logging.config
-import json
+import ujson as json
 import sentry_sdk
 import os
 import socket

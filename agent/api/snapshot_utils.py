@@ -33,7 +33,7 @@ class FSMSnapshotSaver:
             return False
 
     def save_local(self, trace_id: str, key: str, data: object):
-        with open(os.path.join(self.bucket_name, f"{trace_id}/{key}.json"), "w") as f:
+        with open(os.path.join(self.bucket_name, f"{trace_id}-{key}.json"), "w") as f:
             json.dump(data, f)
 
     def save_snapshot(self, trace_id: str, key: str, data: object):

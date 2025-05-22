@@ -65,7 +65,7 @@ def run_e2e_tests():
 
 
 def generate():
-    os.environ["LLM_VCR_CACHE_MODE"] = "lru"
+    os.environ["LLM_VCR_CACHE_MODE"] = os.environ.get("LLM_VCR_CACHE_MODE", "lru")
     return Fire(_generate)
 
 
@@ -76,7 +76,7 @@ def _generate(prompt=DEFAULT_APP_REQUEST):
 
 def interactive():
     coloredlogs.install(level="INFO")
-    os.environ["LLM_VCR_CACHE_MODE"] = "lru"
+    os.environ["LLM_VCR_CACHE_MODE"] = os.environ.get("LLM_VCR_CACHE_MODE", "lru")
     Fire(_run_interactive)
 
 
