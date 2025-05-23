@@ -6,10 +6,8 @@ import tomllib
 from pathlib import Path
 
 import anyio
-from tests.test_e2e import run_e2e, DEFAULT_APP_REQUEST
 from fire import Fire
 import coloredlogs
-from api.agent_server.agent_api_client import cli as _run_interactive
 
 
 def _current_dir():
@@ -69,12 +67,16 @@ def generate():
     return Fire(_generate)
 
 
-def _generate(prompt=DEFAULT_APP_REQUEST):
+def _generate(prompt=None):
+    from tests.test_e2e import run_e2e, DEFAULT_APP_REQUEST
     coloredlogs.install(level="INFO")
+    if prompt is None:
+        prompt = DEFAULT_APP_REQUEST
     anyio.run(run_e2e, prompt, True)
 
 
 def interactive():
+    from api.agent_server.agent_api_client import cli as _run_interactive
     coloredlogs.install(level="INFO")
     os.environ["LLM_VCR_CACHE_MODE"] = os.environ.get("LLM_VCR_CACHE_MODE", "lru")
     Fire(_run_interactive)
