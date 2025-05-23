@@ -90,6 +90,34 @@ class TrpcAgentSession(AgentInterface):
         )
         await event_tx.send(event)
     
+    async def send_in_progress_event(
+        self,
+        event_tx: MemoryObjectSendStream[AgentSseEvent],
+        messages: List[Message],
+        kind: MessageKind,
+        fsm_state: Optional[MachineCheckpoint] = None,
+        unified_diff: Optional[str] = None,
+        app_name: Optional[str] = None,
+        commit_message: Optional[str] = None,
+    ) -> None:
+        """Helper method to send events with consistent structure."""
+        event = AgentSseEvent(
+            status=AgentStatus.IN_PROGRESS,
+            traceId=self.trace_id,
+            message=AgentMessage(
+                role="assistant",
+                kind=kind,
+                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                unifiedDiff=unified_diff,
+                complete_diff_hash=None,
+                diff_stat=None,
+                app_name=app_name,
+                commit_message=commit_message
+            )
+        )
+        await event_tx.send(event)
+    
     async def send_error_event(
         self,
         event_tx: MemoryObjectSendStream[AgentSseEvent],
@@ -190,15 +218,24 @@ class TrpcAgentSession(AgentInterface):
                     )
                     commit_message = await generate_commit_message(prompt, flash_lite_client)
 
-                #FIXME: send IDLE only when work_in_progress = False
-                await self.send_checkpoint_event(
-                    event_tx=event_tx,
-                    messages=messages,
-                    kind=MessageKind.STAGE_RESULT if work_in_progress else MessageKind.REFINEMENT_REQUEST,
-                    fsm_state=fsm_state,
-                    app_name=app_name,
-                    commit_message=commit_message
-                )
+                if work_in_progress:
+                    await self.send_in_proress_event(
+                        event_tx=event_tx,
+                        messages=messages,
+                        kind=MessageKind.STAGE_RESULT,
+                        fsm_state=fsm_state,
+                        app_name=app_name,
+                        commit_message=commit_message
+                    )
+                else:
+                    await self.send_checkpoint_event(
+                        event_tx=event_tx,
+                        messages=messages,
+                        kind=MessageKind.REFINEMENT_REQUEST,
+                        fsm_state=fsm_state,
+                        app_name=app_name,
+                        commit_message=commit_message
+                    )
 
                 match self.processor_instance.fsm_app:
                     case None:
