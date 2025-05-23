@@ -171,3 +171,6 @@ debug_logs/*
 traces/
 **/.DS_Store
 sandbox/*
+agent/app_dumps.zip
+agent/FSMAppRecovery.ipynb
+agent/app_dumps/*.*
