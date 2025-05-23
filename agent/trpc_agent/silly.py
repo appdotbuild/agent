@@ -270,9 +270,8 @@ class EditActor(SillyActor):
         if build_result:
             return build_result
 
-        # FixMe: run full app check, not just client
         # FixMe: propagate original user prompt to the check
-        playwright_result = await self.playwright.evaluate(node, self._user_prompt, mode="client")
+        playwright_result = await self.playwright.evaluate(node, self._user_prompt, mode="full")
         if playwright_result:
             return "\n".join(playwright_result)
         return None

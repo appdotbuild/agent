@@ -51,6 +51,7 @@ class PlaywrightRunner:
     ) -> tuple[ExecResult, str | None]:
         logger.info("Running Playwright tests")
 
+
         workspace = node.data.workspace
         ctr = workspace.ctr.with_exec(["bun", "install", "."])
 
@@ -60,19 +61,39 @@ class PlaywrightRunner:
                 postgresdb = None
             case "full":
                 # FixMe: this logic belongs to the workspace?
+                import uuid
                 postgresdb = (
                     dag.container()
                     .from_("postgres:17.0-alpine")
                     .with_env_variable("POSTGRES_USER", "postgres")
                     .with_env_variable("POSTGRES_PASSWORD", "postgres")
                     .with_env_variable("POSTGRES_DB", "postgres")
+                    .with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
+
                     .as_service(use_entrypoint=True)
                 )
-                push_result = await workspace.exec_with_pg(
-                    ["bun", "run", "drizzle-kit", "push", "--force"], cwd="server"
+                # run drizzle-kit push with the same postgres service
+                push_ctr = (
+                    ctr
+                    .with_exec(["apk", "--update", "add", "postgresql-client"])
+                    .with_service_binding("postgres", postgresdb)
+                    .with_env_variable("APP_DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
+                    .with_exec([
+                        "sh", "-c",
+                        "for i in $(seq 1 30); do "
+                        "pg_isready -h postgres -U postgres && break; "
+                        "echo 'Waiting for PostgreSQL...' && sleep 1; "
+                        "done; "
+                        "pg_isready -h postgres -U postgres || exit 1"
+                    ])
+                    .with_workdir("server")
+                    .with_exec(["bun", "run", "drizzle-kit", "push", "--force"])
                 )
+                push_result = await ExecResult.from_ctr(push_ctr)
                 if push_result.exit_code != 0:
                     raise RuntimeError(f"Drizzle kit push failed: {push_result.stderr}")
+
+                logger.info(f"Drizzle kit push succeeded: {push_result.stdout}, {push_result.stderr}")
                 entrypoint = "dev:all"
 
         app_ctr = await ctr.with_entrypoint(["bun", "run", entrypoint]).with_exposed_port(5173)
@@ -81,19 +102,45 @@ class PlaywrightRunner:
             app_ctr = (
                 app_ctr.with_service_binding("postgres", postgresdb)
                 .with_exposed_port(2022)
+                .with_exposed_port(5173)
                 .with_env_variable("APP_DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
             )
 
-        status = await ExecResult.from_ctr(app_ctr)
-        if status.exit_code != 0:
-            raise RuntimeError(f"Failed to start app: {status.stderr}")
-
+        # start the app as a service
         app_service = app_ctr.as_service()
+
+        # implement health check for backend
+        if mode == "full":
+            logger.info("Waiting for backend service to start...")
+            backend_check = (
+                dag.container()
+                .from_("alpine:latest")
+                .with_exec(["apk", "add", "--no-cache", "curl"])
+                .with_service_binding("app", app_service)
+                .with_exec([
+                    "sh", "-c",
+                    "for i in $(seq 1 30); do "
+                    "curl -f http://app:2022/health 2>/dev/null && exit 0; "
+                    "echo 'Waiting for backend...' && sleep 1; "
+                    "done; exit 1"
+                ])
+            )
+            
+            backend_result = await ExecResult.from_ctr(backend_check)
+            if backend_result.exit_code != 0:
+                raise RuntimeError(f"Backend health check failed: {backend_result.stderr}")
+            
+            logger.info("Backend is ready")
+
+        logger.info("App service is ready")
+
+
         with ensure_dir(log_dir) as temp_dir:
             result = await node.data.workspace.run_playwright(
                 app_service,
                 temp_dir,
             )
+
             if result.exit_code == 0:
                 logger.debug("Playwright tests succeeded")
                 return result, None
@@ -133,6 +180,12 @@ class PlaywrightRunner:
                             logs = f.read()
                             # remove stochastic parts of the logs for caching
                             console_logs += self._ts_cleanup_pattern.sub(r"\1", logs)
+
+                import shutil
+                import string
+                import random
+                s = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                shutil.copytree(temp_dir, f"/tmp/playwright_logs_{s}", dirs_exist_ok=True)
 
                 prompt = jinja2.Environment().from_string(prompt_template)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=user_prompt)
