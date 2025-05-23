@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, TypedDict, List
+from typing import Dict, Any, Optional, TypedDict, List, Union
 
 from anyio.streams.memory import MemoryObjectSendStream
 
@@ -61,85 +61,6 @@ class TrpcAgentSession(AgentInterface):
             for file_entry in request.all_files:
                 snapshot_files[file_entry.path] = file_entry.content
         return snapshot_files
-    
-    async def send_checkpoint_event(
-        self,
-        event_tx: MemoryObjectSendStream[AgentSseEvent],
-        messages: List[Message],
-        kind: MessageKind,
-        fsm_state: Optional[MachineCheckpoint] = None,
-        unified_diff: Optional[str] = None,
-        app_name: Optional[str] = None,
-        commit_message: Optional[str] = None,
-    ) -> None:
-        """Helper method to send events with consistent structure."""
-        event = AgentSseEvent(
-            status=AgentStatus.IDLE,
-            traceId=self.trace_id,
-            message=AgentMessage(
-                role="assistant",
-                kind=kind,
-                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                agentState={"fsm_state": fsm_state} if fsm_state else None,
-                unifiedDiff=unified_diff,
-                complete_diff_hash=None,
-                diff_stat=None,
-                app_name=app_name,
-                commit_message=commit_message
-            )
-        )
-        await event_tx.send(event)
-    
-    async def send_in_progress_event(
-        self,
-        event_tx: MemoryObjectSendStream[AgentSseEvent],
-        messages: List[Message],
-        kind: MessageKind,
-        fsm_state: Optional[MachineCheckpoint] = None,
-        unified_diff: Optional[str] = None,
-        app_name: Optional[str] = None,
-        commit_message: Optional[str] = None,
-    ) -> None:
-        """Helper method to send events with consistent structure."""
-        event = AgentSseEvent(
-            status=AgentStatus.IN_PROGRESS,
-            traceId=self.trace_id,
-            message=AgentMessage(
-                role="assistant",
-                kind=kind,
-                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                agentState={"fsm_state": fsm_state} if fsm_state else None,
-                unifiedDiff=unified_diff,
-                complete_diff_hash=None,
-                diff_stat=None,
-                app_name=app_name,
-                commit_message=commit_message
-            )
-        )
-        await event_tx.send(event)
-    
-    async def send_error_event(
-        self,
-        event_tx: MemoryObjectSendStream[AgentSseEvent],
-        error_message: str,
-    ) -> None:
-        """Helper method to send error events."""
-        event = AgentSseEvent(
-            status=AgentStatus.IDLE,
-            traceId=self.trace_id,
-            message=AgentMessage(
-                role="assistant",
-                kind=MessageKind.RUNTIME_ERROR,
-                content=error_message,
-                agentState=None,
-                unifiedDiff=None,
-                complete_diff_hash=None,
-                diff_stat=None,
-                app_name=None,
-                commit_message=None
-            )
-        )
-        await event_tx.send(event)
         
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
@@ -207,10 +128,11 @@ class TrpcAgentSession(AgentInterface):
                     self._template_diff_sent = True
 
                     #TODO: move into FSM in intial state to control this?
-                    await self.send_checkpoint_event(
+                    await self.send_event(
                         event_tx=event_tx,
-                        messages=messages,
+                        status=AgentStatus.IDLE,
                         kind=MessageKind.REVIEW_RESULT,
+                        content=messages,
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
@@ -219,19 +141,21 @@ class TrpcAgentSession(AgentInterface):
                     commit_message = await generate_commit_message(prompt, flash_lite_client)
 
                 if work_in_progress:
-                    await self.send_in_proress_event(
+                    await self.send_event(
                         event_tx=event_tx,
-                        messages=messages,
+                        status=AgentStatus.IN_PROGRESS,
                         kind=MessageKind.STAGE_RESULT,
+                        content=messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
                         commit_message=commit_message
                     )
                 else:
-                    await self.send_checkpoint_event(
+                    await self.send_event(
                         event_tx=event_tx,
-                        messages=messages,
+                        status=AgentStatus.IDLE,
                         kind=MessageKind.REFINEMENT_REQUEST,
+                        content=messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
                         commit_message=commit_message
@@ -259,10 +183,11 @@ class TrpcAgentSession(AgentInterface):
                             self.processor_instance.fsm_app.current_state,
                         )
                         
-                        await self.send_checkpoint_event(
+                        await self.send_event(
                             event_tx=event_tx,
-                            messages=messages,
+                            status=AgentStatus.IDLE,
                             kind=MessageKind.REVIEW_RESULT,
+                            content=messages,
                             fsm_state=fsm_state,
                             unified_diff=final_diff,
                             app_name=app_name,
@@ -276,9 +201,11 @@ class TrpcAgentSession(AgentInterface):
 
         except Exception as e:
             logger.exception(f"Error in process: {str(e)}")
-            await self.send_error_event(
+            await self.send_event(
                 event_tx=event_tx,
-                error_message=f"Error processing request: {str(e)}"
+                status=AgentStatus.IDLE,
+                kind=MessageKind.RUNTIME_ERROR,
+                content=f"Error processing request: {str(e)}"
             )
         finally:
             if self.processor_instance.fsm_app is not None:
@@ -288,3 +215,43 @@ class TrpcAgentSession(AgentInterface):
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
             await event_tx.aclose()
+
+    # ---------------------------------------------------------------------
+    # Event sending helpers
+    # ---------------------------------------------------------------------
+    async def send_event(
+        self,
+        event_tx: MemoryObjectSendStream[AgentSseEvent],
+        status: AgentStatus,
+        kind: MessageKind,
+        content: Union[List[Message], str],
+        fsm_state: Optional[MachineCheckpoint] = None,
+        unified_diff: Optional[str] = None,
+        app_name: Optional[str] = None,
+        commit_message: Optional[str] = None,
+    ) -> None:
+        """Send event with specified parameters."""
+        # Handle content serialization based on type
+        if isinstance(content, list):
+            # Messages need to be serialized to JSON
+            content_str = json.dumps([x.to_dict() for x in content], sort_keys=True)
+        else:
+            # Error messages are already strings
+            content_str = content
+        
+        event = AgentSseEvent(
+            status=status,
+            traceId=self.trace_id,
+            message=AgentMessage(
+                role="assistant",
+                kind=kind,
+                content=content_str,
+                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                unifiedDiff=unified_diff,
+                complete_diff_hash=None,
+                diff_stat=None,
+                app_name=app_name,
+                commit_message=commit_message
+            )
+        )
+        await event_tx.send(event)
