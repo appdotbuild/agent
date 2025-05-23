@@ -143,7 +143,7 @@ class TrpcAgentSession(AgentInterface):
                 if work_in_progress:
                     await self.send_event(
                         event_tx=event_tx,
-                        status=AgentStatus.IN_PROGRESS,
+                        status=AgentStatus.RUNNING,
                         kind=MessageKind.STAGE_RESULT,
                         content=messages,
                         fsm_state=fsm_state,
