@@ -20,8 +20,7 @@ from api.agent_server.models import (
     MessageKind,
 )
 from api.agent_server.interface import AgentInterface
-from trpc_agent.diff_utils import compute_diff_stat
-from trpc_agent.llm_generators import generate_app_name, generate_commit_message
+from llm.llm_generators import generate_app_name, generate_commit_message
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +83,7 @@ class TrpcAgentSession(AgentInterface):
                 agentState={"fsm_state": fsm_state} if fsm_state else None,
                 unifiedDiff=unified_diff,
                 complete_diff_hash=None,
-                diff_stat=compute_diff_stat(unified_diff) if unified_diff else None,
+                diff_stat=None,
                 app_name=app_name,
                 commit_message=commit_message
             )
