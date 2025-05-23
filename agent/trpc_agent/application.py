@@ -374,7 +374,7 @@ class FSMApplication:
         return final_diff_output
 
 
-async def main(user_prompt="Simple todo app"):
+async def main(user_prompt="Minimal persistent counter application"):
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
         fsm_app = await FSMApplication.start_fsm(user_prompt)
 
@@ -388,7 +388,7 @@ async def main(user_prompt="Simple todo app"):
             logger.info("Application run completed successfully")
             logger.info(f"Generated {len(context.files)} files")
             logger.info("Applying edit to application.")
-            await fsm_app.fsm.send(FSMEvent("FEEDBACK", "Add header that says 'Hello World'"))
+            await fsm_app.provide_feedback(FSMEvent("FEEDBACK", "Add header that says 'Hello World'"))
 
             if fsm_app.maybe_error():
                 logger.error(f"Failed to apply edit: {context.error or 'Unknown error'}")
