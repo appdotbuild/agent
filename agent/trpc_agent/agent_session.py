@@ -18,7 +18,6 @@ from api.agent_server.models import (
     AgentMessage,
     AgentStatus,
     MessageKind,
-    DiffStatEntry,
 )
 from api.agent_server.interface import AgentInterface
 from trpc_agent.diff_utils import compute_diff_stat
@@ -88,7 +87,58 @@ class TrpcAgentSession(AgentInterface):
                 content=[TextRaw(text=m.content)]
             )
             for m in agent_messages
-        ] 
+        ]
+    
+    async def send_event(
+        self,
+        event_tx: MemoryObjectSendStream[AgentSseEvent],
+        messages: List[Message],
+        kind: MessageKind,
+        fsm_state: Optional[MachineCheckpoint] = None,
+        unified_diff: Optional[str] = None,
+        app_name: Optional[str] = None,
+        commit_message: Optional[str] = None,
+    ) -> None:
+        """Helper method to send events with consistent structure."""
+        event = AgentSseEvent(
+            status=AgentStatus.IDLE,
+            traceId=self.trace_id,
+            message=AgentMessage(
+                role="assistant",
+                kind=kind,
+                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
+                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                unifiedDiff=unified_diff,
+                complete_diff_hash=None,
+                diff_stat=compute_diff_stat(unified_diff) if unified_diff else None,
+                app_name=app_name,
+                commit_message=commit_message
+            )
+        )
+        await event_tx.send(event)
+    
+    async def send_error_event(
+        self,
+        event_tx: MemoryObjectSendStream[AgentSseEvent],
+        error_message: str,
+    ) -> None:
+        """Helper method to send error events."""
+        event = AgentSseEvent(
+            status=AgentStatus.IDLE,
+            traceId=self.trace_id,
+            message=AgentMessage(
+                role="assistant",
+                kind=MessageKind.RUNTIME_ERROR,
+                content=error_message,
+                agentState=None,
+                unifiedDiff=None,
+                complete_diff_hash=None,
+                diff_stat=None,
+                app_name=None,
+                commit_message=None
+            )
+        )
+        await event_tx.send(event)
         
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
@@ -130,20 +180,13 @@ class TrpcAgentSession(AgentInterface):
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
                 work_in_progress = fsm_status == FSMStatus.WIP
 
-                diff_stat: Optional[List[DiffStatEntry]] = None
-
                 fsm_state = None
-                app_diff = None
                 if self.processor_instance.fsm_app is None:
                     logger.info("FSMApplication is empty")
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
-
-                    # Calculate diff stat if diff present
-                    if app_diff is not None:
-                        diff_stat = compute_diff_stat(app_diff)
 
                 messages += new_messages
 
@@ -161,40 +204,25 @@ class TrpcAgentSession(AgentInterface):
                     # Mark template diff as sent so subsequent iterations do not resend it.
                     self._template_diff_sent = True
 
-                    event_out = AgentSseEvent(
-                        status=AgentStatus.IDLE,
-                        traceId=self.trace_id,
-                        message=AgentMessage(
-                            role="assistant",
-                            kind=MessageKind.REVIEW_RESULT,
-                            content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                            agentState={"fsm_state": fsm_state} if fsm_state else None,
-                            unifiedDiff=initial_template_diff,
-                            complete_diff_hash=None,
-                            diff_stat=compute_diff_stat(initial_template_diff) if initial_template_diff else None,
-                            app_name=app_name,
-                            commit_message="Initial commit"
-                        )
+                    await self.send_event(
+                        event_tx=event_tx,
+                        messages=messages,
+                        kind=MessageKind.REVIEW_RESULT,
+                        fsm_state=fsm_state,
+                        unified_diff=initial_template_diff,
+                        app_name=app_name,
+                        commit_message="Initial commit"
                     )
-                    await event_tx.send(event_out)
                     commit_message = await generate_commit_message(prompt, flash_lite_client)
 
-                event_out = AgentSseEvent(
-                    status=AgentStatus.IDLE,
-                    traceId=self.trace_id,
-                    message=AgentMessage(
-                        role="assistant",
-                        kind=MessageKind.STAGE_RESULT if work_in_progress else MessageKind.REFINEMENT_REQUEST,
-                        content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                        agentState={"fsm_state": fsm_state} if fsm_state else None,
-                        unifiedDiff=None,
-                        complete_diff_hash=None,
-                        diff_stat=diff_stat,
-                        app_name=app_name,
-                        commit_message=commit_message
-                    )
+                await self.send_event(
+                    event_tx=event_tx,
+                    messages=messages,
+                    kind=MessageKind.STAGE_RESULT if work_in_progress else MessageKind.REFINEMENT_REQUEST,
+                    fsm_state=fsm_state,
+                    app_name=app_name,
+                    commit_message=commit_message
                 )
-                await event_tx.send(event_out)
 
                 match self.processor_instance.fsm_app:
                     case None:
@@ -215,27 +243,21 @@ class TrpcAgentSession(AgentInterface):
 
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
-                        completion_event = AgentSseEvent(
-                            status=AgentStatus.IDLE,
-                            traceId=self.trace_id,
-                            message=AgentMessage(
-                                role="assistant",
-                                kind=MessageKind.REVIEW_RESULT,
-                                content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
-                                agentState={"fsm_state": fsm_state} if fsm_state else None,
-                                unifiedDiff=final_diff,
-                                complete_diff_hash=None,
-                                diff_stat=compute_diff_stat(final_diff) if final_diff else None,
-                                app_name=app_name,
-                                commit_message=commit_message
-                            )
-                        )
                         logger.info(
                             "Sending completion event with diff (length: %d) for state %s",
                             len(final_diff) if final_diff else 0,
                             self.processor_instance.fsm_app.current_state,
                         )
-                        await event_tx.send(completion_event)
+                        
+                        await self.send_event(
+                            event_tx=event_tx,
+                            messages=messages,
+                            kind=MessageKind.REVIEW_RESULT,
+                            fsm_state=fsm_state,
+                            unified_diff=final_diff,
+                            app_name=app_name,
+                            commit_message=commit_message
+                        )
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
 
@@ -244,20 +266,10 @@ class TrpcAgentSession(AgentInterface):
 
         except Exception as e:
             logger.exception(f"Error in process: {str(e)}")
-            error_event = AgentSseEvent(
-                status=AgentStatus.IDLE,
-                traceId=self.trace_id,
-                message=AgentMessage(
-                    role="assistant",
-                    kind=MessageKind.RUNTIME_ERROR,
-                    content=f"Error processing request: {str(e)}",
-                    agentState=None,
-                    unifiedDiff=None,
-                    app_name=None,
-                    commit_message=None
-                )
+            await self.send_error_event(
+                event_tx=event_tx,
+                error_message=f"Error processing request: {str(e)}"
             )
-            await event_tx.send(error_event)
         finally:
             if self.processor_instance.fsm_app is not None:
                 snapshot_saver.save_snapshot(

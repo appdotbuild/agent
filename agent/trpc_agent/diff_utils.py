@@ -1,17 +1,11 @@
 """Diff utilities for handling unified diffs and computing diff statistics."""
 
-import hashlib
 import logging
 from typing import Dict, List, Optional
 
 from api.agent_server.models import DiffStatEntry
 
 logger = logging.getLogger(__name__)
-
-
-def hash_diff(diff: str) -> str:
-    """Compute SHA256 hash of a diff string."""
-    return hashlib.sha256(diff.encode("utf-8")).hexdigest()
 
 
 def compute_diff_stat(diff: str) -> List[DiffStatEntry]:
