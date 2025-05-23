@@ -98,7 +98,7 @@ class TrpcAgentSession(AgentInterface):
                 snapshot_files[file_entry.path] = file_entry.content
         return snapshot_files
     
-    async def send_event(
+    async def send_checkpoint_event(
         self,
         event_tx: MemoryObjectSendStream[AgentSseEvent],
         messages: List[Message],
@@ -213,7 +213,7 @@ class TrpcAgentSession(AgentInterface):
                     # Mark template diff as sent so subsequent iterations do not resend it.
                     self._template_diff_sent = True
 
-                    await self.send_event(
+                    await self.send_checkpoint_event(
                         event_tx=event_tx,
                         messages=messages,
                         kind=MessageKind.REVIEW_RESULT,
@@ -224,7 +224,7 @@ class TrpcAgentSession(AgentInterface):
                     )
                     commit_message = await generate_commit_message(prompt, flash_lite_client)
 
-                await self.send_event(
+                await self.send_checkpoint_event(
                     event_tx=event_tx,
                     messages=messages,
                     kind=MessageKind.STAGE_RESULT if work_in_progress else MessageKind.REFINEMENT_REQUEST,
@@ -253,7 +253,7 @@ class TrpcAgentSession(AgentInterface):
                             self.processor_instance.fsm_app.current_state,
                         )
                         
-                        await self.send_event(
+                        await self.send_checkpoint_event(
                             event_tx=event_tx,
                             messages=messages,
                             kind=MessageKind.REVIEW_RESULT,
