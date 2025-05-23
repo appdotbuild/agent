@@ -94,12 +94,10 @@ class FSMApplication:
 
     @classmethod
     def base_execution_plan(cls) -> str:
-         return "\n".join([
-            "1. Draft app design",
-            "2. Implement handlers",
-            "3. Create index file",
-            "4. Build frontend",
-         ])
+        return "\n".join([
+            "1. Application draft. Contains types, database tables and handler declarations only.",
+            "2. Core backend implementations and application frontend.",
+        ])
 
     @classmethod
     async def start_fsm(cls, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:

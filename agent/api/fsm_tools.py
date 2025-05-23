@@ -255,15 +255,14 @@ class FSMToolProcessor[T: FSMInterface]:
 
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
-            fsm_status = FSMStatus.WIP
             thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
-        else:
-            if self.fsm_app is None or self.fsm_app.is_completed:
-                fsm_status = FSMStatus.IDLE
-            else:
-                fsm_status = FSMStatus.WIP
-                logger.info("No tool calls with active FSM. Continuing execution.")
-                thread += [Message(role="user", content=[TextRaw("Continue execution.")])]
+        match (tool_results, self.fsm_app):
+            case (res, app) if app and (app.is_completed or app.maybe_error()):
+                fsm_status = FSMStatus.IDLE # app in terminal state, always exit
+            case ([], app):
+                fsm_status = FSMStatus.IDLE # no tools used, always exit
+            case _:
+                fsm_status = FSMStatus.WIP # continue processing
         return thread, fsm_status
 
     def fsm_as_result(self) -> dict:
