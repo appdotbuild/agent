@@ -257,21 +257,17 @@ class FSMToolProcessor[T: FSMInterface]:
                         case _:
                             raise RuntimeError(f"Invalid tool call: {block}")
 
-        fsm_status = FSMStatus.WIP
         thread = [Message(role="assistant", content=response.content)]
         if tool_results:
+            fsm_status = FSMStatus.WIP
             thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
         else:
-            match self.fsm_app:
-                case None:
-                    logger.info("No active FSM within FSMTools. Continuing execution.")
-                    thread += [Message(role="user", content=[TextRaw("Continue execution.")])]
-                case some_fsm_app:
-                    if some_fsm_app.is_completed:
-                        fsm_status = FSMStatus.IDLE
-                    else:
-                        logger.info("No tool calls with active FSM. Continuing execution.")
-                        thread += [Message(role="user", content=[TextRaw("Continue execution.")])]
+            if self.fsm_app is None or self.fsm_app.is_completed:
+                fsm_status = FSMStatus.IDLE
+            else:
+                fsm_status = FSMStatus.WIP
+                logger.info("No tool calls with active FSM. Continuing execution.")
+                thread += [Message(role="user", content=[TextRaw("Continue execution.")])]
         return thread, fsm_status
 
     def fsm_as_result(self) -> dict:
