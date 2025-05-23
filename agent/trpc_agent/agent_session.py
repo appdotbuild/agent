@@ -166,6 +166,7 @@ class TrpcAgentSession(AgentInterface):
 
                 app_name = None
                 commit_message = None
+                #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
                     and request.agent_state is None
                     and self.processor_instance.fsm_app):
@@ -178,6 +179,7 @@ class TrpcAgentSession(AgentInterface):
                     # Mark template diff as sent so subsequent iterations do not resend it.
                     self._template_diff_sent = True
 
+                    #TODO: move into FSM in intial state to control this?
                     await self.send_checkpoint_event(
                         event_tx=event_tx,
                         messages=messages,
@@ -189,6 +191,7 @@ class TrpcAgentSession(AgentInterface):
                     )
                     commit_message = await generate_commit_message(prompt, flash_lite_client)
 
+                #FIXME: send IDLE only when work_in_progress = False
                 await self.send_checkpoint_event(
                     event_tx=event_tx,
                     messages=messages,
@@ -200,6 +203,7 @@ class TrpcAgentSession(AgentInterface):
 
                 match self.processor_instance.fsm_app:
                     case None:
+                        #TODO: check if we are restoring
                         is_completed = False
                     case FSMApplication():
                         fsm_app = self.processor_instance.fsm_app
@@ -208,7 +212,8 @@ class TrpcAgentSession(AgentInterface):
                 if is_completed:
                     try:
                         logger.info(f"FSM is completed: {is_completed}")
-
+                        
+                        #TODO: write unit test for this
                         snapshot_files = self.prepare_snapshot_from_request(request)
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
