@@ -59,7 +59,6 @@ class ApplicationContext(Context):
     """Context for the fullstack application state machine"""
     user_prompt: str
     feedback_data: Optional[str] = None
-    feedback_component: Optional[str] = None
     files: Dict[str, str] = field(default_factory=dict)
     error: Optional[str] = None
 
@@ -69,7 +68,6 @@ class ApplicationContext(Context):
         data = {
             "user_prompt": self.user_prompt,
             "feedback_data":self.feedback_data,
-            "feedback_component": self.feedback_component,
             "files": self.files,
             "error": self.error
         }
@@ -249,9 +247,8 @@ class FSMApplication:
     async def confirm_state(self):
         await self.fsm.send(FSMEvent("CONFIRM"))
 
-    async def provide_feedback(self, feedback: str, component_name: str):
+    async def apply_changes(self, feedback: str):
         self.fsm.context.feedback_data = feedback
-        self.fsm.context.feedback_component = component_name
         await self.fsm.send(FSMEvent("FEEDBACK"))
 
     async def complete_fsm(self):
@@ -296,7 +293,7 @@ class FSMApplication:
             case FSMState.COMPLETE:
                 actions = {
                     "complete": "Finalize and get all artifacts",
-                    "provide_feedback": "Submit feedback for the current FSM state and trigger revision",
+                    "change": "Submit feedback for the current FSM state and trigger revision",
                 }
                 logger.debug("FSM is in COMPLETE state, offering complete action")
             case FSMState.FAILURE:
@@ -376,7 +373,7 @@ class FSMApplication:
 
 async def main(user_prompt="Minimal persistent counter application"):
     async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        fsm_app = await FSMApplication.start_fsm(user_prompt)
+        fsm_app: FSMApplication = await FSMApplication.start_fsm(user_prompt)
 
         while (fsm_app.current_state not in (FSMState.COMPLETE, FSMState.FAILURE)):
             await fsm_app.fsm.send(FSMEvent("CONFIRM"))
@@ -388,7 +385,7 @@ async def main(user_prompt="Minimal persistent counter application"):
             logger.info("Application run completed successfully")
             logger.info(f"Generated {len(context.files)} files")
             logger.info("Applying edit to application.")
-            await fsm_app.provide_feedback(FSMEvent("FEEDBACK", "Add header that says 'Hello World'"))
+            await fsm_app.apply_changes("Add header that says 'Hello World'")
 
             if fsm_app.maybe_error():
                 logger.error(f"Failed to apply edit: {context.error or 'Unknown error'}")
