@@ -10,13 +10,33 @@ from trpc_agent import playbooks
 from core.base_node import Node
 from core.workspace import ExecResult
 from core.actors import BaseData
-from core.postgres_utils import create_postgres_service, drizzle_push
+from core.postgres_utils import create_postgres_service, pg_health_check_cmd
 from llm.common import AsyncLLM, Message, TextRaw, AttachedFiles
 from llm.utils import merge_text
 
 from dagger import dag
+import dagger
 
 logger = logging.getLogger(__name__)
+
+
+async def drizzle_push(ctr: dagger.Container, postgresdb: dagger.Service | None) -> ExecResult:
+    """Run drizzle-kit push with postgres service."""
+
+    if postgresdb is None:
+        postgresdb = create_postgres_service()
+
+    push_ctr = (
+        ctr
+        .with_exec(["apk", "--update", "add", "postgresql-client"])
+        .with_service_binding("postgres", postgresdb)
+        .with_env_variable("APP_DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
+        .with_exec(pg_health_check_cmd())
+        .with_workdir("server")
+        .with_exec(["bun", "run", "drizzle-kit", "push", "--force"])
+    )
+    result = await ExecResult.from_ctr(push_ctr)
+    return result
 
 
 def extract_tag(source: str | None, tag: str):
@@ -65,7 +85,7 @@ class PlaywrightRunner:
                 push_result = await drizzle_push(ctr, postgresdb)
                 if push_result.exit_code != 0:
                     return push_result, f"Drizzle push failed: {push_result.stderr}"
-                logger.info(f"Drizzle push succeeded")
+                logger.info("Drizzle push succeeded")
                 entrypoint = "dev:all"
 
         app_ctr = await ctr.with_entrypoint(["bun", "run", entrypoint]).with_exposed_port(5173)
