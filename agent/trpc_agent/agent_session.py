@@ -21,9 +21,8 @@ from api.agent_server.models import (
     DiffStatEntry,
 )
 from api.agent_server.interface import AgentInterface
-from trpc_agent.diff_utils import hash_diff, compute_diff_stat
+from trpc_agent.diff_utils import compute_diff_stat
 from trpc_agent.llm_generators import generate_app_name, generate_commit_message
-from trpc_agent.diff_manager import DiffManager
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ class TrpcAgentSession(AgentInterface):
         self.model_params = {
             "max_tokens": 8192,
         }
-        self.diff_manager = DiffManager()
+        self._template_diff_sent: bool = False
 
     async def get_app_diff(self) -> str:
         fsm_app = self.processor_instance.fsm_app
@@ -68,15 +67,10 @@ class TrpcAgentSession(AgentInterface):
         try:
             diff = await fsm_app.get_diff_with(snapshot)
             if diff:
-                diff_hash = hash_diff(diff)
-                hash_changed = self.diff_manager.is_diff_changed(diff)
                 logger.info(
-                    "Generated diff: length=%d, sha256=%s, changed=%s",
+                    "Generated diff: length=%d",
                     len(diff),
-                    diff_hash,
-                    hash_changed,
                 )
-                self.diff_manager.update_diff_hash(diff)
             else:
                 logger.warning("Generated empty diff")
             return diff
@@ -136,7 +130,6 @@ class TrpcAgentSession(AgentInterface):
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
                 work_in_progress = fsm_status == FSMStatus.WIP
 
-                current_hash: Optional[str] = None
                 diff_stat: Optional[List[DiffStatEntry]] = None
 
                 fsm_state = None
@@ -148,24 +141,15 @@ class TrpcAgentSession(AgentInterface):
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
 
-                    # Calculate hash and diff stat if diff present
+                    # Calculate diff stat if diff present
                     if app_diff is not None:
-                        current_hash = hash_diff(app_diff)
-                        diff_changed = self.diff_manager.is_diff_changed(app_diff)
-                        diff_stat = compute_diff_stat(app_diff) if diff_changed else None
-                    else:
-                        current_hash = None
-                        diff_changed = False
-                        diff_stat = None
+                        diff_stat = compute_diff_stat(app_diff)
 
-                    if diff_changed:
-                        self.diff_manager.update_diff_hash(app_diff)
-                    # include empty diffs too as they are valid = template diff (when diff_to_send not null)
                 messages += new_messages
 
                 app_name = None
                 commit_message = None
-                if (not self.diff_manager.template_diff_sent
+                if (not self._template_diff_sent
                     and request.agent_state is None
                     and self.processor_instance.fsm_app):
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
@@ -175,7 +159,7 @@ class TrpcAgentSession(AgentInterface):
                     initial_template_diff = await self.get_app_diff()
 
                     # Mark template diff as sent so subsequent iterations do not resend it.
-                    self.diff_manager.mark_template_diff_sent()
+                    self._template_diff_sent = True
 
                     event_out = AgentSseEvent(
                         status=AgentStatus.IDLE,
@@ -186,8 +170,8 @@ class TrpcAgentSession(AgentInterface):
                             content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                             agentState={"fsm_state": fsm_state} if fsm_state else None,
                             unifiedDiff=initial_template_diff,
-                            complete_diff_hash=current_hash,
-                            diff_stat=diff_stat,
+                            complete_diff_hash=None,
+                            diff_stat=compute_diff_stat(initial_template_diff) if initial_template_diff else None,
                             app_name=app_name,
                             commit_message="Initial commit"
                         )
@@ -204,7 +188,7 @@ class TrpcAgentSession(AgentInterface):
                         content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                         agentState={"fsm_state": fsm_state} if fsm_state else None,
                         unifiedDiff=None,
-                        complete_diff_hash=current_hash,
+                        complete_diff_hash=None,
                         diff_stat=diff_stat,
                         app_name=app_name,
                         commit_message=commit_message
@@ -231,14 +215,6 @@ class TrpcAgentSession(AgentInterface):
 
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
-                        diff_hash = hash_diff(final_diff)
-
-                        # Skip setting diff hash for this state if it has already been emitted
-                        skip_diff = self.diff_manager.should_skip_state_diff(
-                            self.processor_instance.fsm_app.current_state,
-                            final_diff
-                        )
-
                         completion_event = AgentSseEvent(
                             status=AgentStatus.IDLE,
                             traceId=self.trace_id,
@@ -247,16 +223,16 @@ class TrpcAgentSession(AgentInterface):
                                 kind=MessageKind.REVIEW_RESULT,
                                 content=json.dumps([x.to_dict() for x in messages], sort_keys=True),
                                 agentState={"fsm_state": fsm_state} if fsm_state else None,
-                                unifiedDiff=None if skip_diff else final_diff,
-                                complete_diff_hash=diff_hash,
-                                diff_stat=compute_diff_stat(final_diff),
+                                unifiedDiff=final_diff,
+                                complete_diff_hash=None,
+                                diff_stat=compute_diff_stat(final_diff) if final_diff else None,
                                 app_name=app_name,
                                 commit_message=commit_message
                             )
                         )
                         logger.info(
                             "Sending completion event with diff (length: %d) for state %s",
-                            len(final_diff),
+                            len(final_diff) if final_diff else 0,
                             self.processor_instance.fsm_app.current_state,
                         )
                         await event_tx.send(completion_event)
