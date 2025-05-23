@@ -257,7 +257,7 @@ class FSMToolProcessor[T: FSMInterface]:
         if tool_results:
             thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
         match (tool_results, self.fsm_app):
-            case (res, app) if app and (app.is_completed or app.maybe_error()):
+            case (_, app) if app and (app.is_completed or app.maybe_error()):
                 fsm_status = FSMStatus.IDLE # app in terminal state, always exit
             case ([], app):
                 fsm_status = FSMStatus.IDLE # no tools used, always exit
