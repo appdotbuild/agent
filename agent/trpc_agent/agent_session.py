@@ -43,41 +43,6 @@ class TrpcAgentSession(AgentInterface):
         }
         self._template_diff_sent: bool = False
 
-    async def get_app_diff(self) -> str:
-        fsm_app = self.processor_instance.fsm_app
-        match fsm_app:
-            case None:
-                raise ValueError("FSMApplication is None")
-            case FSMApplication():
-                # We intentionally generate the diff against an *empty* snapshot.
-                # Passing the current files as the snapshot results in an empty diff
-                # (because the snapshot and the final state are identical).
-                # Using an empty snapshot correctly produces a diff that contains
-                # all files that have been generated or modified in the current
-                # FSM state.
-                snapshot: dict[str, str] = {}
-
-        logger.info(
-            "Generating diff with %s files in state %s compared to empty snapshot",
-            len(fsm_app.fsm.context.files),
-            fsm_app.current_state,
-        )
-
-        try:
-            diff = await fsm_app.get_diff_with(snapshot)
-            if diff:
-                logger.info(
-                    "Generated diff: length=%d",
-                    len(diff),
-                )
-            else:
-                logger.warning("Generated empty diff")
-            return diff
-        except Exception as e:
-            logger.exception(f"Error generating diff: {e}")
-            return f"Error generating diff: {e}"
-
-    
     @staticmethod
     def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[Message]:
         """Convert AgentMessage list to LLM Message format."""
@@ -208,7 +173,7 @@ class TrpcAgentSession(AgentInterface):
                     flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
                     app_name = await generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
-                    initial_template_diff = await self.get_app_diff()
+                    initial_template_diff = await self.processor_instance.fsm_app.get_diff_with({})
 
                     # Mark template diff as sent so subsequent iterations do not resend it.
                     self._template_diff_sent = True
