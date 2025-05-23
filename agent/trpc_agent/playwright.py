@@ -150,12 +150,6 @@ class PlaywrightRunner:
                             # remove stochastic parts of the logs for caching
                             console_logs += self._ts_cleanup_pattern.sub(r"\1", logs)
 
-                import shutil
-                import string
-                import random
-                s = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-                shutil.copytree(temp_dir, f"/tmp/playwright_logs_{s}", dirs_exist_ok=True)
-
                 prompt = jinja2.Environment().from_string(prompt_template)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=user_prompt)
                 message = Message(role="user", content=[TextRaw(prompt_rendered)])
