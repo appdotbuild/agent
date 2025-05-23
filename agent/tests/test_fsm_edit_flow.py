@@ -33,7 +33,7 @@ async def test_fsm_edit_and_diff_generation():
     edit_feedback = "Change the button text to 'Increment Me!'"
 
     # Using None for default settings, enable above for potentially faster local runs if LLM calls are slow
-    # current_settings = test_settings 
+    # current_settings = test_settings
     current_settings = None
 
 
@@ -52,7 +52,7 @@ async def test_fsm_edit_and_diff_generation():
             if fsm_app.maybe_error():
                 logger.error(f"FSM entered FAILURE state with error: {fsm_app.maybe_error()}")
                 break
-        
+
         assert fsm_app.current_state == FSMState.COMPLETE, f"FSM did not reach COMPLETE state. Final state: {fsm_app.current_state}, Error: {fsm_app.maybe_error()}"
         logger.info("Initial FSM run completed.")
 
@@ -60,11 +60,11 @@ async def test_fsm_edit_and_diff_generation():
         snapshot_before_edit = fsm_app.fsm.context.files.copy()
         assert snapshot_before_edit, "No files generated in the initial FSM run."
         logger.info(f"Captured snapshot of {len(snapshot_before_edit)} files before edit.")
-        
+
         # Find a frontend file to check for the button text (example)
         # This relies on a common file structure, adjust if necessary
         frontend_file_path = "client/src/App.tsx" # A likely place for button text
-        
+
         original_button_text_present = False
         if frontend_file_path in snapshot_before_edit:
             if "Increment" in snapshot_before_edit[frontend_file_path] and "Increment Me!" not in snapshot_before_edit[frontend_file_path]:
@@ -77,12 +77,12 @@ async def test_fsm_edit_and_diff_generation():
         # Simulate providing feedback for an edit
         logger.info(f"Providing feedback for edit: '{edit_feedback}'")
         # The FSM should be in COMPLETE, so providing feedback will transition to APPLY_FEEDBACK
-        await fsm_app.provide_feedback(feedback=edit_feedback, component_name="frontend")
-        
-        # The provide_feedback call should transition the FSM. 
+        await fsm_app.apply_changes(feedback=edit_feedback, component_name="frontend")
+
+        # The provide_feedback call should transition the FSM.
         # The next confirm_state will execute the EditActor.
         assert fsm_app.current_state == FSMState.COMPLETE, f"FSM did not transition to COMPLETE fate after applying feedback. Current state: {fsm_app.current_state}"
-        
+
         logger.info("Running FSM to apply feedback...")
         await fsm_app.confirm_state() # This should execute the EditActor
 
@@ -108,7 +108,7 @@ async def test_fsm_edit_and_diff_generation():
         # Verify the diff reflects the edit
         # Check if the new button text is added and old one (if verifiable) is removed
         assert "Increment Me!" in diff_after_edit, "Edited button text 'Increment Me!' not found as an addition in the diff."
-        
+
         if original_button_text_present:
             # This assertion is tricky because the original button text might be generic like "Increment" or "Click"
             # and might appear elsewhere. A more robust check would be to ensure the specific line changed.
@@ -119,4 +119,4 @@ async def test_fsm_edit_and_diff_generation():
             # A more specific check might be needed if the initial button text isn't just "Increment"
             # For example, if it was "Click to Increment", we'd look for `+Increment Me!` and `-Click to Increment`.
 
-        logger.info("Test test_fsm_edit_and_diff_generation completed successfully.") 
+        logger.info("Test test_fsm_edit_and_diff_generation completed successfully.")

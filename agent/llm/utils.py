@@ -99,8 +99,8 @@ def get_llm_client(
     # Otherwise create a new client
     models_map = {
         "sonnet": {
-            "bedrock": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "anthropic": "claude-3-7-sonnet-20250219"
+            "bedrock": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic": "claude-sonnet-4-20250514"
         },
         "haiku": {
             "bedrock": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -112,7 +112,7 @@ def get_llm_client(
             },
         "gemini-flash":
             {
-                "gemini": "gemini-2.5-flash-preview-04-17",
+                "gemini": "gemini-2.5-flash-preview-05-20",
             },
         "gemini-flash-lite":
             {
