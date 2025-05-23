@@ -65,7 +65,7 @@ class PlaywrightRunner:
                 push_result = await drizzle_push(ctr, postgresdb)
                 if push_result.exit_code != 0:
                     return push_result, f"Drizzle push failed: {push_result.stderr}"
-                logger.info(f"Drizzle push succeeded: {push_result.stdout} {push_result.stderr}")
+                logger.info(f"Drizzle push succeeded")
                 entrypoint = "dev:all"
 
         app_ctr = await ctr.with_entrypoint(["bun", "run", entrypoint]).with_exposed_port(5173)
