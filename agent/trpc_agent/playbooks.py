@@ -447,6 +447,8 @@ Example:
 {TRPC_INDEX_SHIM}
 
 {TYPE_ALIGNMENT_RULES}
+
+Keep the things simple and do not create entities that are not explicitly required by the task.
 """.strip()
 
 BACKEND_DRAFT_USER_PROMPT = """

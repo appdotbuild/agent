@@ -1,4 +1,4 @@
-import json
+import ujson as json
 import uuid
 from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
@@ -93,12 +93,12 @@ class AgentApiClient:
         messages_history_json_str: Optional[str] = None
 
         for event in reversed(previous_events):
-            if event.message and event.message.agent_state:
+            if event.message:
                 agent_state = event.message.agent_state
                 if isinstance(event.message.content, str):
                     messages_history_json_str = event.message.content
                 break
-        
+
         messages_history_casted: List[ConversationMessage] = []
         if messages_history_json_str:
             try:
@@ -106,7 +106,7 @@ class AgentApiClient:
                 for m_raw in history_list_raw:
                     role = m_raw.get("role")
                     raw_content = m_raw.get("content", "")
-                    
+
                     current_content_str = ""
                     if isinstance(raw_content, str):
                         current_content_str = raw_content
@@ -121,7 +121,7 @@ class AgentApiClient:
                         messages_history_casted.append(UserMessage(role="user", content=current_content_str))
                     elif role == "assistant":
                         messages_history_casted.append(AgentMessage(
-                            role="assistant", 
+                            role="assistant",
                             content=current_content_str, # AgentMessage.content is also a string, potentially JSON string of blocks
                             kind=MessageKind.STAGE_RESULT,
                             agentState=None, unifiedDiff=None, app_name=None, commit_message=None
@@ -159,7 +159,7 @@ class AgentApiClient:
 
         all_messages_list = list(messages_history) if messages_history else []
         all_messages_list.append(UserMessage(role="user", content=message))
-        
+
         file_entries: Optional[List[FileEntry]] = None
         if all_files is not None:
             file_entries = [FileEntry(**f) for f in all_files]

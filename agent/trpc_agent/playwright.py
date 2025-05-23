@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import contextlib
+from collections import defaultdict
 from typing import Literal
 from tempfile import TemporaryDirectory
 import jinja2
@@ -40,6 +41,7 @@ class PlaywrightRunner:
     def __init__(self, vlm: AsyncLLM):
         self._ts_cleanup_pattern = re.compile(r"(\?v=)[a-f0-9]+(:[0-9]+:[0-9]+)?")
         self.vlm = vlm
+        self.counter = defaultdict(int)
 
     @staticmethod
     async def run(
@@ -135,8 +137,9 @@ class PlaywrightRunner:
                 prompt = jinja2.Environment().from_string(prompt_template)
                 prompt_rendered = prompt.render(console_logs=console_logs, user_prompt=user_prompt)
                 message = Message(role="user", content=[TextRaw(prompt_rendered)])
+                self.counter[user_prompt] += 1  # for cache invalidation between runs
                 attach_files = AttachedFiles(
-                    files=[os.path.join(temp_dir, file) for file in expected_files], _cache_key=node.data.file_cache_key
+                    files=[os.path.join(temp_dir, file) for file in expected_files], _cache_key=node.data.file_cache_key + str(self.counter[user_prompt])
                 )
                 vlm_feedback = await self.vlm.completion(
                     messages=[message],
