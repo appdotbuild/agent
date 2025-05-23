@@ -89,6 +89,15 @@ class TrpcAgentSession(AgentInterface):
             for m in agent_messages
         ]
     
+    @staticmethod
+    def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
+        """Prepare snapshot files from request.all_files."""
+        snapshot_files = {}
+        if request.all_files:
+            for file_entry in request.all_files:
+                snapshot_files[file_entry.path] = file_entry.content
+        return snapshot_files
+    
     async def send_event(
         self,
         event_tx: MemoryObjectSendStream[AgentSseEvent],
@@ -235,12 +244,7 @@ class TrpcAgentSession(AgentInterface):
                     try:
                         logger.info(f"FSM is completed: {is_completed}")
 
-                        # Prepare snapshot from request.all_files if available
-                        snapshot_files = {}
-                        if request.all_files:
-                            for file_entry in request.all_files:
-                                snapshot_files[file_entry.path] = file_entry.content
-
+                        snapshot_files = self.prepare_snapshot_from_request(request)
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
                         logger.info(
