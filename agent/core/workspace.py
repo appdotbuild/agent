@@ -1,30 +1,14 @@
 from os import name
 from typing import Self
-import uuid
 import dagger
 from dagger import dag, function, object_type, Container, Directory, ReturnType
 from log import get_logger
 import hashlib
+from core.postgres_utils import create_postgres_service
+from core.dagger_utils import ExecResult
 
 logger = get_logger(name)
 
-class ExecResult:
-    exit_code: int
-    stdout: str
-    stderr: str
-
-    def __init__(self, exit_code: int, stdout: str, stderr: str):
-        self.exit_code = exit_code
-        self.stdout = stdout
-        self.stderr = stderr
-
-    @classmethod
-    async def from_ctr(cls, ctr: dagger.Container) -> Self:
-        return cls(
-            exit_code=await ctr.exit_code(),
-            stdout=await ctr.stdout(),
-            stderr=await ctr.stderr(),
-        )
 
 def _sorted_set(s: set[str]) -> list[str]:
     return sorted(list(s))
@@ -151,15 +135,7 @@ class Workspace:
 
     @function
     async def exec_with_pg(self, command: list[str], cwd: str = ".") -> ExecResult:
-        postgresdb = (
-            dag.container()
-            .from_("postgres:17.0-alpine")
-            .with_env_variable("POSTGRES_USER", "postgres")
-            .with_env_variable("POSTGRES_PASSWORD", "postgres")
-            .with_env_variable("POSTGRES_DB", "postgres")
-            .with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
-            .as_service(use_entrypoint=True)
-        )
+        postgresdb = create_postgres_service()
 
         return await ExecResult.from_ctr(
             self.ctr

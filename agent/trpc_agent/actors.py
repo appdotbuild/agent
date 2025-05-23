@@ -8,6 +8,7 @@ from trpc_agent import playbooks
 from core.base_node import Node
 from core.workspace import Workspace, ExecResult
 from core.actors import BaseData, BaseActor, LLMActor
+from core.postgres_utils import drizzle_push
 from llm.common import AsyncLLM, Message, TextRaw, Tool, ToolUse, ToolUseResult, ContentBlock
 from trpc_agent.playwright import PlaywrightRunner
 
@@ -71,7 +72,7 @@ async def run_tsc_compile(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | N
 
 async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
     logger.info("Running Drizzle database schema push")
-    result = await node.data.workspace.exec_with_pg(["bun", "run", "drizzle-kit", "push", "--force"], cwd="server")
+    result = await drizzle_push(node.data.workspace.ctr, postgresdb=None)
     if result.exit_code == 0 and not result.stderr:
         logger.info("Drizzle schema push succeeded")
         return result, None

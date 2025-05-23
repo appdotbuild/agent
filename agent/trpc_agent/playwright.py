@@ -10,6 +10,7 @@ from trpc_agent import playbooks
 from core.base_node import Node
 from core.workspace import ExecResult
 from core.actors import BaseData
+from core.postgres_utils import create_postgres_service, drizzle_push
 from llm.common import AsyncLLM, Message, TextRaw, AttachedFiles
 from llm.utils import merge_text
 
@@ -60,40 +61,11 @@ class PlaywrightRunner:
                 entrypoint = "dev:client"
                 postgresdb = None
             case "full":
-                # FixMe: this logic belongs to the workspace?
-                import uuid
-                postgresdb = (
-                    dag.container()
-                    .from_("postgres:17.0-alpine")
-                    .with_env_variable("POSTGRES_USER", "postgres")
-                    .with_env_variable("POSTGRES_PASSWORD", "postgres")
-                    .with_env_variable("POSTGRES_DB", "postgres")
-                    .with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
-
-                    .as_service(use_entrypoint=True)
-                )
-                # run drizzle-kit push with the same postgres service
-                push_ctr = (
-                    ctr
-                    .with_exec(["apk", "--update", "add", "postgresql-client"])
-                    .with_service_binding("postgres", postgresdb)
-                    .with_env_variable("APP_DATABASE_URL", "postgres://postgres:postgres@postgres:5432/postgres")
-                    .with_exec([
-                        "sh", "-c",
-                        "for i in $(seq 1 30); do "
-                        "pg_isready -h postgres -U postgres && break; "
-                        "echo 'Waiting for PostgreSQL...' && sleep 1; "
-                        "done; "
-                        "pg_isready -h postgres -U postgres || exit 1"
-                    ])
-                    .with_workdir("server")
-                    .with_exec(["bun", "run", "drizzle-kit", "push", "--force"])
-                )
-                push_result = await ExecResult.from_ctr(push_ctr)
+                postgresdb = create_postgres_service()
+                push_result = await drizzle_push(ctr, postgresdb)
                 if push_result.exit_code != 0:
-                    raise RuntimeError(f"Drizzle kit push failed: {push_result.stderr}")
-
-                logger.info(f"Drizzle kit push succeeded: {push_result.stdout}, {push_result.stderr}")
+                    return push_result, f"Drizzle push failed: {push_result.stderr}"
+                logger.info(f"Drizzle push succeeded: {push_result.stdout} {push_result.stderr}")
                 entrypoint = "dev:all"
 
         app_ctr = await ctr.with_entrypoint(["bun", "run", entrypoint]).with_exposed_port(5173)
@@ -125,22 +97,19 @@ class PlaywrightRunner:
                     "done; exit 1"
                 ])
             )
-            
             backend_result = await ExecResult.from_ctr(backend_check)
             if backend_result.exit_code != 0:
-                raise RuntimeError(f"Backend health check failed: {backend_result.stderr}")
-            
+                return backend_result, f"Backend service failed to start: {backend_result.stderr}"
+
             logger.info("Backend is ready")
 
         logger.info("App service is ready")
-
 
         with ensure_dir(log_dir) as temp_dir:
             result = await node.data.workspace.run_playwright(
                 app_service,
                 temp_dir,
             )
-
             if result.exit_code == 0:
                 logger.debug("Playwright tests succeeded")
                 return result, None
