@@ -112,7 +112,7 @@ class PlaywrightRunner:
                 .with_exec([
                     "sh", "-c",
                     "for i in $(seq 1 30); do "
-                    "curl -f http://app:2022/health 2>/dev/null && exit 0; "
+                    "curl -f http://app:2022/healthcheck 2>/dev/null && exit 0; "
                     "echo 'Waiting for backend...' && sleep 1; "
                     "done; exit 1"
                 ])
