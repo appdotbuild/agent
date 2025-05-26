@@ -21,13 +21,12 @@ def trpc_agent(monkeypatch):
 
 
 @pytest.fixture
-def template_diff(monkeypatch):
-    monkeypatch.setenv("CODEGEN_AGENT", "template_diff")
+def simple_mock(monkeypatch):
+    monkeypatch.setenv("CODEGEN_AGENT", "simple_mock")
     yield
 
 
-@pytest.mark.skip(reason="Temporarily disabled")
-@pytest.mark.parametrize("agent_type", [trpc_agent, template_diff])
+@pytest.mark.parametrize("agent_type", [simple_mock])
 async def test_async_agent_message_endpoint(agent_type):
     async with AgentApiClient() as client:
         events, request = await client.send_message(DEFAULT_APP_REQUEST)
@@ -46,7 +45,7 @@ async def test_async_agent_message_endpoint(agent_type):
 
 
 
-async def test_tracing(caplog, template_diff):
+async def test_tracing(caplog, simple_mock):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
         initial_events, initial_request = await client.send_message(DEFAULT_APP_REQUEST, trace_id="test-tracing")
@@ -58,7 +57,7 @@ async def test_tracing(caplog, template_diff):
         assert record.trace_id == "test-tracing-more", f"Trace ID mismatch: {record.trace_id} != test-tracing-more"
 
 
-async def test_sequential_sse_responses(trpc_agent):
+async def test_sequential_sse_responses(simple_mock):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
         # Initial request
@@ -76,21 +75,21 @@ async def test_sequential_sse_responses(trpc_agent):
             assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR in first continuation"
             assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in first continuation (model)"
 
-        # # Second continuation - temporarily disabled, not working as expected
-        # second_continuation_events, second_continuation_request = await client.continue_conversation(
-        #     previous_events=first_continuation_events,
-        #     previous_request=first_continuation_request,
-        #     message="Add a reset button",
-        # )
-        # assert len(second_continuation_events) > 0, "No second continuation events received"
+        # Second continuation
+        second_continuation_events, second_continuation_request = await client.continue_conversation(
+            previous_events=first_continuation_events,
+            previous_request=first_continuation_request,
+            message="Add a reset button",
+        )
+        assert len(second_continuation_events) > 0, "No second continuation events received"
 
-        # for event in second_continuation_events:
-        #     assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR in second continuation"
-        #     assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in second continuation (model)"
+        for event in second_continuation_events:
+            assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR in second continuation"
+            assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in second continuation (model)"
 
 
 
-async def test_session_with_no_state(trpc_agent):
+async def test_session_with_no_state(simple_mock):
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:
         # Generate a fixed trace/chatbot ID to use for all requests
