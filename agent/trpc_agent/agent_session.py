@@ -40,7 +40,6 @@ class TrpcAgentSession(AgentInterface):
         self.model_params = {
             "max_tokens": 8192,
         }
-        self._template_diff_sent: bool = False
 
     @staticmethod
     def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[Message]:
@@ -74,6 +73,8 @@ class TrpcAgentSession(AgentInterface):
         try:
             logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
+            # Restoring agent state
+            # TODO: extract to a function
             # Check if we need to initialize or if this is a continuation with an existing state
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
@@ -81,9 +82,12 @@ class TrpcAgentSession(AgentInterface):
                 if fsm_state is not None:
                     fsm = await FSMApplication.load(fsm_state)
                     self.processor_instance = FSMToolProcessor(FSMApplication, fsm_app=fsm)
+                else:
+                    logger.warn(f"fsm_state passed empty! Initializing new session for trace {self.trace_id}")
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
+            # Snapshotting state
             if self.processor_instance.fsm_app is not None:
                 snapshot_saver.save_snapshot(
                     trace_id=self.trace_id,
@@ -91,44 +95,51 @@ class TrpcAgentSession(AgentInterface):
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
 
-            # Process the initial step
+            # Getting messages for cli
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
-
-            flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
             
-            work_in_progress = False
+            # Main session loop
+            app_name = None
+            commit_message = None
             while True:
+                # Calling FSM to proceed to the next state
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
-                work_in_progress = fsm_status == FSMStatus.WIP
 
+                # Dumping state for debugging
                 fsm_state = None
                 if self.processor_instance.fsm_app is None:
                     logger.info("FSMApplication is empty")
-                    # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
+                    # this is legit if we did not start a FSM as initial message is not informative enough
+                    # (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
+                    # TODO: implement diff stats after optimizations
+                    #app_diff = await self.get_app_diff() 
 
+                # Keeping messages for the client
+                # TODO: implement filtering and migrate to calling convert_agent_messages_to_llm_messages
                 messages += new_messages
 
-                app_name = None
-                #FIXME: simplify this condition and write unit test for this
-                if (not self._template_diff_sent
-                    and request.agent_state is None
-                    and self.processor_instance.fsm_app):
+               # Reporting template diff   
+               # Whenever client wants to get a template it may request it with empty agentState in request
+               # After the agent has been initialized and has state it sends the template 
+                if (request.agent_state is None
+                    and self.processor_instance.fsm_app
+                    and self.processor_instance.fsm_app.fsm.stack_path[-1] == "review_draft"):
                     
+                    # It is possible to generate appname from user prompt at this point
+                    # so it will not be changed often afterwards
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     app_name = await generate_app_name(prompt, flash_lite_client)
-                    # Communicate the app name and commit message and template diff to the client
+                    
+                    # TODO: For payload optimization we would want to send only diff against baseline id of the template
+                    # that is known to the client or if not will send complete copy 
                     initial_template_diff = await self.processor_instance.fsm_app.get_diff_with({})
-
-                    # Mark template diff as sent so subsequent iterations do not resend it.
-                    self._template_diff_sent = True
 
                     #TODO: move into FSM in intial state to control this?
                     await self.send_event(
                         event_tx=event_tx,
-                        status=AgentStatus.RUNNING,
+                        status=AgentStatus.RUNNING, # this is saying we on the checkpoint but continue with the job
                         kind=MessageKind.REVIEW_RESULT,
                         content=messages,
                         fsm_state=fsm_state,
@@ -136,8 +147,9 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                         commit_message="Initial commit"
                     )
-
-                if work_in_progress:
+                
+                # Reporting intermediate status messages
+                if fsm_status == FSMStatus.WIP:
                     logger.info(f"Sending RUNNING event for {self.application_id}:{self.trace_id}")
                     await self.send_event(
                         event_tx=event_tx,
@@ -147,7 +159,7 @@ class TrpcAgentSession(AgentInterface):
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
-                else:
+                else: # fsm_status == FSMStatus.IDLE
                     logger.info(f"Sending IDLE event for {self.application_id}:{self.trace_id}")
                     await self.send_event(
                         event_tx=event_tx,
@@ -158,20 +170,20 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                     )
 
-                if self.processor_instance.fsm_app is None:
-                    logger.info(f"Resetting is_completed since FSMApplication=None for {self.application_id}:{self.trace_id}")
-                    is_completed = False
-                else:
-                    is_completed = self.processor_instance.fsm_app.is_completed
-                    logger.info(f"Checking is_completed for {self.application_id}:{self.trace_id} is {is_completed}")
-
-                if is_completed:
+                # Reporting final diff
+                if (self.processor_instance.fsm_app 
+                    and self.processor_instance.fsm_app.is_completed):
+                    
                     try:
-                        logger.info(f"FSM is completed: {is_completed}")
+                        logger.info("FSM is completed: True")
                         
                         #TODO: write unit test for this
                         snapshot_files = self.prepare_snapshot_from_request(request)
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
+                        
+                        #TODO: update with more advanced several latest user messages prompt
+                        prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
+                        commit_message = await generate_commit_message(prompt, flash_lite_client)
 
                         logger.info(
                             "Sending completion event with diff (length: %d) for state %s",
@@ -194,10 +206,16 @@ class TrpcAgentSession(AgentInterface):
                         )
                     except Exception as e:
                         logger.exception(f"Error sending final diff: {e}")
-
-                if not work_in_progress or is_completed:
+                
+                # Closing session if done
+                if (self.processor_instance.fsm_app and self.processor_instance.fsm_app.is_completed):
+                    logger.info("FSM completed, closing session processing loop")
                     break
-
+                
+                if (fsm_status != FSMStatus.WIP):
+                    logger.info("FSM IDLE, closing session processing loop")
+                    break
+                    
         except Exception as e:
             logger.exception(f"Error in process: {str(e)}")
             await self.send_event(
