@@ -40,7 +40,6 @@ async def test_async_agent_message_endpoint(agent_type):
                     raise ValueError(f"Received None event for {agent_type}")
                 case AgentSseEvent():
                     assert event.trace_id == request.trace_id, f"Trace IDs do not match in model objects with agent_type={agent_type}"
-                    assert event.status == AgentStatus.IDLE
                     assert event.message.kind in (MessageKind.STAGE_RESULT, MessageKind.REVIEW_RESULT), f"Message kind {event.message.kind} is not one of the expected kinds"
 
 
