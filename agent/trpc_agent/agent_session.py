@@ -138,7 +138,7 @@ class TrpcAgentSession(AgentInterface):
                     )
 
                 if work_in_progress:
-                    logger.info(f"Sending running event for {self.application_id}:{self.trace_id}")
+                    logger.info(f"Sending RUNNING event for {self.application_id}:{self.trace_id}")
                     await self.send_event(
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
@@ -148,7 +148,7 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                     )
                 else:
-                    logger.info(f"Sending idle event for {self.application_id}:{self.trace_id}")
+                    logger.info(f"Sending IDLE event for {self.application_id}:{self.trace_id}")
                     await self.send_event(
                         event_tx=event_tx,
                         status=AgentStatus.IDLE,
@@ -257,7 +257,9 @@ class TrpcAgentSession(AgentInterface):
         await event_tx.send(event)
         
         logger.info(
-            "Event sent with status %s and kind %s",
+            "Event sent with status %s and kind %s and content %s and diff %s",
             status,
             kind,
+            content_str[:20],
+            unified_diff[:-100],
         )
