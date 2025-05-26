@@ -78,12 +78,9 @@ class TrpcAgentSession(AgentInterface):
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
                 fsm_state = request.agent_state.get("fsm_state")
-                match fsm_state:
-                    case None:
-                        self.processor_instance = FSMToolProcessor(FSMApplication)
-                    case _:
-                        fsm = await FSMApplication.load(fsm_state)
-                        self.processor_instance = FSMToolProcessor(FSMApplication, fsm_app=fsm)
+                if fsm_state is not None:
+                    fsm = await FSMApplication.load(fsm_state)
+                    self.processor_instance = FSMToolProcessor(FSMApplication, fsm_app=fsm)
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
@@ -141,6 +138,7 @@ class TrpcAgentSession(AgentInterface):
                     )
 
                 if work_in_progress:
+                    logger.info(f"Sending running event for {self.application_id}:{self.trace_id}")
                     await self.send_event(
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
@@ -150,6 +148,7 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                     )
                 else:
+                    logger.info(f"Sending idle event for {self.application_id}:{self.trace_id}")
                     await self.send_event(
                         event_tx=event_tx,
                         status=AgentStatus.IDLE,
@@ -159,13 +158,12 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                     )
 
-                match self.processor_instance.fsm_app:
-                    case None:
-                        #TODO: check if we are restoring
-                        is_completed = False
-                    case FSMApplication():
-                        fsm_app = self.processor_instance.fsm_app
-                        is_completed = fsm_app.is_completed
+                if self.processor_instance.fsm_app is None:
+                    logger.info(f"Resetting is_completed since FSMApplication=None for {self.application_id}:{self.trace_id}")
+                    is_completed = False
+                else:
+                    is_completed = self.processor_instance.fsm_app.is_completed
+                    logger.info(f"Checking is_completed for {self.application_id}:{self.trace_id} is {is_completed}")
 
                 if is_completed:
                     try:
@@ -216,6 +214,7 @@ class TrpcAgentSession(AgentInterface):
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
             await event_tx.aclose()
+            logger.info(f"Event stream closed for {self.application_id}:{self.trace_id}")
 
     # ---------------------------------------------------------------------
     # Event sending helpers
@@ -256,3 +255,9 @@ class TrpcAgentSession(AgentInterface):
             )
         )
         await event_tx.send(event)
+        
+        logger.info(
+            "Event sent with status %s and kind %s",
+            status,
+            kind,
+        )
