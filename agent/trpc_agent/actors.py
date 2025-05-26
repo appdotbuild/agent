@@ -186,7 +186,7 @@ class HandlersActor(BaseTRPCActor):
         super().__init__(llm, workspace, model_params, beam_width=beam_width, max_depth=max_depth)
         self.handlers = {}
 
-    async def execute(self, files: dict[str, str]) -> dict[str, Node[BaseData]]:
+    async def execute(self, files: dict[str, str], feedback_data: str | None) -> dict[str, Node[BaseData]]:
         logger.info(f"Executing HandlersActor with {len(files)} input files")
 
         async def task_fn(node: Node[BaseData], key: str, tx: MemoryObjectSendStream[tuple[str, Node[BaseData] | None]]):
@@ -196,7 +196,7 @@ class HandlersActor(BaseTRPCActor):
             async with tx:
                 await tx.send((key, result))
 
-        await self.cmd_create(files)
+        await self.cmd_create(files, feedback_data)
 
         logger.info(f"Starting parallel processing of {len(self.handlers)} handlers")
         solution: dict[str, Node[BaseData]] = {}
@@ -218,7 +218,7 @@ class HandlersActor(BaseTRPCActor):
         logger.info(f"HandlersActor completed with {len(solution)} solutions")
         return solution
 
-    async def cmd_create(self, files: dict[str, str]):
+    async def cmd_create(self, files: dict[str, str], feedback_data: str | None):
         logger.info("Creating handler nodes")
         self.handlers = {}
 
@@ -258,6 +258,7 @@ class HandlersActor(BaseTRPCActor):
             user_prompt_rendered = user_prompt_template.render(
                 project_context="\n".join(context),
                 handler_name=handler_name,
+                feedback_data=feedback_data,
             )
 
             # Store system prompt separately in model_params
@@ -466,12 +467,12 @@ class ConcurrentActor(BaseTRPCActor):
         self.handlers = handlers
         self.frontend = frontend
 
-    async def execute(self, user_prompt: str, server_files: dict[str, str]) -> dict[str, Node[BaseData]]:
+    async def execute(self, user_prompt: str, server_files: dict[str, str], feedback_data: str | None) -> dict[str, Node[BaseData]]:
         result: dict[str, Node[BaseData]] = {}
         async def solve_frontend():
-            result["frontend"] = await self.frontend.execute(user_prompt, server_files)
+            result["frontend"] = await self.frontend.execute(feedback_data or user_prompt, server_files)
         async def solve_handlers():
-            handlers_solution = await self.handlers.execute(server_files)
+            handlers_solution = await self.handlers.execute(server_files, feedback_data)
             result.update(handlers_solution)
         async with anyio.create_task_group() as tg:
             tg.start_soon(solve_frontend)

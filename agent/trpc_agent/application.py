@@ -204,7 +204,7 @@ class FSMApplication:
                 FSMState.APPLICATION: State(
                     invoke={
                         "src": application_actor,
-                        "input_fn": lambda ctx: (ctx.user_prompt, ctx.files),
+                        "input_fn": lambda ctx: (ctx.user_prompt, ctx.files, ctx.feedback_data),
                         "on_done": {
                             "target": FSMState.REVIEW_APPLICATION,
                             "actions": [update_node_files],
