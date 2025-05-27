@@ -104,10 +104,7 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
       price: parseFloat(product.price) // Convert string back to number
     };
   } catch (error) {
-    // Log the detailed error
     console.error('Product creation failed:', error);
-
-    // Re-throw the original error to preserve stack trace
     throw error;
   }
 };
@@ -521,8 +518,8 @@ Example:
 {TYPE_ALIGNMENT_RULES_SCHEMA}
 
 Keep the things simple and do not create entities that are not explicitly required by the task.
-Make sure to follow the best software engineering practices, no matter what the user asks. Even stupid requests should be handled professionally.
-NEVER use mock data or create mock implementations - always implement real functionality with actual database operations.
+Make sure to follow the best software engineering practices, write structured and maintainable code.
+Even stupid requests should be handled professionally - build precisely the app that user needs, keeping its quality high.
 """.strip()
 
 BACKEND_DRAFT_USER_PROMPT = """
@@ -538,29 +535,18 @@ Task:
 """.strip()
 
 
-BACKEND_HANDLER_SYSTEM_PROMPT = f"""
-- Write implementation for the handler function
-- Write small but meaningful test set for the handler
-
-Example Handler:
-{BASE_HANDLER_IMPLEMENTATION}
-
-Example Test:
-{BASE_HANDLER_TEST}
-
-# Implementation Rules:
-
+DATABASE_PATTERNS = """
 ## Numeric Type Conversions:
 - For `numeric()` columns: Always use `parseFloat()` when returning data, `toString()` when inserting
 - Example conversions:
   ```typescript
   // When selecting data with numeric columns:
   const results = await db.select().from(productsTable).execute();
-  return results.map(product => ({
+  return results.map(product => ({{
     ...product,
     price: parseFloat(product.price), // Convert string to number
     amount: parseFloat(product.amount) // Convert ALL numeric fields
-  }));
+  }}));
 
   // When inserting/updating numeric columns:
   await db.insert(productsTable).values({
@@ -667,63 +653,34 @@ Example Test:
     };
   });
   ```
+""".strip()
+
+BACKEND_HANDLER_SYSTEM_PROMPT = f"""
+- Write implementation for the handler function
+- Write small but meaningful test set for the handler
+
+Example Handler:
+{BASE_HANDLER_IMPLEMENTATION}
+
+Example Test:
+{BASE_HANDLER_TEST}
+
+# Implementation Rules:
+{DATABASE_PATTERNS}
 
 ## Testing Best Practices:
-- Create reliable test setup with prerequisite data:
-  ```typescript
-  beforeEach(async () => {
-    // Always create prerequisite data first (users, categories, etc.)
-    const user = await db.insert(usersTable)
-      .values({ name: 'Test User', email: 'test@example.com' })
-      .returning()
-      .execute();
-
-    testUserId = user[0].id; // Store IDs for relationships
-
-    // Then create dependent data referencing the prerequisites
-    await db.insert(clientsTable)
-      .values({ name: 'Test Client', user_id: testUserId })
-      .returning()
-      .execute();
-  });
-  ```
-- Clean up after tests to prevent test interference:
-  ```typescript
-  afterEach(resetDB); // Use a reliable database reset function
-  ```
-- Use flexible error assertions:
-  ```typescript
-  // Avoid brittle exact message checks
-  expect(() => deleteInvoice(999)).rejects.toThrow(/not found/i);
-  ```
-- Verify both application state and database state in tests
-- Explicitly define expected test inputs with proper types
-- When testing handlers with optional Zod defaults, include ALL fields in test inputs:
-  ```typescript
-  // ❌ WRONG - TypeScript error if handler expects full parsed type
-  const input: SearchProductsInput = { query: 'laptop' };
-
-  // ✅ CORRECT - Include all fields, even those with Zod defaults
-  const input: SearchProductsInput = {
-    query: 'laptop',
-    limit: 20,    // Include even if schema has default
-    offset: 0     // Include even if schema has default
-  };
-  ```
-- Test numeric conversions explicitly:
-  ```typescript
-  // Verify numeric fields are properly converted
-  const result = await getProduct({ id: 1 });
-  expect(typeof result.price).toBe('number'); // Not string!
-  expect(result.price).toEqual(19.99);
-  ```
+- Create reliable test setup: Use `beforeEach(createDB)` and `afterEach(resetDB)`
+- Create prerequisite data first (users, categories) before dependent records
+- Use flexible error assertions: `expect().rejects.toThrow(/pattern/i)`
+- Include ALL fields in test inputs, even those with Zod defaults
+- Test numeric conversions: verify `typeof result.price === 'number'`
 - CRITICAL handler type signatures:
   ```typescript
   // Handler should expect the PARSED Zod type (with defaults applied)
-  export const searchProducts = async (input: SearchProductsInput): Promise<Product[]> => {
+  export const searchProducts = async (input: SearchProductsInput): Promise<Product[]> => {{
     // input.limit and input.offset are guaranteed to exist here
     // because Zod has already parsed and applied defaults
-  };
+  }};
 
   // If you need a handler that accepts pre-parsed input,
   // create a separate input type without defaults
@@ -736,27 +693,15 @@ Example Test:
 4. **Test inputs**: Include ALL fields in test inputs, even those with Zod defaults
 5. **Type annotations**: Use SQL<unknown>[] for condition arrays
 6. **Query order**: Always apply .where() before .limit(), .offset(), or .orderBy()
-7. **Foreign key validation**: For INSERT/UPDATE operations with foreign keys, verify referenced entities exist first to prevent "violates foreign key constraint" errors
+7. **Foreign key validation**: For INSERT/UPDATE operations with foreign keys, verify referenced entities exist first to prevent "violates foreign key constraint" errors. Ensure tests cover the use case where foreign keys are used.
 
-# Error Handling & Logging Best Practices:
+# Error Handling Best Practices:
 - Wrap database operations in try/catch blocks
-- Log the full error object, not just the message:
-  ```
-  try {{
-    // Database operations
-  }} catch (error) {{
-    console.error('Operation failed:', error);
-    throw new Error('User-friendly message');
-  }}
-  ```
-- When rethrowing errors, include the original error as the cause:
-  ```
-  throw new Error('Failed to process request', {{ cause: error }});
-  ```
-- Add context to errors including input parameters (but exclude sensitive data!)
-- Error handling does not need to be tested in unit tests.
-- Do not use other handlers in both the handler implementation and the test code, keep it fully isolated.
-- NEVER use mocks or mock data in tests - always test against real database operations using the test database.
+- Log the full error object with context: `console.error('Operation failed:', error);`
+- Rethrow original errors to preserve stack traces: `throw error;`
+- Error handling does not need to be tested in unit tests
+- Do not use other handlers in implementation or tests - keep fully isolated
+- NEVER use mocks - always test against real database operations
 """.strip()
 
 BACKEND_HANDLER_USER_PROMPT = """
