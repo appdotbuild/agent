@@ -460,40 +460,21 @@ const appRouter = router({
 ...
 """.strip()
 
-TYPE_ALIGNMENT_RULES = """# CRITICAL Type Alignment Rules:
+TYPE_ALIGNMENT_RULES_SCHEMA = """# CRITICAL Type Alignment Rules for Schema Definition:
 1. Align Zod and Drizzle types exactly:
    - Drizzle `.notNull()` → Zod should NOT have `.nullable()`
    - Drizzle field without `.notNull()` → Zod MUST have `.nullable()`
    - Never use `.nullish()` in Zod - use `.nullable()` or `.optional()` as appropriate
 
-2. Numeric type handling:
+2. Numeric type definitions:
    - CRITICAL: Drizzle `numeric()` type returns STRING values from PostgreSQL (to preserve precision)
    - Drizzle `real()` and `integer()` return native number values from the database
-   - For `numeric()` columns: Always use `parseFloat()` when returning data, `toString()` when inserting
    - Define your Zod schema with `z.number()` for ALL numeric column types
    - For integer values, use `z.number().int()` for proper validation
-   - Example conversions:
-     ```typescript
-     // When selecting data with numeric columns:
-     const results = await db.select().from(productsTable).execute();
-     return results.map(product => ({
-       ...product,
-       price: parseFloat(product.price), // Convert string to number
-       amount: parseFloat(product.amount) // Convert ALL numeric fields
-     }));
 
-     // When inserting/updating numeric columns:
-     await db.insert(productsTable).values({
-       ...input,
-       price: input.price.toString(), // Convert number to string
-       amount: input.amount.toString() // Convert ALL numeric fields
-     });
-     ```
-
-3. Date handling:
+3. Date handling in schemas:
    - For Drizzle `timestamp()` fields → Use Zod `z.coerce.date()`
    - For Drizzle `date()` fields → Use Zod `z.string()` with date validation
-   - Always convert dates to proper format when inserting/retrieving
 
 4. Enum handling:
    - For Drizzle `pgEnum()` → Create matching Zod enum with `z.enum([...])`
@@ -507,158 +488,6 @@ TYPE_ALIGNMENT_RULES = """# CRITICAL Type Alignment Rules:
 6. Type exports:
    - Export types for ALL schemas using `z.infer<typeof schemaName>`
    - Create both input and output schema types for handlers
-
-7. Database query patterns:
-   - CRITICAL: Maintain proper type inference when building queries conditionally
-   - Always build queries step-by-step, applying `.where()` before `.limit()`, `.offset()`, or `.orderBy()`
-   - For conditional queries, initialize the query first, then apply filters conditionally
-   - When filtering with multiple conditions, collect conditions in an array and apply `.where(and(...conditions))` with spread operator
-   - NEVER use `and(conditions)` - ALWAYS use `and(...conditions)` with the spread operator!
-   - Handle joined data structures correctly - results change shape after joins:
-     ```typescript
-     // After a join, results become nested objects
-     const results = await db.select()
-       .from(paymentsTable)
-       .innerJoin(subscriptionsTable, eq(paymentsTable.subscription_id, subscriptionsTable.id))
-       .execute();
-
-     // Access data from the correct nested property
-     return results.map(result => ({
-       id: result.payments.id,
-       amount: parseFloat(result.payments.amount), // Note: numeric conversion!
-       subscription_name: result.subscriptions.name
-     }));
-     ```
-   - Example pattern for conditional filters:
-     ```typescript
-     // Good pattern for conditional filters
-     let query = db.select().from(productsTable);
-
-     const conditions: SQL<unknown>[] = [];
-
-     if (filters.minPrice !== undefined) {
-       conditions.push(gte(productsTable.price, filters.minPrice));
-     }
-
-     if (filters.category) {
-       conditions.push(eq(productsTable.category, filters.category));
-     }
-
-     if (conditions.length > 0) {
-       query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)); // SPREAD the array!
-     }
-
-     // Apply other query modifiers AFTER where clause
-     if (orderBy) {
-       query = query.orderBy(desc(productsTable[orderBy]));
-     }
-
-     // Apply pagination LAST
-     query = query.limit(limit).offset(offset);
-
-     const results = await query.execute();
-     ```
-
-   - Pattern for queries with joins:
-     ```typescript
-     // Base query without join
-     let baseQuery = db.select().from(paymentsTable);
-
-     // Apply join conditionally (changes result structure!)
-     if (filters.user_id) {
-       baseQuery = baseQuery.innerJoin(
-         subscriptionsTable,
-         eq(paymentsTable.subscription_id, subscriptionsTable.id)
-       );
-     }
-
-     // Build conditions array
-     const conditions: SQL<unknown>[] = [];
-     if (filters.user_id) {
-       conditions.push(eq(subscriptionsTable.user_id, filters.user_id));
-     }
-
-     // Apply where clause
-     const query = conditions.length > 0
-       ? baseQuery.where(and(...conditions))
-       : baseQuery;
-
-     const results = await query.execute();
-
-     // Handle different result structures based on join
-     return results.map(result => {
-       // If joined, data is nested: { payments: {...}, subscriptions: {...} }
-       const paymentData = filters.user_id
-         ? (result as any).payments
-         : result;
-
-       return {
-         ...paymentData,
-         amount: parseFloat(paymentData.amount) // Don't forget numeric conversion!
-       };
-     });
-     ```
-
-8. Testing Best Practices:
-   - Create reliable test setup with prerequisite data:
-     ```typescript
-     beforeEach(async () => {
-       // Always create prerequisite data first (users, categories, etc.)
-       const user = await db.insert(usersTable)
-         .values({ name: 'Test User', email: 'test@example.com' })
-         .returning()
-         .execute();
-
-       testUserId = user[0].id; // Store IDs for relationships
-
-       // Then create dependent data referencing the prerequisites
-       await db.insert(clientsTable)
-         .values({ name: 'Test Client', user_id: testUserId })
-         .returning()
-         .execute();
-     });
-     ```
-   - Clean up after tests to prevent test interference:
-     ```typescript
-     afterEach(resetDB); // Use a reliable database reset function
-     ```
-   - Use flexible error assertions:
-     ```typescript
-     // Avoid brittle exact message checks
-     expect(() => deleteInvoice(999)).rejects.toThrow(/not found/i);
-     ```
-   - Verify both application state and database state in tests
-   - Explicitly define expected test inputs with proper types
-   - When testing handlers with optional Zod defaults, include ALL fields in test inputs:
-     ```typescript
-     // ❌ WRONG - TypeScript error if handler expects full parsed type
-     const input: SearchProductsInput = { query: 'laptop' };
-
-     // ✅ CORRECT - Include all fields, even those with Zod defaults
-     const input: SearchProductsInput = {
-       query: 'laptop',
-       limit: 20,    // Include even if schema has default
-       offset: 0     // Include even if schema has default
-     };
-     ```
-   - Test numeric conversions explicitly:
-     ```typescript
-     // Verify numeric fields are properly converted
-     const result = await getProduct({ id: 1 });
-     expect(typeof result.price).toBe('number'); // Not string!
-     expect(result.price).toEqual(19.99);
-     ```
-   - CRITICAL handler type signatures:
-     ```typescript
-     // Handler should expect the PARSED Zod type (with defaults applied)
-     export const searchProducts = async (input: SearchProductsInput): Promise<Product[]> => {
-       // input.limit and input.offset are guaranteed to exist here
-       // because Zod has already parsed and applied defaults
-     };
-
-     // If you need a handler that accepts pre-parsed input,
-     // create a separate input type without defaults
-     ```
 """
 
 BACKEND_DRAFT_SYSTEM_PROMPT = f"""
@@ -689,7 +518,7 @@ Example:
 - Registering TRPC routes
 {TRPC_INDEX_SHIM}
 
-{TYPE_ALIGNMENT_RULES}
+{TYPE_ALIGNMENT_RULES_SCHEMA}
 
 Keep the things simple and do not create entities that are not explicitly required by the task.
 Make sure to follow the best software engineering practices, no matter what the user asks. Even stupid requests should be handled professionally.
@@ -719,58 +548,185 @@ Example Handler:
 Example Test:
 {BASE_HANDLER_TEST}
 
-# Important Drizzle Query Patterns:
-- ALWAYS store the result of a query operation before chaining additional methods
-  let query = db.select().from(myTable);
-  if (condition) {{
-    query = query.where(eq(myTable.field, value));
-  }}
-  const results = await query.execute();
+# Implementation Rules:
 
+## Numeric Type Conversions:
+- For `numeric()` columns: Always use `parseFloat()` when returning data, `toString()` when inserting
+- Example conversions:
+  ```typescript
+  // When selecting data with numeric columns:
+  const results = await db.select().from(productsTable).execute();
+  return results.map(product => ({
+    ...product,
+    price: parseFloat(product.price), // Convert string to number
+    amount: parseFloat(product.amount) // Convert ALL numeric fields
+  }));
+
+  // When inserting/updating numeric columns:
+  await db.insert(productsTable).values({
+    ...input,
+    price: input.price.toString(), // Convert number to string
+    amount: input.amount.toString() // Convert ALL numeric fields
+  });
+  ```
+
+## Database Query Patterns:
+- CRITICAL: Maintain proper type inference when building queries conditionally
+- Always build queries step-by-step, applying `.where()` before `.limit()`, `.offset()`, or `.orderBy()`
+- For conditional queries, initialize the query first, then apply filters conditionally
+- When filtering with multiple conditions, collect conditions in an array and apply `.where(and(...conditions))` with spread operator
+- NEVER use `and(conditions)` - ALWAYS use `and(...conditions)` with the spread operator!
 - ALWAYS use the proper operators from 'drizzle-orm':
   - Use eq(table.column, value) instead of table.column === value
   - Use and(...conditions) with SPREAD operator, not and(conditions)
   - Use isNull(table.column), not table.column === null
   - Use desc(table.column) for descending order
 
-- When filtering with multiple conditions, use an array approach:
-  const conditions: SQL<unknown>[] = []; // Type the array!
-  if (input.field1) conditions.push(eq(table.field1, input.field1));
-  if (input.field2) conditions.push(eq(table.field2, input.field2));
+- Example pattern for conditional filters:
+  ```typescript
+  // Good pattern for conditional filters
+  let query = db.select().from(productsTable);
+
+  const conditions: SQL<unknown>[] = [];
+
+  if (filters.minPrice !== undefined) {
+    conditions.push(gte(productsTable.price, filters.minPrice));
+  }
+
+  if (filters.category) {
+    conditions.push(eq(productsTable.category, filters.category));
+  }
+
+  if (conditions.length > 0) {
+    query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)); // SPREAD the array!
+  }
+
+  // Apply other query modifiers AFTER where clause
+  if (orderBy) {
+    query = query.orderBy(desc(productsTable[orderBy]));
+  }
+
+  // Apply pagination LAST
+  query = query.limit(limit).offset(offset);
+
+  const results = await query.execute();
+  ```
+
+- Handle joined data structures correctly - results change shape after joins:
+  ```typescript
+  // After a join, results become nested objects
+  const results = await db.select()
+    .from(paymentsTable)
+    .innerJoin(subscriptionsTable, eq(paymentsTable.subscription_id, subscriptionsTable.id))
+    .execute();
+
+  // Access data from the correct nested property
+  return results.map(result => ({
+    id: result.payments.id,
+    amount: parseFloat(result.payments.amount), // Note: numeric conversion!
+    subscription_name: result.subscriptions.name
+  }));
+  ```
+
+- Pattern for queries with joins:
+  ```typescript
+  // Base query without join
+  let baseQuery = db.select().from(paymentsTable);
+
+  // Apply join conditionally (changes result structure!)
+  if (filters.user_id) {
+    baseQuery = baseQuery.innerJoin(
+      subscriptionsTable,
+      eq(paymentsTable.subscription_id, subscriptionsTable.id)
+    );
+  }
+
+  // Build conditions array
+  const conditions: SQL<unknown>[] = [];
+  if (filters.user_id) {
+    conditions.push(eq(subscriptionsTable.user_id, filters.user_id));
+  }
+
+  // Apply where clause
   const query = conditions.length > 0
-    ? db.select().from(table).where(and(...conditions)) // SPREAD!
-    : db.select().from(table);
+    ? baseQuery.where(and(...conditions))
+    : baseQuery;
+
   const results = await query.execute();
 
-- CRITICAL numeric field handling pattern:
+  // Handle different result structures based on join
+  return results.map(result => {
+    // If joined, data is nested: { payments: {...}, subscriptions: {...} }
+    const paymentData = filters.user_id
+      ? (result as any).payments
+      : result;
+
+    return {
+      ...paymentData,
+      amount: parseFloat(paymentData.amount) // Don't forget numeric conversion!
+    };
+  });
+  ```
+
+## Testing Best Practices:
+- Create reliable test setup with prerequisite data:
   ```typescript
-  // Handler that returns data with numeric fields
-  export const getProducts = async (): Promise<Product[]> => {{
-    const results = await db.select().from(productsTable).execute();
+  beforeEach(async () => {
+    // Always create prerequisite data first (users, categories, etc.)
+    const user = await db.insert(usersTable)
+      .values({ name: 'Test User', email: 'test@example.com' })
+      .returning()
+      .execute();
 
-    // ALWAYS convert numeric strings to numbers before returning
-    return results.map(product => ({{
-      ...product,
-      price: parseFloat(product.price), // numeric columns are strings!
-      discount: product.discount ? parseFloat(product.discount) : null
-    }}));
-  }};
+    testUserId = user[0].id; // Store IDs for relationships
 
-  // Handler that inserts data with numeric fields
-  export const createProduct = async (input: CreateProductInput): Promise<Product> => {{
-    const [result] = await db.insert(productsTable)
-      .values({{
-        ...input,
-        price: input.price.toString(), // Convert to string for numeric column
-      }})
-      .returning();
+    // Then create dependent data referencing the prerequisites
+    await db.insert(clientsTable)
+      .values({ name: 'Test Client', user_id: testUserId })
+      .returning()
+      .execute();
+  });
+  ```
+- Clean up after tests to prevent test interference:
+  ```typescript
+  afterEach(resetDB); // Use a reliable database reset function
+  ```
+- Use flexible error assertions:
+  ```typescript
+  // Avoid brittle exact message checks
+  expect(() => deleteInvoice(999)).rejects.toThrow(/not found/i);
+  ```
+- Verify both application state and database state in tests
+- Explicitly define expected test inputs with proper types
+- When testing handlers with optional Zod defaults, include ALL fields in test inputs:
+  ```typescript
+  // ❌ WRONG - TypeScript error if handler expects full parsed type
+  const input: SearchProductsInput = { query: 'laptop' };
 
-    // Convert back when returning
-    return {{
-      ...result,
-      price: parseFloat(result.price)
-    }};
-  }};
+  // ✅ CORRECT - Include all fields, even those with Zod defaults
+  const input: SearchProductsInput = {
+    query: 'laptop',
+    limit: 20,    // Include even if schema has default
+    offset: 0     // Include even if schema has default
+  };
+  ```
+- Test numeric conversions explicitly:
+  ```typescript
+  // Verify numeric fields are properly converted
+  const result = await getProduct({ id: 1 });
+  expect(typeof result.price).toBe('number'); // Not string!
+  expect(result.price).toEqual(19.99);
+  ```
+- CRITICAL handler type signatures:
+  ```typescript
+  // Handler should expect the PARSED Zod type (with defaults applied)
+  export const searchProducts = async (input: SearchProductsInput): Promise<Product[]> => {
+    // input.limit and input.offset are guaranteed to exist here
+    // because Zod has already parsed and applied defaults
+  };
+
+  // If you need a handler that accepts pre-parsed input,
+  // create a separate input type without defaults
   ```
 
 # CRITICAL Common Pitfalls to Avoid:
@@ -838,7 +794,7 @@ Example Nested Component (showing import paths):
   - Complex features: `client/src/components/feature/FeatureName.tsx`
 - Keep components focused on single responsibility
 
-For the visual aspect, adjust the CSS to match the user prompt to keep the design consistent with the original request in terms of overall mood. E.g. for serious business applications, default CSS is great; for more playful or nice applications, use custom colors, emojis, and other visual elements to make it more engaging.
+For the visual aspect, adjust the CSS to match the user prompt to keep the design consistent with the original request in terms of overall mood. E.g. for serious corporate business applications, default CSS is great; for more playful or nice applications, use custom colors, emojis, and other visual elements to make it more engaging.
 
 - ALWAYS calculate the correct relative path when importing from server:
   - From `client/src/App.tsx` → use `../../server/src/schema` (2 levels up)
