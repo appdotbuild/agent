@@ -1,6 +1,8 @@
 from fire import Fire
 import ujson as json
 from typing import List, Dict, Any
+import os
+from glob import glob
 
 from core.statemachine import StateMachine, State
 from trpc_agent.application import ApplicationContext, FSMEvent, MachineCheckpoint, FSMApplication, Node, EditActor
@@ -35,7 +37,7 @@ def get_all_trajectories(root: Node, prefix: str = ""):
         yield f"{prefix}_{i}", [msg.to_dict() for msg in leaf_messages]
 
 
-def main(path: str):
+def extract_trajectories_from_dump(path: str):
     actors = anyio.run(_get_actors, path)
     messages = {}
 
@@ -69,7 +71,51 @@ def main(path: str):
             case _:
                 raise ValueError(f"Unknown actor type: {type(actor)}")
 
-    print(json.dumps(messages))  # so it is `| jq` friendly
+    return messages
+
+def main(dumps_path: str, output_path: str):
+    if os.path.isdir(dumps_path):
+        dump_files = glob(os.path.join(dumps_path, "*.json"))
+    elif os.path.isfile(dumps_path):
+        dump_files = [dumps_path]
+    else:
+        raise ValueError(f"Invalid dumps path: {dumps_path}")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    final_result = {}
+
+    for dump_file in dump_files:
+        print(f"Processing {dump_file}...")
+        try:
+            trajectories = extract_trajectories_from_dump(dump_file)
+            final_result[os.path.basename(dump_file)] = trajectories
+            output_file = os.path.join(output_path, os.path.basename(dump_file))
+
+            with open(output_file, "w") as f:
+                json.dump(trajectories, f, indent=2)
+
+            print(f"Trajectories saved to {output_file}")
+        except Exception as e:
+            print(f"Error processing {dump_file}: {e}")
+
+    # for AI-assisted analysis, we can format the output in a more readable way
+    for file_name, trajectories in final_result.items():
+        acc = ""  # markdown accumulator for final output
+        for key, messages in trajectories.items():
+            acc += f"Trajectory: {key}\n"
+            for msg in messages:
+                role = msg.get("role", "unknown")
+                content = msg.get("content", [])
+                for x in content:
+                    if x.get("text"):
+                        acc += f"- **{role}**:\n {x['text']}\n\n"
+                    else:
+                        acc += f"- **{role}**: {x}\n\n"
+
+        with open(os.path.join(output_path, file_name.replace('.json', '.txt')), "w") as f:
+            f.write(acc)
+
 
 
 if __name__ == "__main__":
