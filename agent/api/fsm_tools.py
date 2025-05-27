@@ -302,6 +302,7 @@ When providing feedback, be specific and actionable. If you're unsure about any 
 FSM is an internal API, you don't need to know how it works under the hood or expose its details to the user.
 Prefer simple solutions, build an app with very basic features only first unless the user explicitly asks for something more complex.
 
+Make sure to appreciate the best software engineering practices, no matter what the user asks. Even stupid requests should be handled professionally.
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
 
 
