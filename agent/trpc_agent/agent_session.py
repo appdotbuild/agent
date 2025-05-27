@@ -98,6 +98,8 @@ class TrpcAgentSession(AgentInterface):
             # Getting messages for cli
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
             
+            flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
+            
             # Main session loop
             app_name = None
             commit_message = None
