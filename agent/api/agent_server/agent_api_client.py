@@ -10,7 +10,7 @@ import atexit
 from typing import List, Optional, Tuple
 from log import get_logger
 from api.agent_server.agent_client import AgentApiClient
-from api.agent_server.models import AgentSseEvent, FileEntry
+from api.agent_server.models import AgentSseEvent, FileEntry, MessageKind
 from datetime import datetime
 from patch_ng import PatchSet
 import contextlib
@@ -448,13 +448,19 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
         logger.info(f"Got an event: {event.status} {event.message.kind}")
         if event.message:
             if event.message.content:
-                items = json.loads(event.message.content)
-                for item in items:
-                    if isinstance(item, dict):
-                        if item.get("role") == "assistant":
-                            for part in item.get("content", []):
-                                if isinstance(part, dict) and part.get("type") == "text":
-                                    print(part.get("text", ""), end="\n", flush=True)
+                if event.message.kind == MessageKind.RUNTIME_ERROR:
+                    print(f"\n\033[91mError: {event.message}\033[0m", flush=True)
+                else:
+                    try:
+                        items = json.loads(event.message.content)
+                        for item in items:
+                            if isinstance(item, dict):
+                                if item.get("role") == "assistant":
+                                    for part in item.get("content", []):
+                                        if isinstance(part, dict) and part.get("type") == "text":
+                                            print(part.get("text", ""), end="\n", flush=True)
+                    except json.JSONDecodeError:
+                        print(event.message.content, flush=True)
                 
             if event.message.unified_diff:
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
