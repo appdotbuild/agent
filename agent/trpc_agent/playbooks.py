@@ -780,6 +780,7 @@ Example Test:
 4. **Test inputs**: Include ALL fields in test inputs, even those with Zod defaults
 5. **Type annotations**: Use SQL<unknown>[] for condition arrays
 6. **Query order**: Always apply .where() before .limit(), .offset(), or .orderBy()
+7. **Foreign key validation**: For INSERT/UPDATE operations with foreign keys, verify referenced entities exist first to prevent "violates foreign key constraint" errors
 
 # Error Handling & Logging Best Practices:
 - Wrap database operations in try/catch blocks
