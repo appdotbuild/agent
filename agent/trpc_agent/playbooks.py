@@ -507,6 +507,10 @@ Example Test:
 BACKEND_HANDLER_USER_PROMPT = """
 Key project files:
 {{project_context}}
+{% if feedback_data %}
+Task:
+{{ feedback_data }}
+{% endif %}
 
 Return the handler implementation within <file path="server/src/handlers/{{handler_name}}.ts">...</file> tags.
 Return the test code within <file path="server/src/tests/{{handler_name}}.test.ts">...</file> tags.

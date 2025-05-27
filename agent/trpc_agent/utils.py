@@ -89,6 +89,11 @@ class RunFrontendBuild:
         if result.exit_code != 0:
             err = self.build_output_normalizer.sub("", result.stderr)
             return f"Build errors:\n{err}\n"
+
+        result = await node.data.workspace.exec(["bun", "run", "lint"], cwd="client")
+        if result.exit_code != 0:
+            return f"Lint errors:\n{result.stdout}\n"
+
         return None
 
 run_frontend_build = RunFrontendBuild()

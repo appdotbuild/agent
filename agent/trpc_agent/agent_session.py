@@ -97,6 +97,8 @@ class TrpcAgentSession(AgentInterface):
             # Process the initial step
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
+            flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
+            
             work_in_progress = False
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
@@ -113,13 +115,12 @@ class TrpcAgentSession(AgentInterface):
                 messages += new_messages
 
                 app_name = None
-                commit_message = None
                 #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
                     and request.agent_state is None
                     and self.processor_instance.fsm_app):
+                    
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
-                    flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
                     app_name = await generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
                     initial_template_diff = await self.processor_instance.fsm_app.get_diff_with({})
@@ -130,7 +131,7 @@ class TrpcAgentSession(AgentInterface):
                     #TODO: move into FSM in intial state to control this?
                     await self.send_event(
                         event_tx=event_tx,
-                        status=AgentStatus.IDLE,
+                        status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
                         content=messages,
                         fsm_state=fsm_state,
@@ -138,7 +139,6 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                         commit_message="Initial commit"
                     )
-                    commit_message = await generate_commit_message(prompt, flash_lite_client)
 
                 if work_in_progress:
                     await self.send_event(
@@ -148,7 +148,6 @@ class TrpcAgentSession(AgentInterface):
                         content=messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
-                        commit_message=commit_message
                     )
                 else:
                     await self.send_event(
@@ -158,7 +157,6 @@ class TrpcAgentSession(AgentInterface):
                         content=messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
-                        commit_message=commit_message
                     )
 
                 match self.processor_instance.fsm_app:
@@ -182,6 +180,9 @@ class TrpcAgentSession(AgentInterface):
                             len(final_diff) if final_diff else 0,
                             self.processor_instance.fsm_app.current_state,
                         )
+                        
+                        prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
+                        commit_message = await generate_commit_message(prompt, flash_lite_client)
                         
                         await self.send_event(
                             event_tx=event_tx,
