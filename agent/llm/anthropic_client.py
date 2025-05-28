@@ -31,7 +31,7 @@ class AnthropicParams(TypedDict):
 
 
 class AnthropicLLM(common.AsyncLLM):
-    def __init__(self, client: anthropic.AsyncAnthropic | anthropic.AsyncAnthropicBedrock, default_model: str = "claude-3-7-sonnet-20250219"):
+    def __init__(self, client: anthropic.AsyncAnthropic | anthropic.AsyncAnthropicBedrock, default_model: str):
         self.client = client
         self.default_model = default_model
         self.use_prompt_caching = "bedrock" not in self.client.__class__.__name__.lower()
@@ -75,10 +75,14 @@ class AnthropicLLM(common.AsyncLLM):
             try:
                 completion = await self.client.messages.create(**call_args)
                 return self._completion_from(completion)
-            except anthropic.RateLimitError:
-                delay = random.randint(1, 5)
-                logger.warning(f"Rate limit error, retrying in {delay} seconds")
-                await anyio.sleep(delay)
+            except anthropic.APIStatusError as exc:
+                if exc.status_code >= 413:
+                    # errors meaning we can retry
+                    delay = random.randint(1, 5)
+                    logger.warning(f"Rate limit error, retrying in {delay} seconds")
+                    await anyio.sleep(delay)
+                else:
+                    raise RuntimeError(f"Anthropic API error: {exc.status_code} {exc.message}") from exc
 
     @staticmethod
     def _completion_from(completion: Message) -> common.Completion:
