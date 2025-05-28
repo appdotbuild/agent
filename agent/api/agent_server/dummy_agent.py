@@ -10,7 +10,6 @@ from typing import Any
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
 
-from api.agent_server.interface import AgentInterface
 from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,

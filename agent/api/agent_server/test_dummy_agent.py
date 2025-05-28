@@ -1,7 +1,6 @@
 import pytest
-import json
 from log import get_logger
-from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
+from api.agent_server.models import AgentSseEvent, AgentStatus
 from api.agent_server.agent_api_client import AgentApiClient
 
 logger = get_logger(__name__)
