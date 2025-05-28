@@ -686,8 +686,8 @@ Example Test:
   // create a separate input type without defaults
   ```
 
-# CRITICAL Common Pitfalls to Avoid:
-1. **Numeric columns**: Always use parseFloat() when selecting, toString() when inserting
+# Common Pitfalls to Avoid:
+1. **Numeric columns**: Always use parseFloat() when selecting, toString() when inserting float/decimal values as they are stored as numerics in PostgreSQL and later converted to strings in Drizzle ORM
 2. **Query conditions**: Use and(...conditions) with spread operator, NOT and(conditions)
 3. **Joined results**: Access data via nested properties (result.table1.field, result.table2.field)
 4. **Test inputs**: Include ALL fields in test inputs, even those with Zod defaults
