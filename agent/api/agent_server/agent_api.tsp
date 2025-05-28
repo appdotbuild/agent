@@ -79,7 +79,7 @@ model AgentMessage {
   @doc("The type of message being sent.")
   kind: MessageKind;
 
-  @doc("Formatted content of the message. Can be long and contain formatting, including custom URLs for CLI handling.")
+  @doc("The content of the message. This is the agent's response text for the current interaction.")
   content: string;
 
   @doc("Updated state of the Agent Server that should be presented in the next request to continue the conversation.")

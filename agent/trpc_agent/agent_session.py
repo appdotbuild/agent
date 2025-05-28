@@ -133,7 +133,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
-                        content=messages,
+                        content="Generating application based on your requirements...",
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
@@ -145,7 +145,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.STAGE_RESULT,
-                        content=messages,
+                        content=self._get_latest_assistant_response(new_messages) or "Processing...",
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -154,7 +154,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.IDLE,
                         kind=MessageKind.REFINEMENT_REQUEST,
-                        content=messages,
+                        content=self._get_latest_assistant_response(new_messages) or "Ready for your input.",
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -188,7 +188,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REVIEW_RESULT,
-                            content=messages,
+                            content=self._get_latest_assistant_response(messages) or "Application generated successfully.",
                             fsm_state=fsm_state,
                             unified_diff=final_diff,
                             app_name=app_name,
@@ -220,25 +220,31 @@ class TrpcAgentSession(AgentInterface):
     # ---------------------------------------------------------------------
     # Event sending helpers
     # ---------------------------------------------------------------------
+    def _get_latest_assistant_response(self, messages: List[Message]) -> Optional[str]:
+        """Extract the latest assistant response from the message list."""
+        for msg in reversed(messages):
+            if msg.role == "assistant":
+                text_parts = []
+                for block in msg.content:
+                    if hasattr(block, 'text'):
+                        text_parts.append(block.text)
+                return " ".join(text_parts) if text_parts else None
+        return None
+
     async def send_event(
         self,
         event_tx: MemoryObjectSendStream[AgentSseEvent],
         status: AgentStatus,
         kind: MessageKind,
-        content: Union[List[Message], str],
+        content: str,
         fsm_state: Optional[MachineCheckpoint] = None,
         unified_diff: Optional[str] = None,
         app_name: Optional[str] = None,
         commit_message: Optional[str] = None,
     ) -> None:
         """Send event with specified parameters."""
-        # Handle content serialization based on type
-        if isinstance(content, list):
-            # Messages need to be serialized to JSON
-            content_str = json.dumps([x.to_dict() for x in content], sort_keys=True)
-        else:
-            # Error messages are already strings
-            content_str = content
+        # Content is now always a string
+        content_str = content
         
         event = AgentSseEvent(
             status=status,

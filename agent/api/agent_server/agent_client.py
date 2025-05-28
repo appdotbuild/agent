@@ -103,13 +103,22 @@ class AgentApiClient:
         if messages_history_json_str:
             try:
                 history_list_raw = json.loads(messages_history_json_str)
+                logger.debug(f"Processing {len(history_list_raw)} messages from history")
                 for m_raw in history_list_raw:
                     role = m_raw.get("role")
                     raw_content = m_raw.get("content", "")
+                    logger.debug(f"Processing {role} message with content type: {type(raw_content).__name__}")
 
                     current_content_str = ""
                     if isinstance(raw_content, str):
-                        current_content_str = raw_content
+                        try:
+                            parsed_content = json.loads(raw_content)
+                            if isinstance(parsed_content, list) and len(parsed_content) > 0 and isinstance(parsed_content[0], dict) and "text" in parsed_content[0]:
+                                current_content_str = parsed_content[0].get("text", "")
+                            else:
+                                current_content_str = raw_content
+                        except (json.JSONDecodeError, TypeError):
+                            current_content_str = raw_content
                     elif isinstance(raw_content, list) and len(raw_content) > 0 and isinstance(raw_content[0], dict) and "text" in raw_content[0]:
                         # If content is a list of dicts like [{'text': ..., 'type': ...}], extract text from first element for simplicity in history
                         current_content_str = raw_content[0].get("text", "")
