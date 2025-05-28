@@ -33,6 +33,7 @@ from api.agent_server.models import (
 from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
+from api.agent_server.dummy_agent import DummyAgent
 from api.config import CONFIG
 
 from log import get_logger, init_sentry, configure_uvicorn_logging, set_trace_id, clear_trace_id
@@ -243,6 +244,7 @@ async def message(
         agent_type = {
             "template_diff": TemplateDiffAgentImplementation,
             "trpc_agent": TrpcAgentSession,
+            "dummy": DummyAgent,
         }
         return StreamingResponse(
             run_agent(request, agent_type[CONFIG.agent_type]),
@@ -260,6 +262,7 @@ async def message(
             status_code=500,
             detail=error_response.to_json()
         )
+
 
 @app.get("/health")
 async def healthcheck():
