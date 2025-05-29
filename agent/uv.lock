@@ -213,7 +213,7 @@ wheels = [
 
 [[package]]
 name = "dagger-io"
-version = "0.17.1"
+version = "0.18.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -226,9 +226,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/65/03e83a430d3af6b58ee79420a374e3db2c35fa0d61b704e176d10e86ece9/dagger_io-0.17.1.tar.gz", hash = "sha256:9ae54044686c208a7d83e925a64299bd707f53746ec82eaab9fdce691a4da706", size = 84776 }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/ac/ccb254605724f3a915757b1376e8e010e6f7c57b65327aa7c8aca22db095/dagger_io-0.18.9.tar.gz", hash = "sha256:30994f7c012c40831d6c8f2c29bb83d0d9bf9b6f857a2230d48f3ea17fdd509f", size = 88988 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/3c/ab9212a47152b1d7b5595a0c432df6dbe5bc4a58cc155692e2d87e010ad0/dagger_io-0.17.1-py3-none-any.whl", hash = "sha256:b9a61f2b907db4bfac435b4eedb32a0759b0ffbaec98f70fadd466ec569bdc7f", size = 81738 },
+    { url = "https://files.pythonhosted.org/packages/49/6c/b99d88cc642799199668e1af64aee9f57d749366249371f3e7387855b9a3/dagger_io-0.18.9-py3-none-any.whl", hash = "sha256:efcf910954509a62c3005b848e55e77b4864a4b5447cc50b070133e7ebad25bb", size = 85566 },
 ]
 
 [[package]]
@@ -371,7 +371,7 @@ requires-dist = [
     { name = "anthropic", extras = ["bedrock"], specifier = ">=0.49.0" },
     { name = "anyio", specifier = ">=4.9.0" },
     { name = "boto3", specifier = ">=1.37.18" },
-    { name = "dagger-io", specifier = ">=0.17.1" },
+    { name = "dagger-io", specifier = ">=0.18.9" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fire", specifier = ">=0.7.0" },
     { name = "google-genai", specifier = ">=1.7.0" },
@@ -1389,11 +1389,11 @@ wheels = [
 
 [[package]]
 name = "typing-extensions"
-version = "4.12.2"
+version = "4.13.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/df/db/f35a00659bc03fec321ba8bce9420de607a1d37f8342eee1863174c69557/typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8", size = 85321 }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/37/23083fcd6e35492953e8d2aaaa68b860eb422b34627b13f2ce3eb6106061/typing_extensions-4.13.2.tar.gz", hash = "sha256:e6c81219bd689f51865d9e372991c540bda33a0379d5573cddb9a3a23f7caaef", size = 106967 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d", size = 37438 },
+    { url = "https://files.pythonhosted.org/packages/8b/54/b1ae86c0973cc6f0210b53d508ca3641fb6d0c56823f288d108bc7ab3cc8/typing_extensions-4.13.2-py3-none-any.whl", hash = "sha256:a439e7c04b49fec3e5d3e2beaa21755cadbbdc391694e28ccdd36ca4a1408f8c", size = 45806 },
 ]
 
 [[package]]
