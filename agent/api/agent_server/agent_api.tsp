@@ -10,11 +10,8 @@ import "@typespec/rest";
 using TypeSpec.Http;
 using TypeSpec.Rest;
 
-@service({
-  title: "Neon Agent Server API",
-  version: "1.0.0",
-})
-
+@service(#{ })
+@doc("Neon Agent Server API v1.0.0")
 namespace AgentServerApi;
 
 // --- Enums ---
@@ -74,7 +71,7 @@ model FileEntry {
 @doc("Represents a message from the agent to the user, including content, state, and any code changes.")
 model AgentMessage {
   @doc("Fixed field for client to detect agent message in the history") 
-  role: 'assistant';
+  role: "assistant";
 
   @doc("The type of message being sent.")
   kind: MessageKind;
@@ -83,7 +80,7 @@ model AgentMessage {
   content: string;
 
   @doc("Updated state of the Agent Server that should be presented in the next request to continue the conversation.")
-  agentState: Record<string, unknown> | null;
+  agentState: unknown | null;
 
   @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
   unifiedDiff: string | null;
@@ -102,12 +99,11 @@ model AgentMessage {
 }
 
 @doc("Structure of the data payload within each Server-Sent Event (SSE).")
-model AgentEvent {
+model AgentSseEvent {
   @doc("Current status of the agent (running or idle).")
   status: AgentStatus;
 
   @doc("The trace ID corresponding to the POST request that initiated this stream of events.")
-  @encodedName("application/json", "traceId")
   traceId?: string;
 
   @doc("The detailed message payload from the agent.")
@@ -117,7 +113,7 @@ model AgentEvent {
 @doc("Represents a message from the user to the agent.")
 model UserMessage {
   @doc("Fixed field for client to detect user message in the history") 
-  role: 'user'
+  role: "user";
 
   @doc("The content of the user's message.")
   content: string;
@@ -144,10 +140,10 @@ model AgentRequest {
   traceId: string;
 
   @doc("The full state of the Agent Server to restore from. This is an opaque object from the platform's perspective and should not be modified.")
-  agentState?: Record<string, unknown> | null;
+  agentState?: unknown | null;
 
   @doc("Settings for the agent execution, such as maximum number of iterations.")
-  settings?: Record<string, unknown>;
+  settings?: unknown;
 }
 
 // --- Operations ---
@@ -169,7 +165,11 @@ interface MessageOperations {
   """)
   sendMessage(
     @body body: AgentRequest
-  ): OkResponse<string> | BadRequestResponse | InternalServerErrorResponse;
+  ): {
+    @statusCode statusCode: 200;
+    @header contentType: "text/event-stream";
+    @body body: string;
+  } | BadRequestResponse | InternalServerErrorResponse;
 }
 
 @doc("Standard Bad Request response.")
