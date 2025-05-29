@@ -3,7 +3,7 @@ import pytest
 from log import get_logger
 from api.agent_server.models import AgentSseEvent, AgentStatus, MessageKind
 from api.agent_server.agent_api_client import AgentApiClient, DEFAULT_APP_REQUEST, DEFAULT_EDIT_REQUEST
-
+import anyio
 
 logger = get_logger(__name__)
 
@@ -137,3 +137,18 @@ async def test_agent_reaches_idle_state(trpc_agent):
         assert final_event.message.kind == MessageKind.REFINEMENT_REQUEST, "Final message kind is not REFINEMENT_REQUEST"
         assert final_event.message.agent_state is None, "Final event has non-null agent state"
         assert final_event.message.unified_diff is None, "Final event has non-null unified diff"
+
+
+# @pytest.mark.skip(reason="Not for CI usage - requires a separate running server")
+async def test_concurrent_usage():
+    total_requests = 3
+    logger.info(f"Starting load test with {total_requests} requests")
+    async def run_load_test():
+        async with AgentApiClient(base_url="http://0.0.0.0:8001") as client:
+            events, request = await client.send_message("Hello")
+
+    tg = anyio.create_task_group()
+    async with tg:
+        for i in range(total_requests):
+            logger.info(f"Starting request {i + 1}/{total_requests}")
+            tg.start_soon(run_load_test)

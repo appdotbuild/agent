@@ -6,6 +6,7 @@ from log import get_logger
 import hashlib
 from core.postgres_utils import create_postgres_service
 from core.dagger_utils import ExecResult
+import uuid
 
 logger = get_logger(name)
 
@@ -34,6 +35,7 @@ class Workspace:
             dag
             .container()
             .from_(base_image)
+            .with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
             .with_workdir("/app")
             .with_directory("/app", context)
         )
