@@ -28,23 +28,24 @@ class Workspace:
         cls,
         client: dagger.Client,
         base_image: str = "alpine",
-        context: Directory = dag.directory(),
+        context: Directory | None = None,
         setup_cmd: list[list[str]] = [],
         protected: list[str] = [],
         allowed: list[str] = [],
     ) -> Self:
+        my_context = context or client.directory()
         ctr = (
             client
             .container()
             .from_(base_image)
             .with_workdir("/app")
-            .with_directory("/app", context)
+            .with_directory("/app", my_context)
         )
         for cmd in setup_cmd:
             ctr = ctr.with_exec(cmd)
 
         ctr = ctr.with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
-        return cls(client=client, ctr=ctr, start=context, protected=set(protected), allowed=set(allowed))
+        return cls(client=client, ctr=ctr, start=my_context, protected=set(protected), allowed=set(allowed))
 
     @function
     def permissions(self, protected: list[str] = [], allowed: list[str] = []) -> Self:

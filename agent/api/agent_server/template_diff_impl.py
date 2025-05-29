@@ -7,6 +7,7 @@ import os
 import json
 import tempfile
 import shutil
+import dagger
 from typing import Dict, Any, Optional, Tuple
 
 from api.agent_server.interface import AgentInterface
@@ -25,7 +26,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
     server and frontend components, providing unified diffs for the changes.
     """
 
-    def __init__(self, application_id: str, trace_id: str, settings: Optional[Dict[str, Any]] = None):
+    def __init__(self, client: dagger.Client, application_id: str, trace_id: str, settings: Optional[Dict[str, Any]] = None):
         """
         Initialize the TemplateDiffAgentImplementation.
 
@@ -121,22 +122,22 @@ class TemplateDiffAgentImplementation(AgentInterface):
             Tuple containing server files, frontend files, and unified diff
         """
         logger.info(f"Generating counter app based on: {user_message}")
-        
+
         # Use the pre-defined counter_app.patch file
         patch_file_path = os.path.join(os.path.dirname(__file__), "counter_app.patch")
-        
+
         with open(patch_file_path, 'r') as f:
             unified_diff = f.read()
-        
+
         # Extract files from the patch
         server_files = {}
         frontend_files = {}
-        
+
         # Parse the patch to extract file contents
         current_file = None
         current_content = []
         file_path = None
-        
+
         for line in unified_diff.split('\n'):
             # Check for new file headers
             if line.startswith('diff --git'):
@@ -147,20 +148,20 @@ class TemplateDiffAgentImplementation(AgentInterface):
                         server_files[os.path.basename(file_path)] = content
                     elif file_path.startswith('frontend/'):
                         frontend_files[os.path.basename(file_path)] = content
-                
+
                 # Reset for new file
                 current_file = line
                 current_content = []
                 file_path = None
-            
+
             # Extract file path from +++ line
             elif line.startswith('+++') and not line.startswith('+++ /dev/null'):
                 file_path = line.split(' ')[1][2:]  # Remove "b/" prefix
-            
+
             # Collect content lines (those starting with +)
             elif line.startswith('+') and not line.startswith('+++'):
                 current_content.append(line[1:])  # Remove the + sign
-        
+
         # Don't forget the last file
         if current_file and file_path:
             content = '\n'.join(current_content)
@@ -168,7 +169,7 @@ class TemplateDiffAgentImplementation(AgentInterface):
                 server_files[os.path.basename(file_path)] = content
             elif file_path.startswith('frontend/'):
                 frontend_files[os.path.basename(file_path)] = content
-        
+
         return server_files, frontend_files, unified_diff
 
     def _save_files(self, server_files: Dict[str, str], frontend_files: Dict[str, str]) -> None:
