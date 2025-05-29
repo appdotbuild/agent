@@ -112,8 +112,6 @@ class TrpcAgentSession(AgentInterface):
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
 
-                messages += new_messages
-
                 app_name = None
                 #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
@@ -133,7 +131,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
-                        content=messages,
+                        content="Initializing...",
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
@@ -145,7 +143,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.STAGE_RESULT,
-                        content=messages,
+                        content=new_messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -154,7 +152,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.IDLE,
                         kind=MessageKind.REFINEMENT_REQUEST,
-                        content=messages,
+                        content=new_messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -188,7 +186,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REVIEW_RESULT,
-                            content=messages,
+                            content="Completed successfully",
                             fsm_state=fsm_state,
                             unified_diff=final_diff,
                             app_name=app_name,
