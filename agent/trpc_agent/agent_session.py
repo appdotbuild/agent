@@ -171,7 +171,7 @@ class TrpcAgentSession(AgentInterface):
                         )
                     case FSMStatus.COMPLETED:
                         try:
-                            logger.info(f"FSM is completed")
+                            logger.info("FSM is completed")
                             
                             #TODO: write unit test for this
                             snapshot_files = self.prepare_snapshot_from_request(request)
