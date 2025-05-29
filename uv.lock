@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "dagger-io"
-version = "0.18.2"
+version = "0.18.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -263,9 +263,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/e6/715803e4a38bcb9c9fdd5e6410fb0375d363a6a5a95e06c49cf8c3ebf416/dagger_io-0.18.2.tar.gz", hash = "sha256:2a7134c88b60b2850c9461d87e613dacbea92654a79bc8708b7019006cc6c33b", size = 83525 }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/ac/ccb254605724f3a915757b1376e8e010e6f7c57b65327aa7c8aca22db095/dagger_io-0.18.9.tar.gz", hash = "sha256:30994f7c012c40831d6c8f2c29bb83d0d9bf9b6f857a2230d48f3ea17fdd509f", size = 88988 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/7f/c5985266bb09b73aebf6c89b9cd71ee3b743d9edd3b7a7452db90eeac9da/dagger_io-0.18.2-py3-none-any.whl", hash = "sha256:56e13b6517e44215aa7581795ed2bfbcd12bf14102d7041213c349e88530e889", size = 80292 },
+    { url = "https://files.pythonhosted.org/packages/49/6c/b99d88cc642799199668e1af64aee9f57d749366249371f3e7387855b9a3/dagger_io-0.18.9-py3-none-any.whl", hash = "sha256:efcf910954509a62c3005b848e55e77b4864a4b5447cc50b070133e7ebad25bb", size = 85566 },
 ]
 
 [[package]]
@@ -408,7 +408,7 @@ requires-dist = [
     { name = "anthropic", extras = ["bedrock"], specifier = ">=0.49.0" },
     { name = "anyio", specifier = ">=4.9.0" },
     { name = "boto3", specifier = ">=1.37.18" },
-    { name = "dagger-io", specifier = ">=0.17.1" },
+    { name = "dagger-io", specifier = ">=0.18.9" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fire", specifier = ">=0.7.0" },
     { name = "google-genai", specifier = ">=1.7.0" },
