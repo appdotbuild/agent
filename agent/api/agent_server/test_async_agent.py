@@ -139,7 +139,7 @@ async def test_agent_reaches_idle_state(trpc_agent):
         assert final_event.message.unified_diff is None, "Final event has non-null unified diff"
 
 
-@pytest.mark.skip(reason="Not for CI usage - requires a separate running server")
+#@pytest.mark.skip(reason="Not for CI usage - requires a separate running server")
 async def test_concurrent_usage():
     total_requests = 3
     logger.info(f"Starting load test with {total_requests} requests")
