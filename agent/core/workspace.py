@@ -35,12 +35,13 @@ class Workspace:
             dag
             .container()
             .from_(base_image)
-            .with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
             .with_workdir("/app")
             .with_directory("/app", context)
         )
         for cmd in setup_cmd:
             ctr = ctr.with_exec(cmd)
+
+        ctr = ctr.with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
         return cls(ctr=ctr, start=context, protected=set(protected), allowed=set(allowed))
 
     @function
