@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 
 class DaggerFastAPI(FastAPI):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as _:
             return await super().__call__(scope, receive, send)
 
 
