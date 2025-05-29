@@ -18,6 +18,7 @@ from api.agent_server.models import (
     AgentMessage,
     AgentStatus,
     MessageKind,
+    UserMessage,
 )
 from api.agent_server.interface import AgentInterface
 from llm.llm_generators import generate_app_name, generate_commit_message
@@ -52,13 +53,6 @@ class TrpcAgentSession(AgentInterface):
         return messages
     
     @staticmethod
-    def prepare_content_for_event(content: Union[List[Message], str]) -> List[Message]:
-        """Prepare content for event."""
-        if isinstance(content, list):
-            return content
-        return [Message(role="assistant", content=[TextRaw(text=content)])]
-    
-    @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
         """Prepare snapshot files from request.all_files."""
         snapshot_files = {}
@@ -66,6 +60,14 @@ class TrpcAgentSession(AgentInterface):
             for file_entry in request.all_files:
                 snapshot_files[file_entry.path] = file_entry.content
         return snapshot_files
+    
+    def convert_agent_messages_to_llm_messages(self, conversation_messages: List[Union[UserMessage, AgentMessage]]) -> List[Message]:
+        """Convert ConversationMessage list to LLM Message format."""
+        messages = []
+        for msg in conversation_messages:
+            if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                messages.append(Message(role=msg.role, content=[TextRaw(text=msg.content)]))
+        return messages
         
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
@@ -136,7 +138,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
-                        content=self.prepare_content_for_event("Generating application based on your requirements..."),
+                        content="Generating application based on your requirements...",
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
@@ -148,7 +150,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.STAGE_RESULT,
-                        content=self.prepare_content_for_event(new_messages or "Processing..."),
+                        content=self._get_latest_assistant_response(new_messages) or "Processing...",
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -157,7 +159,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.IDLE, #TODO: check if need to report RUNNING https://github.com/appdotbuild/agent/issues/231
                         kind=MessageKind.REFINEMENT_REQUEST,
-                        content=self.prepare_content_for_event(new_messages or "Ready for your input."),
+                        content=self._get_latest_assistant_response(new_messages) or "Ready for your input.",
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -191,7 +193,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REVIEW_RESULT,
-                            content=self.prepare_content_for_event("Application generated successfully."),
+                            content="Application generated successfully.",
                             fsm_state=fsm_state,
                             unified_diff=final_diff,
                             app_name=app_name,
@@ -231,7 +233,7 @@ class TrpcAgentSession(AgentInterface):
                 for block in msg.content:
                     if hasattr(block, 'text'):
                         text_parts.append(block.text)
-                return " ".join(text_parts) if text_parts else None
+                return "".join(text_parts) if text_parts else None
         return None
 
     async def send_event(
