@@ -4,8 +4,6 @@ This ensures that the implementation stays in sync with the API specification.
 """
 import pytest
 import json
-from typing import Dict, Any, List
-from pydantic import ValidationError
 
 from api.agent_server.models import (
     AgentStatus,
@@ -16,7 +14,6 @@ from api.agent_server.models import (
     AgentRequest,
     FileEntry,
     DiffStatEntry,
-    ConversationMessage,
     parse_conversation_message
 )
 

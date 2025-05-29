@@ -10,7 +10,6 @@ from api.fsm_tools import FSMToolProcessor, FSMStatus
 from api.snapshot_utils import snapshot_saver
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
-import ujson as json
 
 from api.agent_server.models import (
     AgentRequest,

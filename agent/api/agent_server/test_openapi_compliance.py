@@ -17,7 +17,6 @@ from api.agent_server.models import (
     AgentSseEvent,
     AgentRequest,
     FileEntry,
-    DiffStatEntry,
 )
 
 

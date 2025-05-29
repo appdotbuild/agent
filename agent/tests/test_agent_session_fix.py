@@ -1,7 +1,6 @@
 """Test for agent session message content fix."""
 import pytest
 from unittest.mock import AsyncMock, Mock
-from typing import List
 import json
 
 from trpc_agent.agent_session import TrpcAgentSession
@@ -9,9 +8,7 @@ from api.agent_server.models import (
     AgentRequest, 
     AgentSseEvent, 
     UserMessage, 
-    AgentMessage,
-    MessageKind,
-    AgentStatus
+    MessageKind
 )
 from llm.common import Message, TextRaw
 
