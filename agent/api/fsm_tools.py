@@ -30,7 +30,9 @@ class FSMInterface(ApplicationBase, Protocol):
 
 class FSMStatus(enum.Enum):
     WIP = "WIP"
-    IDLE = "IDLE"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    REFINEMENT_REQUEST = "REFINEMENT_REQUEST"
 
 
 class FSMToolProcessor[T: FSMInterface]:
@@ -259,10 +261,12 @@ class FSMToolProcessor[T: FSMInterface]:
         if tool_results:
             thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
         match (tool_results, self.fsm_app):
-            case (_, app) if app and (app.is_completed or app.maybe_error()):
-                fsm_status = FSMStatus.IDLE # app in terminal state, always exit
+            case (_, app) if app and app.maybe_error():
+                fsm_status = FSMStatus.FAILED
+            case (_, app) if app and app.is_completed:
+                fsm_status = FSMStatus.COMPLETED
             case ([], app):
-                fsm_status = FSMStatus.IDLE # no tools used, always exit
+                fsm_status = FSMStatus.REFINEMENT_REQUEST # no tools used, always exit
             case _:
                 fsm_status = FSMStatus.WIP # continue processing
         return thread, fsm_status

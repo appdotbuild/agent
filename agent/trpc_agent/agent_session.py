@@ -100,11 +100,9 @@ class TrpcAgentSession(AgentInterface):
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
-
-            work_in_progress = False
+            
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
-                work_in_progress = fsm_status == FSMStatus.WIP
 
                 fsm_state = None
                 if self.processor_instance.fsm_app is None:
@@ -112,11 +110,12 @@ class TrpcAgentSession(AgentInterface):
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
 
+                # TODO: avoid sending all messages back - send only new messages
                 messages += new_messages
-
+                
                 app_name = None
+                # Send initial template diff if we are not working on a FSM and we are not restoring a previous state
                 #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
                     and request.agent_state is None
@@ -172,7 +171,7 @@ class TrpcAgentSession(AgentInterface):
                 if is_completed:
                     try:
                         logger.info(f"FSM is completed: {is_completed}")
-
+                        
                         #TODO: write unit test for this
                         snapshot_files = self.prepare_snapshot_from_request(request)
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
@@ -182,10 +181,10 @@ class TrpcAgentSession(AgentInterface):
                             len(final_diff) if final_diff else 0,
                             self.processor_instance.fsm_app.current_state,
                         )
-
+                        
                         prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                         commit_message = await generate_commit_message(prompt, flash_lite_client)
-
+                        
                         await self.send_event(
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
