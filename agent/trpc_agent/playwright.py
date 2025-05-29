@@ -20,11 +20,11 @@ import dagger
 logger = logging.getLogger(__name__)
 
 
-async def drizzle_push(ctr: dagger.Container, postgresdb: dagger.Service | None) -> ExecResult:
+async def drizzle_push(client: dagger.Client, ctr: dagger.Container, postgresdb: dagger.Service | None) -> ExecResult:
     """Run drizzle-kit push with postgres service."""
 
     if postgresdb is None:
-        postgresdb = create_postgres_service()
+        postgresdb = create_postgres_service(client)
 
     push_ctr = (
         ctr
@@ -81,8 +81,8 @@ class PlaywrightRunner:
                 entrypoint = "dev:client"
                 postgresdb = None
             case "full":
-                postgresdb = create_postgres_service()
-                push_result = await drizzle_push(ctr, postgresdb)
+                postgresdb = create_postgres_service(workspace.client)
+                push_result = await drizzle_push(workspace.client, ctr, postgresdb)
                 if push_result.exit_code != 0:
                     return push_result, f"Drizzle push failed: {push_result.stderr}"
                 logger.info("Drizzle push succeeded")

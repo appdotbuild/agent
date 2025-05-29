@@ -10,6 +10,7 @@ from api.fsm_tools import FSMToolProcessor, FSMStatus
 from api.snapshot_utils import snapshot_saver
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
+import dagger
 import ujson as json
 
 from api.agent_server.models import (
@@ -30,17 +31,18 @@ class AgentState(TypedDict):
 
 
 class TrpcAgentSession(AgentInterface):
-    def __init__(self, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
+    def __init__(self, client: dagger.Client, application_id: str | None= None, trace_id: str | None = None, settings: Optional[Dict[str, Any]] = None):
         """Initialize a new agent session"""
         self.application_id = application_id or uuid4().hex
         self.trace_id = trace_id or uuid4().hex
         self.settings = settings or {}
-        self.processor_instance = FSMToolProcessor(FSMApplication)
+        self.processor_instance = FSMToolProcessor(client, FSMApplication)
         self.llm_client: AsyncLLM = get_llm_client()
         self.model_params = {
             "max_tokens": 8192,
         }
         self._template_diff_sent: bool = False
+        self.client = client
 
     @staticmethod
     def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[Message]:
@@ -52,7 +54,7 @@ class TrpcAgentSession(AgentInterface):
             )
             for m in agent_messages
         ]
-    
+
     @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
         """Prepare snapshot files from request.all_files."""
@@ -61,7 +63,7 @@ class TrpcAgentSession(AgentInterface):
             for file_entry in request.all_files:
                 snapshot_files[file_entry.path] = file_entry.content
         return snapshot_files
-        
+
     async def process(self, request: AgentRequest, event_tx: MemoryObjectSendStream[AgentSseEvent]) -> None:
         """
         Process the incoming request and send events to the event stream.
@@ -80,10 +82,10 @@ class TrpcAgentSession(AgentInterface):
                 fsm_state = request.agent_state.get("fsm_state")
                 match fsm_state:
                     case None:
-                        self.processor_instance = FSMToolProcessor(FSMApplication)
+                        self.processor_instance = FSMToolProcessor(self.client, FSMApplication)
                     case _:
-                        fsm = await FSMApplication.load(fsm_state)
-                        self.processor_instance = FSMToolProcessor(FSMApplication, fsm_app=fsm)
+                        fsm = await FSMApplication.load(self.client, fsm_state)
+                        self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm)
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
@@ -98,7 +100,7 @@ class TrpcAgentSession(AgentInterface):
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
-            
+
             work_in_progress = False
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
@@ -119,7 +121,7 @@ class TrpcAgentSession(AgentInterface):
                 if (not self._template_diff_sent
                     and request.agent_state is None
                     and self.processor_instance.fsm_app):
-                    
+
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     app_name = await generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
@@ -170,7 +172,7 @@ class TrpcAgentSession(AgentInterface):
                 if is_completed:
                     try:
                         logger.info(f"FSM is completed: {is_completed}")
-                        
+
                         #TODO: write unit test for this
                         snapshot_files = self.prepare_snapshot_from_request(request)
                         final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
@@ -180,10 +182,10 @@ class TrpcAgentSession(AgentInterface):
                             len(final_diff) if final_diff else 0,
                             self.processor_instance.fsm_app.current_state,
                         )
-                        
+
                         prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                         commit_message = await generate_commit_message(prompt, flash_lite_client)
-                        
+
                         await self.send_event(
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
@@ -239,7 +241,7 @@ class TrpcAgentSession(AgentInterface):
         else:
             # Error messages are already strings
             content_str = content
-        
+
         event = AgentSseEvent(
             status=status,
             traceId=self.trace_id,

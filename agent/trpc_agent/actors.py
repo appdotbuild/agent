@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 async def run_drizzle(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
     logger.info("Running Drizzle database schema push")
-    result = await drizzle_push(node.data.workspace.ctr, postgresdb=None)
+    result = await drizzle_push(node.data.workspace.client, node.data.workspace.ctr, postgresdb=None)
     if result.exit_code == 0 and not result.stderr:
         logger.info("Drizzle schema push succeeded")
         return result, None

@@ -1,10 +1,10 @@
 import uuid
-from dagger import dag
+import dagger
 
-def create_postgres_service():
+def create_postgres_service(client: dagger.Client):
     """Create a PostgreSQL service with unique instance ID."""
     return (
-        dag.container()
+        client.container()
         .from_("postgres:17.0-alpine")
         .with_env_variable("POSTGRES_USER", "postgres")
         .with_env_variable("POSTGRES_PASSWORD", "postgres")

@@ -17,6 +17,7 @@ def _sorted_set(s: set[str]) -> list[str]:
 
 @object_type
 class Workspace:
+    client: dagger.Client
     ctr: Container
     start: Directory
     protected: set[str]
@@ -25,6 +26,7 @@ class Workspace:
     @classmethod
     async def create(
         cls,
+        client: dagger.Client,
         base_image: str = "alpine",
         context: Directory = dag.directory(),
         setup_cmd: list[list[str]] = [],
@@ -32,7 +34,7 @@ class Workspace:
         allowed: list[str] = [],
     ) -> Self:
         ctr = (
-            dag
+            client
             .container()
             .from_(base_image)
             .with_workdir("/app")
@@ -42,7 +44,7 @@ class Workspace:
             ctr = ctr.with_exec(cmd)
 
         ctr = ctr.with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
-        return cls(ctr=ctr, start=context, protected=set(protected), allowed=set(allowed))
+        return cls(client=client, ctr=ctr, start=context, protected=set(protected), allowed=set(allowed))
 
     @function
     def permissions(self, protected: list[str] = [], allowed: list[str] = []) -> Self:
@@ -98,7 +100,7 @@ class Workspace:
 
     @function
     async def diff(self) -> str:
-        start = dag.container().from_("alpine/git").with_workdir("/app").with_directory("/app", self.start)
+        start = self.client.container().from_("alpine/git").with_workdir("/app").with_directory("/app", self.start)
         if ".git" not in await self.start.entries():
             start = (
                 start.with_exec(["git", "init"])
@@ -138,7 +140,7 @@ class Workspace:
 
     @function
     async def exec_with_pg(self, command: list[str], cwd: str = ".") -> ExecResult:
-        postgresdb = create_postgres_service()
+        postgresdb = create_postgres_service(self.client)
 
         return await ExecResult.from_ctr(
             self.ctr
@@ -170,6 +172,7 @@ class Workspace:
     @function
     def clone(self) -> Self:
         return type(self)(
+            client=self.client,
             ctr=self.ctr,
             start=self.start,
             protected=self.protected,
