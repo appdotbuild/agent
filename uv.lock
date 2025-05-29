@@ -132,7 +132,6 @@ name = "appdotbuild-server"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "aiohttp" },
     { name = "fullstack-agent" },
 ]
 
@@ -147,10 +146,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.12.4" },
-    { name = "fullstack-agent", editable = "agent" },
-]
+requires-dist = [{ name = "fullstack-agent", editable = "agent" }]
 
 [package.metadata.requires-dev]
 dev = [

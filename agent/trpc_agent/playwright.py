@@ -14,7 +14,6 @@ from core.postgres_utils import create_postgres_service, pg_health_check_cmd
 from llm.common import AsyncLLM, Message, TextRaw, AttachedFiles
 from llm.utils import merge_text
 
-from dagger import dag
 import dagger
 
 logger = logging.getLogger(__name__)

@@ -16,7 +16,6 @@ import anyio
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from starlette.types import Scope, Receive, Send
 import uvicorn
 from fire import Fire
 import dagger

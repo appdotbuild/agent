@@ -1,7 +1,7 @@
 from os import name
 from typing import Self
 import dagger
-from dagger import dag, function, object_type, Container, Directory, ReturnType
+from dagger import function, object_type, Container, Directory, ReturnType
 from log import get_logger
 import hashlib
 from core.postgres_utils import create_postgres_service

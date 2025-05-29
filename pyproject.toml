@@ -3,10 +3,7 @@ name = "appdotbuild-server"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "aiohttp>=3.12.4",
-    "fullstack-agent",
-]
+dependencies = ["fullstack-agent"]
 
 [tool.uv.sources]
 fullstack-agent = { workspace = true }

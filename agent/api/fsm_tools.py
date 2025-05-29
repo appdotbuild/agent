@@ -322,9 +322,9 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     model_params = {"max_tokens": 8192 }
 
 
-    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as dagger_client:
         # Create processor without FSM instance - it will be created in start_fsm tool
-        processor = FSMToolProcessor(client, FSMApplication)
+        processor = FSMToolProcessor(dagger_client, FSMApplication)
         logger.info("FSM tools initialized successfully")
 
         # Create the initial prompt for the AI agent

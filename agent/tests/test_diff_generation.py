@@ -1,6 +1,5 @@
 import pytest
 import dagger
-from dagger import dag
 from core.workspace import Workspace
 
 pytestmark = pytest.mark.anyio
