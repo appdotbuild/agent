@@ -47,13 +47,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Async Agent Server API")
 
 
-class DaggerFastAPI(FastAPI):
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as _:
-            return await super().__call__(scope, receive, send)
-
-
-app = DaggerFastAPI(
+app = FastAPI(
     title="Async Agent Server API",
     description="Async API for communication between the Platform (Backend) and the Agent Server",
     version="1.0.0",
@@ -251,10 +245,11 @@ async def message(
             "template_diff": TemplateDiffAgentImplementation,
             "trpc_agent": TrpcAgentSession,
         }
-        return StreamingResponse(
-            run_agent(request, agent_type[CONFIG.agent_type]),
-            media_type="text/event-stream"
-        )
+        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as _:
+            return StreamingResponse(
+                run_agent(request, agent_type[CONFIG.agent_type]),
+                media_type="text/event-stream"
+            )
 
     except Exception as e:
         logger.error(f"Error processing message request: {str(e)}")
