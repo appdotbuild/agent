@@ -105,7 +105,7 @@ class PlaywrightRunner:
         if mode == "full":
             logger.info("Waiting for backend service to start...")
             backend_check = (
-                dag.container()
+                workspace.client.container()
                 .from_("alpine:latest")
                 .with_exec(["apk", "add", "--no-cache", "curl"])
                 .with_service_binding("app", app_service)
