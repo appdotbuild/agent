@@ -193,7 +193,7 @@ class Workspace:
             f'baseURL: "http://{host}:{port}"'
         )
         playwright_ctr = (
-            dag.container()
+            self.client.container()
             .from_("mcr.microsoft.com/playwright:v1.52.0")
             .with_directory("/app", self.ctr.directory("."))
             .with_workdir("/app")
