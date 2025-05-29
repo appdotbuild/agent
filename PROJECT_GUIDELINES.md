@@ -47,7 +47,7 @@ Commands should typically be run from the `./agent` directory:
 - The state machine pattern in `core` requires explicit state transitions
 - The logger setup requires using the `get_logger` function from `agent.log`
 - Always check for existing patterns before implementing new functionality
-- Fixed JSON message structure issue (#227): The problem was that `TrpcAgentSession.send_event` was sending the entire conversation history as content, causing exponential growth and nested JSON. The fix was to only send the latest assistant response as plain text instead of JSON-serialized message arrays.
+- Fixed JSON message structure issue (#227): The problem was that `TrpcAgentSession.send_event` was sending the entire conversation history as content, causing exponential growth and nested JSON. The fix was to only send the latest assistant responses in the compatible JSON-serialized message arrays.
 
 # Code Style Guidelines
 

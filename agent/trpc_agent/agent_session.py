@@ -43,15 +43,20 @@ class TrpcAgentSession(AgentInterface):
         self._template_diff_sent: bool = False
 
     @staticmethod
-    def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[Message]:
-        """Convert AgentMessage list to LLM Message format."""
-        return [
-            Message(
-                role=m.role if m.role == "user" else "assistant",
-                content=[TextRaw(text=m.content)]
-            )
-            for m in agent_messages
-        ]
+    def get_messages_for_client(agent_messages: List[AgentMessage]) -> List[Message]:
+        """Convert AgentMessage list to Client Message format and filter out messages that are not needed for the client."""
+        messages = []
+        for m in agent_messages:
+            if m.role == "assistant":
+                messages.append(Message(role=m.role, content=[TextRaw(text=m.content)]))
+        return messages
+    
+    @staticmethod
+    def prepare_content_for_event(content: Union[List[Message], str]) -> List[Message]:
+        """Prepare content for event."""
+        if isinstance(content, list):
+            return content
+        return [Message(role="assistant", content=[TextRaw(text=content)])]
     
     @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
@@ -112,8 +117,6 @@ class TrpcAgentSession(AgentInterface):
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
                     #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
 
-                messages += new_messages
-
                 app_name = None
                 #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
@@ -133,7 +136,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
-                        content="Generating application based on your requirements...",
+                        content=self.prepare_content_for_event("Generating application based on your requirements..."),
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
@@ -145,16 +148,16 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.STAGE_RESULT,
-                        content=self._get_latest_assistant_response(new_messages) or "Processing...",
+                        content=self.prepare_content_for_event(new_messages or "Processing..."),
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
                 else:
                     await self.send_event(
                         event_tx=event_tx,
-                        status=AgentStatus.IDLE,
+                        status=AgentStatus.IDLE, #TODO: check if need to report RUNNING https://github.com/appdotbuild/agent/issues/231
                         kind=MessageKind.REFINEMENT_REQUEST,
-                        content=self._get_latest_assistant_response(new_messages) or "Ready for your input.",
+                        content=self.prepare_content_for_event(new_messages or "Ready for your input."),
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -188,7 +191,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REVIEW_RESULT,
-                            content=self._get_latest_assistant_response(messages) or "Application generated successfully.",
+                            content=self.prepare_content_for_event("Application generated successfully."),
                             fsm_state=fsm_state,
                             unified_diff=final_diff,
                             app_name=app_name,
