@@ -52,6 +52,11 @@ class TrpcAgentSession(AgentInterface):
             )
             for m in agent_messages
         ]
+        
+    @staticmethod
+    def filter_messages_for_user(messages: List[Message]) -> List[Message]:
+        """Filter messages for user."""
+        return [m for m in messages if m.role == "assistant"]
     
     @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
@@ -103,6 +108,8 @@ class TrpcAgentSession(AgentInterface):
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
                 work_in_progress = fsm_status == FSMStatus.WIP
+                
+                filtered_messages = self.filter_messages_for_user(new_messages)
 
                 fsm_state = None
                 if self.processor_instance.fsm_app is None:
@@ -143,7 +150,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.STAGE_RESULT,
-                        content=new_messages,
+                        content=filtered_messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
@@ -152,7 +159,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.IDLE,
                         kind=MessageKind.REFINEMENT_REQUEST,
-                        content=new_messages,
+                        content=filtered_messages,
                         fsm_state=fsm_state,
                         app_name=app_name,
                     )
