@@ -54,16 +54,12 @@ class TrpcAgentSession(AgentInterface):
             )
             for m in agent_messages
         ]
-<<<<<<< HEAD
         
     @staticmethod
     def filter_messages_for_user(messages: List[Message]) -> List[Message]:
         """Filter messages for user."""
         return [m for m in messages if m.role == "assistant"]
     
-=======
-
->>>>>>> main
     @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
         """Prepare snapshot files from request.all_files."""
@@ -112,7 +108,6 @@ class TrpcAgentSession(AgentInterface):
             
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
-                work_in_progress = fsm_status == FSMStatus.WIP
                 
                 filtered_messages = self.filter_messages_for_user(new_messages)
 
