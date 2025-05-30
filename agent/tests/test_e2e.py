@@ -53,12 +53,11 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True):
         async with AgentApiClient() as client:
             events, request = await client.send_message(prompt)
             assert events, "No response received from agent"
-            latest_event = events[-1]
-            if latest_event.message.kind == MessageKind.REFINEMENT_REQUEST:
+            while events[-1].message.kind == MessageKind.REFINEMENT_REQUEST:
                 events, request = await client.continue_conversation(
                     previous_events=events,
                     previous_request=request,
-                    message="make it look a tiny bit eclectic",
+                    message="just do it!",
                 )
 
             diff = latest_unified_diff(events)
