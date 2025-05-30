@@ -100,10 +100,11 @@ class TrpcAgentSession(AgentInterface):
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
+            top_level_agent_llm = get_llm_client(model_name="gemini-flash")
 
             work_in_progress = False
             while True:
-                new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                new_messages, fsm_status = await self.processor_instance.step(messages, top_level_agent_llm, self.model_params)
                 work_in_progress = fsm_status == FSMStatus.WIP
 
                 fsm_state = None
