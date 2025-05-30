@@ -8,12 +8,15 @@ from core.statemachine import StateMachine, State
 from trpc_agent.application import ApplicationContext, FSMEvent, MachineCheckpoint, FSMApplication, Node, EditActor
 from trpc_agent.actors import BaseActor, ConcurrentActor, DraftActor
 from llm.common import Message
+import dagger
 import anyio
+
 
 async def _get_actors(path):
     with open(path, "r") as f:
         data: MachineCheckpoint = json.load(f)
-        root = await FSMApplication.make_states()
+        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+            root = await FSMApplication.make_states(client)
         fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
         match fsm.root.states:
             case None:
@@ -37,7 +40,7 @@ def get_all_trajectories(root: Node, prefix: str = ""):
         yield f"{prefix}_{i}", [msg.to_dict() for msg in leaf_messages]
 
 
-def extract_trajectories_from_dump(path: str):
+def extract_trajectories_from_dump(path: str) -> Dict[str, List[Dict[str, Any]]]:
     actors = anyio.run(_get_actors, path)
     messages = {}
 

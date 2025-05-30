@@ -4,8 +4,8 @@ from pathlib import Path
 import anyio
 from typing import Dict, List, Any
 from datetime import datetime
-
-from analyze import _get_actors, get_all_trajectories
+import os
+from analysis.utils import extract_trajectories_from_dump
 from trpc_agent.actors import ConcurrentActor, DraftActor
 from trpc_agent.silly import EditActor
 
@@ -13,60 +13,23 @@ from trpc_agent.silly import EditActor
 def find_fsm_files(directory: Path) -> List[Path]:
     """Find all FSM checkpoint files in the given directory."""
     fsm_files = []
-    for pattern in ["*fsm_enter.json", "*fsm_exit.json"]:
+    patterns = []
+    if st.sidebar.checkbox("FSM enter states", value=False):
+        patterns.append("*fsm_enter.json")
+    if st.sidebar.checkbox("FSM exit states", value=True):
+        patterns.append("*fsm_exit.json")
+    for pattern in patterns:
         fsm_files.extend(directory.glob(pattern))
     return sorted(fsm_files, key=lambda x: x.stat().st_mtime, reverse=True)
-
-
-def process_fsm_file(path: Path) -> Dict[str, List[Dict[str, Any]]]:
-    """Process a single FSM file and extract message trajectories."""
-    actors = anyio.run(_get_actors, str(path))
-    messages = {}
-
-    for actor in actors:
-        match actor:
-            case ConcurrentActor():
-                handlers = actor.handlers
-                for name, handler in handlers.handlers.items():
-                    for k, v in get_all_trajectories(handler, f"backend_{name}"):
-                        messages[k] = v
-
-                frontend = actor.frontend.root
-                if frontend:
-                    for k, v in get_all_trajectories(frontend, "frontend"):
-                        messages[k] = v
-
-            case DraftActor():
-                root = actor.root
-                if root is None:
-                    continue
-                for k, v in get_all_trajectories(root, "draft"):
-                    messages[k] = v
-
-            case EditActor():
-                root = actor.root
-                if root is None:
-                    continue
-                for k, v in get_all_trajectories(root, "edit"):
-                    messages[k] = v
-
-            case _:
-                st.error(f"Unknown actor type: {type(actor)}")
-
-    return messages
 
 
 def display_message(msg: Dict[str, Any], idx: int):
     """Display a single message in a nice format."""
     with st.expander(f"Message {idx + 1}: {msg.get('role', 'Unknown')}", expanded=False):
-        content = msg.get('content', '')
-        if isinstance(content, str):
-            if len(content) > 500:
-                st.text_area("Content", content, height=200)
-            else:
-                st.write("**Content:**", content)
-        else:
-            st.json(content)
+        content = msg.get('content', [''])
+        if isinstance(content, list) and len(content) == 1:
+            content = content[0]
+        st.json(content)
 
         # Display additional fields
         excluded_fields = {'role', 'content', 'timestamp'}
@@ -76,6 +39,10 @@ def display_message(msg: Dict[str, Any], idx: int):
             st.json(other_fields)
 
 
+def truncate_name(s: str):
+    name, *rest = s.split('-')
+    return "-".join([name[:6] + '...', *rest])
+
 def main():
     st.set_page_config(page_title="FSM Message Analyzer", layout="wide")
     st.title("FSM Message Trajectory Analyzer")
@@ -84,13 +51,12 @@ def main():
     with st.sidebar:
         st.header("Settings")
 
-        # Directory selection
-        traces_dir = Path("/Users/arseny/dev/bot-new/agent/traces")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        traces_dir = Path(os.path.join(current_dir, "../traces"))
         if not traces_dir.exists():
             st.error(f"Traces directory not found: {traces_dir}")
             return
 
-        # Find FSM files
         fsm_files = find_fsm_files(traces_dir)
 
         if not fsm_files:
@@ -101,7 +67,7 @@ def main():
         selected_file = st.selectbox(
             "Select FSM checkpoint file",
             options=fsm_files,
-            format_func=lambda x: f"{x.name} ({datetime.fromtimestamp(x.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')})"
+            format_func=lambda x: f"{truncate_name(x.name)} ({datetime.fromtimestamp(x.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')})"
         )
 
         # Process button
@@ -109,11 +75,17 @@ def main():
             st.session_state.current_file = selected_file
             st.session_state.processing = True
 
+        actors_to_display = st.sidebar.multiselect(
+            "Select Actors to Display",
+            options=["Frontend", "Handler", "Draft", "Edit"],
+            default=["Frontend", "Handler", "Draft", "Edit"]
+        )
+
     # Main content area
     if 'current_file' in st.session_state and st.session_state.get('processing'):
         try:
             with st.spinner(f"Processing {st.session_state.current_file.name}..."):
-                messages = process_fsm_file(st.session_state.current_file)
+                messages = extract_trajectories_from_dump(st.session_state.current_file)
                 st.session_state.messages = messages
                 st.session_state.processing = False
         except Exception as e:
@@ -143,6 +115,14 @@ def main():
 
         # Display trajectories
         for trajectory_name, trajectory_messages in messages.items():
+            is_displayed = False
+            for actor in actors_to_display:
+                if trajectory_name.startswith(actor.lower()):
+                    is_displayed = True
+                    break
+            if not is_displayed:
+                continue
+
             # Filter messages if search term is provided
             if search_term:
                 filtered_messages = [
