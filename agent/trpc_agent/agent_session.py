@@ -105,7 +105,6 @@ class TrpcAgentSession(AgentInterface):
             work_in_progress = False
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, top_level_agent_llm, self.model_params)
-                work_in_progress = fsm_status == FSMStatus.WIP
 
                 fsm_state = None
                 if self.processor_instance.fsm_app is None:
