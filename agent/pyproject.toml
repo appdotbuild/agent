@@ -72,3 +72,6 @@ testpaths = ["tests", "api", "core", "llm", "trpc_agent"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+filterwarnings = [
+    "ignore::pytest.PytestAssertRewriteWarning"
+]
