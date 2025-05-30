@@ -2,6 +2,7 @@ from typing import List
 
 from google import genai
 from google.genai import types as genai_types
+from google.genai.errors import APIError
 import os
 from llm import common
 from log import get_logger
@@ -71,14 +72,14 @@ class GeminiLLM(common.AsyncLLM):
         while True:
             if n_tries >= 5:
                 raise RuntimeError(f"Failed to get a valid completion after {n_tries} attempts")
-            response = await self._async_client.models.generate_content(
-                model=self.model_name,
-                contents=gemini_messages,
-                config=config,
-            )
             try:
+                response = await self._async_client.models.generate_content(
+                    model=self.model_name,
+                    contents=gemini_messages,
+                    config=config,
+                )
                 return self._completion_from(response)
-            except RetryableError as err:
+            except (RetryableError, APIError) as err:
                 logger.warning(f"Retrying completion due to error: {err}")
                 await anyio.sleep(random.uniform(0.5, 1.5))
                 n_tries += 1

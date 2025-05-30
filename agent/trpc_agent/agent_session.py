@@ -54,7 +54,12 @@ class TrpcAgentSession(AgentInterface):
             )
             for m in agent_messages
         ]
-
+        
+    @staticmethod
+    def filter_messages_for_user(messages: List[Message]) -> List[Message]:
+        """Filter messages for user."""
+        return [m for m in messages if m.role == "assistant"]
+    
     @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
         """Prepare snapshot files from request.all_files."""
@@ -100,11 +105,15 @@ class TrpcAgentSession(AgentInterface):
             messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
-            top_level_agent_llm = get_llm_client(model_name="gemini-flash")
-
-            work_in_progress = False
+            
             while True:
-                new_messages, fsm_status = await self.processor_instance.step(messages, top_level_agent_llm, self.model_params)
+                new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
+                
+                # Add messages for agentic loop
+                messages += new_messages
+                
+                # Filter messages for user
+                messages_to_user = self.filter_messages_for_user(new_messages)
 
                 fsm_state = None
                 if self.processor_instance.fsm_app is None:
@@ -112,9 +121,6 @@ class TrpcAgentSession(AgentInterface):
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-
-                # TODO: avoid sending all messages back - send only new messages
-                messages += new_messages
 
                 app_name = None
                 # Send initial template diff if we are not working on a FSM and we are not restoring a previous state
@@ -136,13 +142,14 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
-                        content=messages,
+                        content="Initializing...",
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
                         commit_message="Initial commit"
                     )
 
+                
                 # Send event based on FSM status
                 match fsm_status:
                     case FSMStatus.WIP:
@@ -150,7 +157,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.RUNNING,
                             kind=MessageKind.STAGE_RESULT,
-                            content=messages,
+                            content=messages_to_user,
                             fsm_state=fsm_state,
                             app_name=app_name,
                         )
@@ -159,7 +166,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REFINEMENT_REQUEST,
-                            content=messages,
+                            content=messages_to_user,
                             fsm_state=fsm_state,
                             app_name=app_name,
                         )
@@ -168,12 +175,12 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.RUNTIME_ERROR,
-                            content=messages,
+                            content=messages_to_user,
                         )
                     case FSMStatus.COMPLETED:
                         try:
                             logger.info("FSM is completed")
-
+                            
                             #TODO: write unit test for this
                             snapshot_files = self.prepare_snapshot_from_request(request)
                             final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
@@ -183,15 +190,15 @@ class TrpcAgentSession(AgentInterface):
                                 len(final_diff) if final_diff else 0,
                                 self.processor_instance.fsm_app.current_state,
                             )
-
+                            
                             prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                             commit_message = await generate_commit_message(prompt, flash_lite_client)
-
+                            
                             await self.send_event(
                                 event_tx=event_tx,
                                 status=AgentStatus.IDLE,
                                 kind=MessageKind.REVIEW_RESULT,
-                                content=messages,
+                                content=messages_to_user,
                                 fsm_state=fsm_state,
                                 unified_diff=final_diff,
                                 app_name=app_name,
@@ -199,7 +206,7 @@ class TrpcAgentSession(AgentInterface):
                             )
                         except Exception as e:
                             logger.exception(f"Error sending final diff: {e}")
-
+                
                 # Exit if we are not working on a FSM or if the FSM is completed or failed
                 if fsm_status != FSMStatus.WIP:
                     break
