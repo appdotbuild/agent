@@ -5,7 +5,7 @@ import anyio
 import contextlib
 
 from fire import Fire
-from api.agent_server.agent_client import AgentApiClient
+from api.agent_server.agent_client import AgentApiClient, MessageKind
 from api.agent_server.agent_api_client import apply_patch, latest_unified_diff, DEFAULT_APP_REQUEST, DEFAULT_EDIT_REQUEST, spawn_local_server
 from api.docker_utils import setup_docker_env, start_docker_compose, wait_for_healthy_containers, stop_docker_compose, get_container_logs
 from log import get_logger
@@ -53,6 +53,14 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True):
         async with AgentApiClient() as client:
             events, request = await client.send_message(prompt)
             assert events, "No response received from agent"
+            latest_event = events[-1]
+            if latest_event.message.kind == MessageKind.REFINEMENT_REQUEST:
+                events, request = await client.continue_conversation(
+                    previous_events=events,
+                    previous_request=request,
+                    message="make it look a tiny bit eclectic",
+                )
+
             diff = latest_unified_diff(events)
             assert diff, "No diff was generated in the agent response"
 

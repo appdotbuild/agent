@@ -137,20 +137,29 @@ async def run_agent[T: AgentInterface](
 
         async def send_keep_alive():
             try:
+                # Use shorter sleep intervals to be more responsive
+                keep_alive_interval = 30
+                sleep_interval = 0.5  # Check every 500ms
+                elapsed = 0.0
+                
                 while keep_alive_running:
-                    keep_alive_event = AgentSseEvent(
-                        status=AgentStatus.RUNNING,
-                        traceId=request.trace_id,
-                        message=AgentMessage(
-                            role="assistant",
-                            kind=MessageKind.KEEP_ALIVE,
-                            content="",
-                            agentState=None,
-                            unifiedDiff=None
+                    await anyio.sleep(sleep_interval)
+                    elapsed += sleep_interval
+                    
+                    if keep_alive_running and elapsed >= keep_alive_interval:
+                        keep_alive_event = AgentSseEvent(
+                            status=AgentStatus.RUNNING,
+                            traceId=request.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.KEEP_ALIVE,
+                                content="",
+                                agentState=None,
+                                unifiedDiff=None
+                            )
                         )
-                    )
-                    await keep_alive_tx.send(keep_alive_event)
-                    await anyio.sleep(30)
+                        await keep_alive_tx.send(keep_alive_event)
+                        elapsed = 0.0  # Reset elapsed time
 
             except Exception:
                 pass

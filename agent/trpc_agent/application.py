@@ -98,6 +98,8 @@ class FSMApplication:
         return "\n".join([
             "1. Application draft. Contains types, database tables and handler declarations only.",
             "2. Core backend implementations and application frontend.",
+            "",
+            "The result application will be based on Typescript, Drizzle, tRPC and React."
         ])
 
     @classmethod

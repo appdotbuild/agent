@@ -113,11 +113,12 @@ class TrpcAgentSession(AgentInterface):
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    #app_diff = await self.get_app_diff() # TODO: implement diff stats after optimizations
 
+                # TODO: avoid sending all messages back - send only new messages
                 messages += new_messages
 
                 app_name = None
+                # Send initial template diff if we are not working on a FSM and we are not restoring a previous state
                 #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
                     and request.agent_state is None
@@ -143,64 +144,65 @@ class TrpcAgentSession(AgentInterface):
                         commit_message="Initial commit"
                     )
 
-                if work_in_progress:
-                    await self.send_event(
-                        event_tx=event_tx,
-                        status=AgentStatus.RUNNING,
-                        kind=MessageKind.STAGE_RESULT,
-                        content=messages,
-                        fsm_state=fsm_state,
-                        app_name=app_name,
-                    )
-                else:
-                    await self.send_event(
-                        event_tx=event_tx,
-                        status=AgentStatus.IDLE,
-                        kind=MessageKind.REFINEMENT_REQUEST,
-                        content=messages,
-                        fsm_state=fsm_state,
-                        app_name=app_name,
-                    )
-
-                match self.processor_instance.fsm_app:
-                    case None:
-                        #TODO: check if we are restoring
-                        is_completed = False
-                    case FSMApplication():
-                        fsm_app = self.processor_instance.fsm_app
-                        is_completed = fsm_app.is_completed
-
-                if is_completed:
-                    try:
-                        logger.info(f"FSM is completed: {is_completed}")
-
-                        #TODO: write unit test for this
-                        snapshot_files = self.prepare_snapshot_from_request(request)
-                        final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
-
-                        logger.info(
-                            "Sending completion event with diff (length: %d) for state %s",
-                            len(final_diff) if final_diff else 0,
-                            self.processor_instance.fsm_app.current_state,
+                # Send event based on FSM status
+                match fsm_status:
+                    case FSMStatus.WIP:
+                        await self.send_event(
+                            event_tx=event_tx,
+                            status=AgentStatus.RUNNING,
+                            kind=MessageKind.STAGE_RESULT,
+                            content=messages,
+                            fsm_state=fsm_state,
+                            app_name=app_name,
                         )
-
-                        prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
-                        commit_message = await generate_commit_message(prompt, flash_lite_client)
-
+                    case FSMStatus.REFINEMENT_REQUEST:
                         await self.send_event(
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
-                            kind=MessageKind.REVIEW_RESULT,
+                            kind=MessageKind.REFINEMENT_REQUEST,
                             content=messages,
                             fsm_state=fsm_state,
-                            unified_diff=final_diff,
                             app_name=app_name,
-                            commit_message=commit_message
                         )
-                    except Exception as e:
-                        logger.exception(f"Error sending final diff: {e}")
+                    case FSMStatus.FAILED:
+                        await self.send_event(
+                            event_tx=event_tx,
+                            status=AgentStatus.IDLE,
+                            kind=MessageKind.RUNTIME_ERROR,
+                            content=messages,
+                        )
+                    case FSMStatus.COMPLETED:
+                        try:
+                            logger.info("FSM is completed")
 
-                if not work_in_progress or is_completed:
+                            #TODO: write unit test for this
+                            snapshot_files = self.prepare_snapshot_from_request(request)
+                            final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
+
+                            logger.info(
+                                "Sending completion event with diff (length: %d) for state %s",
+                                len(final_diff) if final_diff else 0,
+                                self.processor_instance.fsm_app.current_state,
+                            )
+
+                            prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
+                            commit_message = await generate_commit_message(prompt, flash_lite_client)
+
+                            await self.send_event(
+                                event_tx=event_tx,
+                                status=AgentStatus.IDLE,
+                                kind=MessageKind.REVIEW_RESULT,
+                                content=messages,
+                                fsm_state=fsm_state,
+                                unified_diff=final_diff,
+                                app_name=app_name,
+                                commit_message=commit_message
+                            )
+                        except Exception as e:
+                            logger.exception(f"Error sending final diff: {e}")
+
+                # Exit if we are not working on a FSM or if the FSM is completed or failed
+                if fsm_status != FSMStatus.WIP:
                     break
 
         except Exception as e:

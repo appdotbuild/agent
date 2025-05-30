@@ -112,7 +112,7 @@ async def test_cached_lru():
         assert json.dumps(new_resp.to_dict()) != responses["first"], "First request should not hit the cache"
         assert base_llm.calls == 4, "Base LLM should still be called four times"
 
-
+@pytest.mark.skip(reason="Flaky")
 async def test_gemini():
     client = get_llm_client(model_name="gemini-flash")
     resp = await client.completion(

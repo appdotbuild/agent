@@ -30,7 +30,9 @@ class FSMInterface(ApplicationBase, Protocol):
 
 class FSMStatus(enum.Enum):
     WIP = "WIP"
-    IDLE = "IDLE"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    REFINEMENT_REQUEST = "REFINEMENT_REQUEST"
 
 
 class FSMToolProcessor[T: FSMInterface]:
@@ -259,10 +261,12 @@ class FSMToolProcessor[T: FSMInterface]:
         if tool_results:
             thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
         match (tool_results, self.fsm_app):
-            case (_, app) if app and (app.is_completed or app.maybe_error()):
-                fsm_status = FSMStatus.IDLE # app in terminal state, always exit
+            case (_, app) if app and app.maybe_error():
+                fsm_status = FSMStatus.FAILED
+            case (_, app) if app and app.is_completed:
+                fsm_status = FSMStatus.COMPLETED
             case ([], app):
-                fsm_status = FSMStatus.IDLE # no tools used, always exit
+                fsm_status = FSMStatus.REFINEMENT_REQUEST # no tools used, always exit
             case _:
                 fsm_status = FSMStatus.WIP # continue processing
         return thread, fsm_status
@@ -279,7 +283,7 @@ class FSMToolProcessor[T: FSMInterface]:
 
     @property
     def system_prompt(self) -> str:
-        return f"""You are a software engineering expert who can generate application code using a code generation framework based on Typescript, tRPC and Drizzle. This framework uses a Finite State Machine (FSM) to guide the generation process.
+        return f"""You are a software engineering expert who can generate application code using a code generation framework. This framework uses a Finite State Machine (FSM) to guide the generation process.
 
 Your task is to control the FSM through the following stages of code generation:
 {self.fsm_class.base_execution_plan()}
@@ -303,6 +307,8 @@ During your review process, consider the following questions:
 When providing feedback, be specific and actionable. If you're unsure about any aspect, always ask for clarification before proceeding.
 FSM is an internal API, you don't need to know how it works under the hood or expose its details to the user.
 Prefer simple solutions, build an app with very basic features only first unless the user explicitly asks for something more complex.
+
+If user's request is not detailed, ask for clarification. Make reasonable assumptions and asked for confirmation and missing details. Typically, you should ask 2-3 clarifying questions before starting the FSM session. Questions should be related to the required application features and visual style. Questions can not be about the technical implementation details, such as which framework to use, how to structure the code, etc - these are internal details that should be handled by the FSM and the code generation framework. If user does not provide enough details, you can start the FSM session with a simplest possible application that implements the basic features.
 
 Make sure to appreciate the best software engineering practices, no matter what the user asks. Even stupid requests should be handled professionally.
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
