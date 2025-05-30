@@ -109,7 +109,11 @@ class TrpcAgentSession(AgentInterface):
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(messages, self.llm_client, self.model_params)
                 
-                filtered_messages = self.filter_messages_for_user(new_messages)
+                # Add messages for agentic loop
+                messages += new_messages
+                
+                # Filter messages for user
+                messages_to_user = self.filter_messages_for_user(new_messages)
 
                 fsm_state = None
                 if self.processor_instance.fsm_app is None:
@@ -153,7 +157,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.RUNNING,
                             kind=MessageKind.STAGE_RESULT,
-                            content=filtered_messages,
+                            content=messages_to_user,
                             fsm_state=fsm_state,
                             app_name=app_name,
                         )
@@ -162,7 +166,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REFINEMENT_REQUEST,
-                            content=filtered_messages,
+                            content=messages_to_user,
                             fsm_state=fsm_state,
                             app_name=app_name,
                         )
@@ -171,7 +175,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.RUNTIME_ERROR,
-                            content=filtered_messages,
+                            content=messages_to_user,
                         )
                     case FSMStatus.COMPLETED:
                         try:
@@ -194,7 +198,7 @@ class TrpcAgentSession(AgentInterface):
                                 event_tx=event_tx,
                                 status=AgentStatus.IDLE,
                                 kind=MessageKind.REVIEW_RESULT,
-                                content=filtered_messages,
+                                content=messages_to_user,
                                 fsm_state=fsm_state,
                                 unified_diff=final_diff,
                                 app_name=app_name,
