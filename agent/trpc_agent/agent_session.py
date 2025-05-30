@@ -54,7 +54,12 @@ class TrpcAgentSession(AgentInterface):
             )
             for m in agent_messages
         ]
-
+        
+    @staticmethod
+    def filter_messages_for_user(messages: List[Message]) -> List[Message]:
+        """Filter messages for user."""
+        return [m for m in messages if m.role == "assistant"]
+    
     @staticmethod
     def prepare_snapshot_from_request(request: AgentRequest) -> Dict[str, str]:
         """Prepare snapshot files from request.all_files."""
@@ -136,7 +141,7 @@ class TrpcAgentSession(AgentInterface):
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
-                        content=messages,
+                        content="Initializing...",
                         fsm_state=fsm_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
@@ -150,7 +155,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.RUNNING,
                             kind=MessageKind.STAGE_RESULT,
-                            content=messages,
+                            content=messages_to_user,
                             fsm_state=fsm_state,
                             app_name=app_name,
                         )
@@ -159,7 +164,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REFINEMENT_REQUEST,
-                            content=messages,
+                            content=messages_to_user,
                             fsm_state=fsm_state,
                             app_name=app_name,
                         )
@@ -168,7 +173,7 @@ class TrpcAgentSession(AgentInterface):
                             event_tx=event_tx,
                             status=AgentStatus.IDLE,
                             kind=MessageKind.RUNTIME_ERROR,
-                            content=messages,
+                            content=messages_to_user,
                         )
                     case FSMStatus.COMPLETED:
                         try:
@@ -191,7 +196,7 @@ class TrpcAgentSession(AgentInterface):
                                 event_tx=event_tx,
                                 status=AgentStatus.IDLE,
                                 kind=MessageKind.REVIEW_RESULT,
-                                content=messages,
+                                content=messages_to_user,
                                 fsm_state=fsm_state,
                                 unified_diff=final_diff,
                                 app_name=app_name,
