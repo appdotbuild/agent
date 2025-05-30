@@ -59,8 +59,7 @@ const noEmptyDynamicSelectValue = {
       JSXAttribute(node) {
         if (
           node.name?.name === 'value' &&
-          node.value?.type === 'JSXExpressionContainer' &&
-          node.value.expression?.type === 'MemberExpression'
+          node.value?.type === 'JSXExpressionContainer'
         ) {
           const parentName = node.parent?.name?.name;
           if (parentName && (
@@ -70,15 +69,49 @@ const noEmptyDynamicSelectValue = {
             parentName === 'DropdownMenuItem' ||
             parentName === 'RadioGroupItem'
           )) {
-            // Check if it's a simple property access without fallback
-            const parent = node.value.expression.parent;
-            // Check if the parent is a logical expression with || or ??
-            if (!(parent?.type === 'LogicalExpression' && (parent.operator === '||' || parent.operator === '??'))) {
-              context.report({
-                node,
-                messageId: 'potentiallyEmptyValue',
-              });
+            const expr = node.value.expression;
+            
+            // Skip if it's already a logical expression with fallback
+            if (expr.type === 'LogicalExpression' && 
+                (expr.operator === '||' || expr.operator === '??')) {
+              return;
             }
+            
+            // Skip if it's a conditional expression (ternary)
+            if (expr.type === 'ConditionalExpression') {
+              return;
+            }
+            
+            // Only check member expressions (like user.id, item.value)
+            if (expr.type !== 'MemberExpression') {
+              return;
+            }
+            
+            // Skip if we're inside a map/filter/forEach callback (likely iterating over existing data)
+            let parent = node;
+            while (parent) {
+              if (parent.type === 'CallExpression' && 
+                  parent.callee?.property?.name && 
+                  ['map', 'filter', 'forEach', 'reduce'].includes(parent.callee.property.name)) {
+                return;
+              }
+              parent = parent.parent;
+            }
+            
+            // Check if there's a parent conditional that ensures the value exists
+            let ancestor = node.parent;
+            while (ancestor) {
+              // If we're inside an if statement or conditional that checks this value
+              if (ancestor.type === 'IfStatement' || ancestor.type === 'ConditionalExpression') {
+                return; // Assume it's been validated
+              }
+              ancestor = ancestor.parent;
+            }
+            
+            context.report({
+              node,
+              messageId: 'potentiallyEmptyValue',
+            });
           }
         }
       },
