@@ -96,7 +96,7 @@ def _init_logging():
         if handler is not None:
             root_logger.addHandler(handler)
 
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG if os.getenv('DEBUG_LOG') else logging.INFO)
 
     # Set log levels for noisy loggers
     for package in ['urllib3', 'httpx', 'google_genai.models', "anthropic._base_client"]:
@@ -110,6 +110,11 @@ _init_logging()
 
 def get_logger(name):
     _logger = logging.getLogger(name)
+    
+    # set DEBUG level for the logger if the environment variable is set
+    if os.getenv('DEBUG_LOG'):
+        _logger.setLevel(logging.DEBUG)
+    
     return _logger
 
 

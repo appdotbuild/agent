@@ -31,19 +31,6 @@ def create_mock_fsm(files=None):
     mock_fsm.dump = AsyncMock(return_value={"state": "test_state"})
     return mock_fsm
 
-def create_dagger_connection():
-    return dagger.connection(dagger.Config(log_output=open(os.devnull, "w")))
-
-@pytest.fixture(scope="function")
-async def fsm_application():
-    """Create a mock FSMApplication instance for testing"""
-    mock_fsm = MagicMock(spec=StateMachine)
-    mock_fsm.context = MockApplicationContext()
-    mock_fsm.dump = AsyncMock(return_value={"state": "test_state"})
-
-    application = FSMApplication(mock_fsm)
-    yield application
-
 
 @pytest.mark.anyio
 async def test_get_diff_with_empty_snapshot():
@@ -57,9 +44,9 @@ async def test_get_diff_with_empty_snapshot():
         "client/src/App.tsx": "function App() { return <div>Test App</div>; }",
         "server/index.js": "console.log('Server starting');"
     }
-    
-    async with create_dagger_connection():
-        fsm_application = FSMApplication(create_mock_fsm(fsm_files))
+
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        fsm_application = FSMApplication(client, create_mock_fsm(fsm_files))
 
         diff_result = await fsm_application.get_diff_with({})
 
@@ -82,10 +69,10 @@ async def test_get_diff_with_identical_snapshot():
         "test_file.txt": "Hello, world!",
         "client/src/App.tsx": "function App() { return <div>Test App</div>; }"
     }
-    
-    async with create_dagger_connection():
+
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Create FSM application with our test files
-        fsm_application = FSMApplication(create_mock_fsm(test_files))
+        fsm_application = FSMApplication(client, create_mock_fsm(test_files))
 
         # Call get_diff_with using identical snapshot
         diff_result = await fsm_application.get_diff_with(test_files)
@@ -118,10 +105,10 @@ async def test_get_diff_with_modified_files():
         "test_file.txt": "Hello, modified world!",
         "client/src/App.tsx": "function App() { return <div>Modified App</div>; }"
     }
-    
-    async with create_dagger_connection():
+
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Create FSM application with our modified files
-        fsm_application = FSMApplication(create_mock_fsm(fsm_files))
+        fsm_application = FSMApplication(client, create_mock_fsm(fsm_files))
 
         # Call get_diff_with using the original snapshot
         diff_result = await fsm_application.get_diff_with(snapshot_files)
@@ -155,10 +142,10 @@ async def test_get_diff_with_added_files():
         "client/src/App.tsx": "function App() { return <div>New App</div>; }",
         "server/index.js": "console.log('Server starting');"
     }
-    
-    async with create_dagger_connection():
+
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Create FSM application with our expanded files
-        fsm_application = FSMApplication(create_mock_fsm(fsm_files))
+        fsm_application = FSMApplication(client, create_mock_fsm(fsm_files))
 
         # Call get_diff_with using the original snapshot
         diff_result = await fsm_application.get_diff_with(snapshot_files)
@@ -197,9 +184,9 @@ async def test_get_diff_with_removed_files():
         "client/src/App.tsx": "function App() { return <div>App</div>; }",
     }
 
-    async with create_dagger_connection():
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Create FSM application with our reduced files
-        fsm_application = FSMApplication(create_mock_fsm(fsm_files))
+        fsm_application = FSMApplication(client, create_mock_fsm(fsm_files))
 
         # Call get_diff_with using the original snapshot
         diff_result = await fsm_application.get_diff_with(snapshot_files)
@@ -222,11 +209,9 @@ async def test_get_diff_with_removed_files():
 @pytest.mark.anyio
 async def test_get_diff_with_exception_handling():
     """Test error handling when something goes wrong during diff generation"""
-    # Create a mock FSM application
-    fsm_application = FSMApplication(create_mock_fsm())
-
     # Use a real Dagger connection but create conditions that will cause an error
-    async with create_dagger_connection():
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        fsm_application = FSMApplication(client, create_mock_fsm())
         # Call get_diff_with but cause an exception in the Workspace.diff method
         with patch.object(Workspace, 'diff', side_effect=Exception("Test diff error")):
             diff_result = await fsm_application.get_diff_with({})
@@ -240,9 +225,9 @@ async def test_get_diff_with_real_dagger():
     """Integration test with a real Dagger instance (requires Dagger to be available)"""
     # Skip this test by default since it requires Docker/Dagger
     try:
-        async with create_dagger_connection():
+        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
             # Create FSM application
-            fsm_application = FSMApplication(create_mock_fsm())
+            fsm_application = FSMApplication(client, create_mock_fsm())
 
             # Call the method with an empty snapshot
             diff_result = await fsm_application.get_diff_with({})

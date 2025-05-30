@@ -16,7 +16,6 @@ import anyio
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from starlette.types import Scope, Receive, Send
 import uvicorn
 from fire import Fire
 import dagger
@@ -47,13 +46,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Async Agent Server API")
 
 
-class DaggerFastAPI(FastAPI):
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-            return await super().__call__(scope, receive, send)
-
-
-app = DaggerFastAPI(
+app = FastAPI(
     title="Async Agent Server API",
     description="Async API for communication between the Platform (Backend) and the Agent Server",
     version="1.0.0",
@@ -91,6 +84,7 @@ class SessionManager:
 
     def get_or_create_session[T: AgentInterface](
         self,
+        client: dagger.Client,
         request: AgentRequest,
         agent_class: type[T],
         *args,
@@ -98,19 +92,20 @@ class SessionManager:
     ) -> T:
         session_id = f"{request.application_id}:{request.trace_id}"
 
-        if session_id in self.sessions:
-            logger.info(f"Reusing existing session for {session_id}")
-            return self.sessions[session_id]
+        #if session_id in self.sessions:
+        #    logger.info(f"Reusing existing session for {session_id}")
+        #    return self.sessions[session_id]
 
         logger.info(f"Creating new agent session for {session_id}")
         agent = agent_class(
+            client=client,
             application_id=request.application_id,
             trace_id=request.trace_id,
             settings=request.settings,
             *args,
             **kwargs
         )
-        self.sessions[session_id] = agent
+        #self.sessions[session_id] = agent
         return agent
 
     def cleanup_session(self, application_id: str, trace_id: str) -> None:
@@ -129,90 +124,100 @@ async def run_agent[T: AgentInterface](
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
 
-    # Establish Dagger connection for the agent's execution context
-    agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        # Establish Dagger connection for the agent's execution context
+        agent = session_manager.get_or_create_session(client, request, agent_class, *args, **kwargs)
 
-    event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
-    keep_alive_tx = event_tx.clone()  # Clone the sender for use in the keep-alive task
-    final_state = None
+        event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
+        keep_alive_tx = event_tx.clone()  # Clone the sender for use in the keep-alive task
+        final_state = None
 
-    # Use this flag to control the keep-alive task
-    keep_alive_running = True
+        # Use this flag to control the keep-alive task
+        keep_alive_running = True
 
-    async def send_keep_alive():
+        async def send_keep_alive():
+            try:
+                # Use shorter sleep intervals to be more responsive
+                keep_alive_interval = 30
+                sleep_interval = 0.5  # Check every 500ms
+                elapsed = 0.0
+                
+                while keep_alive_running:
+                    await anyio.sleep(sleep_interval)
+                    elapsed += sleep_interval
+                    
+                    if keep_alive_running and elapsed >= keep_alive_interval:
+                        keep_alive_event = AgentSseEvent(
+                            status=AgentStatus.RUNNING,
+                            traceId=request.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.KEEP_ALIVE,
+                                content="",
+                                agentState=None,
+                                unifiedDiff=None
+                            )
+                        )
+                        await keep_alive_tx.send(keep_alive_event)
+                        elapsed = 0.0  # Reset elapsed time
+
+            except Exception:
+                pass
+            finally:
+                await keep_alive_tx.aclose()
+
         try:
-            while keep_alive_running:
-                keep_alive_event = AgentSseEvent(
-                    status=AgentStatus.RUNNING,
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(agent.process, request, event_tx)
+
+                # Start the keep-alive task
+                tg.start_soon(send_keep_alive)
+
+                async with event_rx:
+                    async for event in event_rx:
+                        # Keep track of the last state in events with non-null state
+                        if event.message and event.message.agent_state:
+                            final_state = event.message.agent_state
+
+                        # Format SSE event properly with data: prefix and double newline at the end
+                        # This ensures compatibility with SSE standard
+                        yield f"data: {event.to_json()}\n\n"
+
+                        if event.status == AgentStatus.IDLE:
+                            keep_alive_running = False
+
+                            # Only log that we'll clean up later - don't do the actual cleanup here
+                            # The actual cleanup happens in the finally block
+                            if request.agent_state is None:
+                                logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
+
+        except* Exception as excgroup:
+            for e in excgroup.exceptions:
+                # Log the specific exception from the group with traceback
+                logger.exception(f"Error in SSE generator TaskGroup for trace {request.trace_id}:", exc_info=e)
+                error_event = AgentSseEvent(
+                    status=AgentStatus.IDLE,
                     traceId=request.trace_id,
                     message=AgentMessage(
                         role="assistant",
-                        kind=MessageKind.KEEP_ALIVE,
-                        content="",
+                        kind=MessageKind.RUNTIME_ERROR,
+                        content=f"Error processing request: {str(e)}", # Keep simple message for client
                         agentState=None,
-                        unifiedDiff=None
+                        unifiedDiff=""
                     )
                 )
-                await keep_alive_tx.send(keep_alive_event)
-                await anyio.sleep(30)
+                # Format error SSE event properly
+                yield f"data: {error_event.to_json()}\n\n"
 
-        except Exception:
-            pass
+                # On error, remove the session entirely
+                session_manager.cleanup_session(request.application_id, request.trace_id)
         finally:
-            await keep_alive_tx.aclose()
-
-    try:
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(agent.process, request, event_tx)
-
-            # Start the keep-alive task
-            tg.start_soon(send_keep_alive)
-
-            async with event_rx:
-                async for event in event_rx:
-                    # Keep track of the last state in events with non-null state
-                    if event.message and event.message.agent_state:
-                        final_state = event.message.agent_state
-
-                    # Format SSE event properly with data: prefix and double newline at the end
-                    # This ensures compatibility with SSE standard
-                    yield f"data: {event.to_json()}\n\n"
-
-                    if event.status == AgentStatus.IDLE:
-                        keep_alive_running = False
-
-                        # Only log that we'll clean up later - don't do the actual cleanup here
-                        # The actual cleanup happens in the finally block
-                        if request.agent_state is None:
-                            logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
-
-    except* Exception as excgroup:
-        for e in excgroup.exceptions:
-            # Log the specific exception from the group with traceback
-            logger.exception(f"Error in SSE generator TaskGroup for trace {request.trace_id}:", exc_info=e)
-            error_event = AgentSseEvent(
-                status=AgentStatus.IDLE,
-                traceId=request.trace_id,
-                message=AgentMessage(
-                    role="assistant",
-                    kind=MessageKind.RUNTIME_ERROR,
-                    content=f"Error processing request: {str(e)}", # Keep simple message for client
-                    agentState=None,
-                    unifiedDiff=""
-                )
-            )
-            # Format error SSE event properly
-            yield f"data: {error_event.to_json()}\n\n"
-
-            # On error, remove the session entirely
-            session_manager.cleanup_session(request.application_id, request.trace_id)
-    finally:
-        # For requests without agent state or where the session completed, clean up
-        # Ensure cleanup happens outside the dagger connection if needed, though session removal should be fine
-        if request.agent_state is None and (final_state is None or final_state == {}):
-            logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
-            session_manager.cleanup_session(request.application_id, request.trace_id)
-            clear_trace_id()
+            # For requests without agent state or where the session completed, clean up
+            # Ensure cleanup happens outside the dagger connection if needed, though session removal should be fine
+            if request.agent_state is None and (final_state is None or final_state == {}):
+                logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
+                session_manager.cleanup_session(request.application_id, request.trace_id)
+                clear_trace_id()
 
 
 @app.post("/message", response_model=None)

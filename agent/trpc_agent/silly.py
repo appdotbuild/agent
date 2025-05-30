@@ -448,10 +448,11 @@ async def main(user_prompt="Add feature to create plain notes without status."):
     with open("./trpc_agent/todo_app_snapshot.json", "r") as f:
         files = json.load(f)
 
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         llm = get_llm_client(model_name="gemini-flash")
 
         workspace = await Workspace.create(
+            client=client,
             base_image="oven/bun:1.2.5-alpine",
             context=dagger.dag.host().directory("./trpc_agent/template"),
             setup_cmd=[["bun", "install"]],

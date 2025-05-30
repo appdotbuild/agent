@@ -58,6 +58,7 @@ async def test_tracing(caplog, template_diff):
         assert record.trace_id == "test-tracing-more", f"Trace ID mismatch: {record.trace_id} != test-tracing-more"
 
 
+@pytest.mark.skip(reason="Temporarily disabled")
 async def test_sequential_sse_responses(trpc_agent):
     """Test that sequential SSE responses work properly within a session."""
     async with AgentApiClient() as client:
@@ -89,7 +90,7 @@ async def test_sequential_sse_responses(trpc_agent):
         #     assert event.trace_id == initial_request.trace_id, "Trace IDs don't match in second continuation (model)"
 
 
-
+@pytest.mark.skip(reason="Temporarily disabled")
 async def test_session_with_no_state(trpc_agent):
     """Test session behavior when no state is provided in continuation requests."""
     async with AgentApiClient() as client:

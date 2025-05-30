@@ -12,9 +12,6 @@ pytestmark = pytest.mark.anyio
 def anyio_backend():
     return 'asyncio'
 
-def create_dagger_connection():
-    # Ensure Dagger logs go to devnull for cleaner test output
-    return dagger.connection(dagger.Config(log_output=open(os.devnull, "w")))
 
 @pytest.mark.skip(reason="Skipping test as long running")
 @pytest.mark.anyio
@@ -37,9 +34,9 @@ async def test_fsm_edit_and_diff_generation():
     current_settings = None
 
 
-    async with create_dagger_connection():
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         logger.info(f"Starting FSM with prompt: '{initial_prompt}'")
-        fsm_app = await FSMApplication.start_fsm(user_prompt=initial_prompt, settings=current_settings)
+        fsm_app = await FSMApplication.start_fsm(client, user_prompt=initial_prompt, settings=current_settings)
 
         # Run FSM to initial completion
         logger.info("Running FSM to initial completion...")
@@ -77,7 +74,7 @@ async def test_fsm_edit_and_diff_generation():
         # Simulate providing feedback for an edit
         logger.info(f"Providing feedback for edit: '{edit_feedback}'")
         # The FSM should be in COMPLETE, so providing feedback will transition to APPLY_FEEDBACK
-        await fsm_app.apply_changes(feedback=edit_feedback, component_name="frontend")
+        await fsm_app.apply_changes(feedback=edit_feedback)
 
         # The provide_feedback call should transition the FSM.
         # The next confirm_state will execute the EditActor.

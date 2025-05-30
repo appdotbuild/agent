@@ -14,17 +14,16 @@ from core.postgres_utils import create_postgres_service, pg_health_check_cmd
 from llm.common import AsyncLLM, Message, TextRaw, AttachedFiles
 from llm.utils import merge_text
 
-from dagger import dag
 import dagger
 
 logger = logging.getLogger(__name__)
 
 
-async def drizzle_push(ctr: dagger.Container, postgresdb: dagger.Service | None) -> ExecResult:
+async def drizzle_push(client: dagger.Client, ctr: dagger.Container, postgresdb: dagger.Service | None) -> ExecResult:
     """Run drizzle-kit push with postgres service."""
 
     if postgresdb is None:
-        postgresdb = create_postgres_service()
+        postgresdb = create_postgres_service(client)
 
     push_ctr = (
         ctr
@@ -81,8 +80,8 @@ class PlaywrightRunner:
                 entrypoint = "dev:client"
                 postgresdb = None
             case "full":
-                postgresdb = create_postgres_service()
-                push_result = await drizzle_push(ctr, postgresdb)
+                postgresdb = create_postgres_service(workspace.client)
+                push_result = await drizzle_push(workspace.client, ctr, postgresdb)
                 if push_result.exit_code != 0:
                     return push_result, f"Drizzle push failed: {push_result.stderr}"
                 logger.info("Drizzle push succeeded")
@@ -105,7 +104,7 @@ class PlaywrightRunner:
         if mode == "full":
             logger.info("Waiting for backend service to start...")
             backend_check = (
-                dag.container()
+                workspace.client.container()
                 .from_("alpine:latest")
                 .with_exec(["apk", "add", "--no-cache", "curl"])
                 .with_service_binding("app", app_service)

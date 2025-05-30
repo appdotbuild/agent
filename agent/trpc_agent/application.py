@@ -83,14 +83,15 @@ class ApplicationContext(Context):
 
 class FSMApplication:
 
-    def __init__(self, fsm: StateMachine[ApplicationContext, FSMEvent]):
+    def __init__(self, client: dagger.Client, fsm: StateMachine[ApplicationContext, FSMEvent]):
         self.fsm = fsm
+        self.client = client
 
     @classmethod
-    async def load(cls, data: MachineCheckpoint) -> Self:
-        root = await cls.make_states()
+    async def load(cls, client: dagger.Client, data: MachineCheckpoint) -> Self:
+        root = await cls.make_states(client)
         fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
-        return cls(fsm)
+        return cls(client, fsm)
 
     @classmethod
     def base_execution_plan(cls) -> str:
@@ -100,16 +101,16 @@ class FSMApplication:
         ])
 
     @classmethod
-    async def start_fsm(cls, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:
+    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:
         """Create the state machine for the application"""
-        states = await cls.make_states(settings)
+        states = await cls.make_states(client, settings)
         context = ApplicationContext(user_prompt=user_prompt)
         fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
         await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
-        return cls(fsm)
+        return cls(client, fsm)
 
     @classmethod
-    async def make_states(cls, settings: Dict[str, Any] | None = None) -> State[ApplicationContext, FSMEvent]:
+    async def make_states(cls, client: dagger.Client, settings: Dict[str, Any] | None = None) -> State[ApplicationContext, FSMEvent]:
         def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
             files = {}
             for node in solution.get_trajectory():
@@ -136,8 +137,9 @@ class FSMApplication:
         model_params = settings or {}
         g_llm = get_llm_client(model_name="gemini-pro")
         workspace = await Workspace.create(
+            client=client,
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
+            context=client.host().directory("./trpc_agent/template"),
             setup_cmd=[["bun", "install"]],
         )
 
@@ -317,11 +319,11 @@ class FSMApplication:
             logger.info("SERVER get_diff_with: Snapshot is empty. Diff will be against template + FSM context files.")
 
         logger.debug("SERVER get_diff_with: Initializing Dagger context from empty directory")
-        context = dagger.dag.directory()
+        context = self.client.directory()
 
         gitignore_path = "./trpc_agent/template/.gitignore"
         try:
-            gitignore_file = dagger.dag.host().file(gitignore_path)
+            gitignore_file = self.client.host().file(gitignore_path)
             context = context.with_file(".gitignore", gitignore_file)
             logger.info(f"SERVER get_diff_with: Added .gitignore from {gitignore_path} to Dagger context.")
         except Exception as e:
@@ -333,12 +335,12 @@ class FSMApplication:
             context = context.with_new_file(key, value)
 
         logger.info("SERVER get_diff_with: Creating Dagger workspace for diff generation.")
-        workspace = await Workspace.create(base_image="alpine/git", context=context)
+        workspace = await Workspace.create(self.client, base_image="alpine/git", context=context)
         logger.debug("SERVER get_diff_with: Dagger workspace created with initial snapshot context.")
 
         template_dir_path = "./trpc_agent/template"
         try:
-            template_dir = dagger.dag.host().directory(template_dir_path)
+            template_dir = self.client.host().directory(template_dir_path)
             workspace.ctr = workspace.ctr.with_directory(".", template_dir)
             logger.info(f"SERVER get_diff_with: Template directory {template_dir_path} merged into Dagger workspace root.")
         except Exception as e:
@@ -370,8 +372,8 @@ class FSMApplication:
 
 
 async def main(user_prompt="Minimal persistent counter application"):
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        fsm_app: FSMApplication = await FSMApplication.start_fsm(user_prompt)
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        fsm_app: FSMApplication = await FSMApplication.start_fsm(client, user_prompt)
 
         while (fsm_app.current_state not in (FSMState.COMPLETE, FSMState.FAILURE)):
             await fsm_app.fsm.send(FSMEvent("CONFIRM"))

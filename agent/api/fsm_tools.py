@@ -1,5 +1,6 @@
 from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any, Tuple
 import anyio
+import dagger
 from fire import Fire
 
 import enum
@@ -16,7 +17,7 @@ logger = get_logger(__name__)
 @runtime_checkable
 class FSMInterface(ApplicationBase, Protocol):
     @classmethod
-    async def start_fsm(cls, user_prompt: str, settings: Dict[str, Any]) -> Self: ...
+    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any]) -> Self: ...
     async def confirm_state(self): ...
     async def apply_changes(self, feedback: str): ...
     async def complete_fsm(self): ...
@@ -29,7 +30,9 @@ class FSMInterface(ApplicationBase, Protocol):
 
 class FSMStatus(enum.Enum):
     WIP = "WIP"
-    IDLE = "IDLE"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    REFINEMENT_REQUEST = "REFINEMENT_REQUEST"
 
 
 class FSMToolProcessor[T: FSMInterface]:
@@ -45,7 +48,7 @@ class FSMToolProcessor[T: FSMInterface]:
     fsm_app: T | None
     settings: Dict[str, Any]
 
-    def __init__(self, fsm_class: type[T], fsm_app: T | None = None, settings: Dict[str, Any] | None = None):
+    def __init__(self, client: dagger.Client, fsm_class: type[T], fsm_app: T | None = None, settings: Dict[str, Any] | None = None):
         """
         Initialize the FSM Tool Processor
 
@@ -57,6 +60,7 @@ class FSMToolProcessor[T: FSMInterface]:
         self.fsm_class = fsm_class
         self.fsm_app = fsm_app
         self.settings = settings or {}
+        self.client = client
 
         # Define tool definitions for the AI agent using the common Tool structure
         self.tool_definitions: list[Tool] = [
@@ -126,7 +130,7 @@ class FSMToolProcessor[T: FSMInterface]:
                 logger.warning("There's an active FSM session already. Completing it before starting a new one.")
                 return CommonToolResult(content="An active FSM session already exists. Please explain why do you even need to create a new one instead of using existing one. Should you use `change` tool instead?", is_error=True)
 
-            self.fsm_app = await self.fsm_class.start_fsm(user_prompt=app_description, settings=self.settings)
+            self.fsm_app = await self.fsm_class.start_fsm(self.client, user_prompt=app_description, settings=self.settings)
 
             # Check for errors
             if (error_msg := self.fsm_app.maybe_error()):
@@ -257,10 +261,12 @@ class FSMToolProcessor[T: FSMInterface]:
         if tool_results:
             thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
         match (tool_results, self.fsm_app):
-            case (_, app) if app and (app.is_completed or app.maybe_error()):
-                fsm_status = FSMStatus.IDLE # app in terminal state, always exit
+            case (_, app) if app and app.maybe_error():
+                fsm_status = FSMStatus.FAILED
+            case (_, app) if app and app.is_completed:
+                fsm_status = FSMStatus.COMPLETED
             case ([], app):
-                fsm_status = FSMStatus.IDLE # no tools used, always exit
+                fsm_status = FSMStatus.REFINEMENT_REQUEST # no tools used, always exit
             case _:
                 fsm_status = FSMStatus.WIP # continue processing
         return thread, fsm_status
@@ -319,17 +325,17 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
     client = get_llm_client()
     model_params = {"max_tokens": 8192 }
 
-    # Create processor without FSM instance - it will be created in start_fsm tool
-    processor = FSMToolProcessor(FSMApplication)
-    logger.info("FSM tools initialized successfully")
 
-    # Create the initial prompt for the AI agent
-    logger.info("Sending request to LLM...")
-    current_messages = [
-        Message(role="user", content=[TextRaw(initial_prompt)]),
-    ]
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as dagger_client:
+        # Create processor without FSM instance - it will be created in start_fsm tool
+        processor = FSMToolProcessor(dagger_client, FSMApplication)
+        logger.info("FSM tools initialized successfully")
 
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+        # Create the initial prompt for the AI agent
+        logger.info("Sending request to LLM...")
+        current_messages = [
+            Message(role="user", content=[TextRaw(initial_prompt)]),
+        ]
         # Main interaction loop
         while True:
             new_messages = await processor.step(current_messages, client, model_params)

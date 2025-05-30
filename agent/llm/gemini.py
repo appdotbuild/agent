@@ -67,7 +67,10 @@ class GeminiLLM(common.AsyncLLM):
                 )
 
         gemini_messages = await self._messages_into(messages, attach_files)
+        n_tries = 0
         while True:
+            if n_tries >= 5:
+                raise RuntimeError(f"Failed to get a valid completion after {n_tries} attempts")
             response = await self._async_client.models.generate_content(
                 model=self.model_name,
                 contents=gemini_messages,
@@ -75,8 +78,10 @@ class GeminiLLM(common.AsyncLLM):
             )
             try:
                 return self._completion_from(response)
-            except RetryableError:
+            except RetryableError as err:
+                logger.warning(f"Retrying completion due to error: {err}")
                 await anyio.sleep(random.uniform(0.5, 1.5))
+                n_tries += 1
 
     async def upload_files(self, files: List[str]) -> List[genai_types.File]:
         result = []
@@ -93,9 +98,9 @@ class GeminiLLM(common.AsyncLLM):
             raise RetryableError(f"Empty completion: {completion}")
             # usually it is caused by an error on Gemini side
         if not completion.candidates[0].content:
-            raise ValueError(f"Empty content in completion: {completion}")
+            raise RetryableError(f"Empty content in completion: {completion}")
         if not completion.candidates[0].content.parts:
-            raise ValueError(f"Empty parts in content in completion: {completion}")
+            raise RetryableError(f"Empty parts in content in completion: {completion}")
         ours_content: list[common.TextRaw | common.ToolUse | common.ThinkingBlock] = []
         for block in completion.candidates[0].content.parts:
             if block.text:
