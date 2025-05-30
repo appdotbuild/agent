@@ -12,22 +12,22 @@ import dagger
 import anyio
 
 
-async def _get_actors(path):
-    with open(path, "r") as f:
-        data: MachineCheckpoint = json.load(f)
-        async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
-            root = await FSMApplication.make_states(client)
-        fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
-        match fsm.root.states:
-            case None:
-                raise ValueError("No states found in the FSM data.")
-            case _:
-                actors = [
-                    state.invoke['src']
-                    for state in fsm.root.states.values()
-                    if state.invoke is not None
-                ]
-                return actors
+async def _get_actors(data: Dict[str, Any]):
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        root = await FSMApplication.make_states(client)
+    fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
+    match fsm.root.states:
+        case None:
+            raise ValueError("No states found in the FSM data.")
+        case _:
+            actors = [
+                state.invoke['src']
+                for state in fsm.root.states.values()
+                if state.invoke is not None
+            ]
+            return actors
+
+
 
 
 def get_all_trajectories(root: Node, prefix: str = ""):
@@ -40,8 +40,13 @@ def get_all_trajectories(root: Node, prefix: str = ""):
         yield f"{prefix}_{i}", [msg.to_dict() for msg in leaf_messages]
 
 
-def extract_trajectories_from_dump(path: str) -> Dict[str, List[Dict[str, Any]]]:
-    actors = anyio.run(_get_actors, path)
+def extract_trajectories_from_dump(data: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """Extract trajectories from FSM dump data.
+    
+    Args:
+        data: Dict containing the FSM checkpoint data
+    """
+    actors = anyio.run(_get_actors, data)
     messages = {}
 
     for actor in actors:
@@ -91,7 +96,9 @@ def main(dumps_path: str, output_path: str):
     for dump_file in dump_files:
         print(f"Processing {dump_file}...")
         try:
-            trajectories = extract_trajectories_from_dump(dump_file)
+            with open(dump_file, "r") as f:
+                dump_data = json.load(f)
+            trajectories = extract_trajectories_from_dump(dump_data)
             final_result[os.path.basename(dump_file)] = trajectories
             output_file = os.path.join(output_path, os.path.basename(dump_file))
 
