@@ -1,14 +1,9 @@
 import streamlit as st
-import ujson as json
 from pathlib import Path
-import anyio
 from typing import Dict, List, Any
-from datetime import datetime
 import os
 from analysis.utils import extract_trajectories_from_dump
 from analysis.trace_loader import TraceLoader
-from trpc_agent.actors import ConcurrentActor, DraftActor
-from trpc_agent.silly import EditActor
 
 
 def get_trace_patterns() -> List[str]:
@@ -24,13 +19,13 @@ def get_trace_patterns() -> List[str]:
 def display_message(msg: Dict[str, Any], idx: int):
     """Display a single message in a nice format."""
     with st.expander(f"Message {idx + 1}: {msg.get('role', 'Unknown')}", expanded=False):
-        content = msg.get('content', [''])
+        content = msg.get("content", [""])
         if isinstance(content, list) and len(content) == 1:
             content = content[0]
         st.json(content)
 
         # Display additional fields
-        excluded_fields = {'role', 'content', 'timestamp'}
+        excluded_fields = {"role", "content", "timestamp"}
         other_fields = {k: v for k, v in msg.items() if k not in excluded_fields}
         if other_fields:
             st.write("**Other fields:**")
@@ -46,11 +41,7 @@ def main():
         st.header("Settings")
 
         # storage type selection
-        storage_type = st.radio(
-            "Storage Type",
-            options=["Local", "S3"],
-            help="Choose where to load traces from"
-        )
+        storage_type = st.radio("Storage Type", options=["Local", "S3"], help="Choose where to load traces from")
 
         if storage_type == "Local":
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -60,7 +51,7 @@ def main():
             local_dir = st.text_input(
                 "Local Directory Path",
                 value=os.environ.get("TRACES_DIR", default_traces_dir),
-                help="Enter the path to the directory containing traces"
+                help="Enter the path to the directory containing traces",
             )
             traces_location = Path(local_dir)
             if not traces_location.exists():
@@ -68,23 +59,19 @@ def main():
                 return
         else:
             # s3 bucket selection
-            s3_bucket_options = [
-                "staging-agent-service-snapshots",
-                "prod-agent-service-snapshots",
-                "custom"
-            ]
+            s3_bucket_options = ["staging-agent-service-snapshots", "prod-agent-service-snapshots", "custom"]
 
             selected_bucket = st.selectbox(
                 "S3 Bucket",
                 options=s3_bucket_options,
-                help="Select a predefined bucket or choose 'custom' to enter your own"
+                help="Select a predefined bucket or choose 'custom' to enter your own",
             )
 
             if selected_bucket == "custom":
                 s3_bucket = st.text_input(
                     "Custom S3 Bucket Name",
                     value=os.environ.get("SNAPSHOT_BUCKET", ""),
-                    help="Enter the S3 bucket name containing traces"
+                    help="Enter the S3 bucket name containing traces",
                 )
                 if not s3_bucket:
                     st.warning("Please enter an S3 bucket name")
@@ -116,37 +103,33 @@ def main():
 
         # File selection
         def format_file_option(file_info):
-            if file_info.get('is_local', True):
-                name, *rest = file_info['name'].split('-')
-                truncated = "-".join([name[:6] + '...', *rest])
+            if file_info.get("is_local", True):
+                name, *rest = file_info["name"].split("-")
+                truncated = "-".join([name[:6] + "...", *rest])
                 return f"{truncated} ({file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
             else:
                 # for S3 files, show truncated trace ID + full filename
-                path_parts = file_info['path'].split('/')
+                path_parts = file_info["path"].split("/")
                 if len(path_parts) > 1:
                     trace_id = path_parts[0]
-                    filename = '/'.join(path_parts[1:])
+                    filename = "/".join(path_parts[1:])
                     # truncate the trace ID (first two parts after - split)
-                    id_parts = trace_id.split('-')
+                    id_parts = trace_id.split("-")
                     if len(id_parts) >= 2:
                         truncated_id = f"{id_parts[0][:6]}-{id_parts[1][:6]}..."
                     else:
-                        truncated_id = trace_id[:12] + '...'
+                        truncated_id = trace_id[:12] + "..."
                     return f"{truncated_id}/{filename} ({file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
                 else:
                     # fallback for files without directory
                     return f"{file_info['path']} ({file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
 
-        selected_file = st.selectbox(
-            "Select FSM checkpoint file",
-            options=fsm_files,
-            format_func=format_file_option
-        )
+        selected_file = st.selectbox("Select FSM checkpoint file", options=fsm_files, format_func=format_file_option)
 
         actors_to_display = st.sidebar.multiselect(
             "Select Actors to Display",
             options=["Frontend", "Handler", "Draft", "Edit"],
-            default=["Frontend", "Handler", "Draft", "Edit"]
+            default=["Frontend", "Handler", "Draft", "Edit"],
         )
         # Process button
         if st.button("Process File", type="primary"):
@@ -155,7 +138,7 @@ def main():
             st.session_state.processing = True
 
     # Main content area
-    if 'current_file' in st.session_state and st.session_state.get('processing'):
+    if "current_file" in st.session_state and st.session_state.get("processing"):
         try:
             with st.spinner(f"Processing {st.session_state.current_file['name']}..."):
                 # load the file content
@@ -171,15 +154,15 @@ def main():
             st.session_state.processing = False
 
     # Display results
-    if 'messages' in st.session_state:
+    if "messages" in st.session_state:
         messages = st.session_state.messages
 
         # Show full file path/name
         file_info = st.session_state.current_file
-        if file_info.get('is_local', True):
-            file_display = file_info['name']
+        if file_info.get("is_local", True):
+            file_display = file_info["name"]
         else:
-            file_display = file_info['path']
+            file_display = file_info["path"]
 
         st.subheader(f"File: {file_display}")
 
@@ -208,10 +191,7 @@ def main():
 
             # Filter messages if search term is provided
             if search_term:
-                filtered_messages = [
-                    msg for msg in trajectory_messages
-                    if search_term.lower() in str(msg).lower()
-                ]
+                filtered_messages = [msg for msg in trajectory_messages if search_term.lower() in str(msg).lower()]
                 if not filtered_messages:
                     continue
             else:

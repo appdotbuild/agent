@@ -4,10 +4,9 @@ from typing import List, Dict, Any
 import os
 from glob import glob
 
-from core.statemachine import StateMachine, State
-from trpc_agent.application import ApplicationContext, FSMEvent, MachineCheckpoint, FSMApplication, Node, EditActor
-from trpc_agent.actors import BaseActor, ConcurrentActor, DraftActor
-from llm.common import Message
+from core.statemachine import StateMachine
+from trpc_agent.application import ApplicationContext, FSMEvent, FSMApplication, Node, EditActor
+from trpc_agent.actors import ConcurrentActor, DraftActor
 import dagger
 import anyio
 
@@ -20,14 +19,8 @@ async def _get_actors(data: Dict[str, Any]):
         case None:
             raise ValueError("No states found in the FSM data.")
         case _:
-            actors = [
-                state.invoke['src']
-                for state in fsm.root.states.values()
-                if state.invoke is not None
-            ]
+            actors = [state.invoke["src"] for state in fsm.root.states.values() if state.invoke is not None]
             return actors
-
-
 
 
 def get_all_trajectories(root: Node, prefix: str = ""):
@@ -42,7 +35,7 @@ def get_all_trajectories(root: Node, prefix: str = ""):
 
 def extract_trajectories_from_dump(data: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     """Extract trajectories from FSM dump data.
-    
+
     Args:
         data: Dict containing the FSM checkpoint data
     """
@@ -80,6 +73,7 @@ def extract_trajectories_from_dump(data: Dict[str, Any]) -> Dict[str, List[Dict[
                 raise ValueError(f"Unknown actor type: {type(actor)}")
 
     return messages
+
 
 def main(dumps_path: str, output_path: str):
     if os.path.isdir(dumps_path):
@@ -123,9 +117,8 @@ def main(dumps_path: str, output_path: str):
                     else:
                         acc += f"- **{role}**: {x}\n\n"
 
-        with open(os.path.join(output_path, file_name.replace('.json', '.txt')), "w") as f:
+        with open(os.path.join(output_path, file_name.replace(".json", ".txt")), "w") as f:
             f.write(acc)
-
 
 
 if __name__ == "__main__":
