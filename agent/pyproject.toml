@@ -56,7 +56,6 @@ dev = [
     "docker>=7.1.0",
     "pdbpp>=0.10.3",
     "pytest>=8.3.5",
-    "pytest-asyncio>=0.26.0",
     "ruff>=0.11.5",
     "pytest-xdist>=3.6.1",
     "ipython>=9.2.0",
@@ -64,14 +63,3 @@ dev = [
 ]
 google = ["google-genai>=1.7.0"]
 openai = ["openai>=1.68.2"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-testpaths = ["tests", "api", "core", "llm", "trpc_agent"]
-python_files = "test_*.py"
-python_classes = "Test*"
-python_functions = "test_*"
-filterwarnings = [
-    "ignore::pytest.PytestAssertRewriteWarning"
-]
