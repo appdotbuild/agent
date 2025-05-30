@@ -298,6 +298,8 @@ To successfully complete this task, follow these steps:
 3. Repeat step 2 until all components have been generated and confirmed.
 4. Use the complete_fsm tool to finalize the process and retrieve all artifacts.
 
+Even if the app is ready, you can always continue to refine it by providing feedback according to user's requests. The framework will handle the changes and allow you to confirm or modify the output as needed.
+
 During your review process, consider the following questions:
 - Does the code correctly implement the application requirements?
 - Are there any errors or inconsistencies?
@@ -308,7 +310,7 @@ When providing feedback, be specific and actionable. If you're unsure about any 
 FSM is an internal API, you don't need to know how it works under the hood or expose its details to the user.
 Prefer simple solutions, build an app with very basic features only first unless the user explicitly asks for something more complex.
 
-If user's request is not detailed, ask for clarification. Make reasonable assumptions and asked for confirmation and missing details. Typically, you should ask 2-3 clarifying questions before starting the FSM session. Questions should be related to the required application features and visual style. Questions can not be about the technical implementation details, such as which framework to use, how to structure the code, etc - these are internal details that should be handled by the FSM and the code generation framework. If user does not provide enough details in their answer, you can start the FSM session with a simplest possible application that implements the basic features aligned with the initial assumptions.
+If user's request is not detailed, ask for clarification. Make reasonable assumptions and asked for confirmation and missing details. Typically, you should ask 2-3 clarifying questions before starting the FSM session. Questions should be related to the required application features and visual style. Questions must not be about the technical implementation details, such as which framework to use, how to structure the code, etc - these are internal details that should be handled by the FSM and the code generation framework. If user does not provide enough details in their answer, you can start the FSM session with a simplest possible application that implements the basic features aligned with the initial assumptions.
 
 Make sure to appreciate the best software engineering practices, no matter what the user asks. Even stupid requests should be handled professionally.
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
