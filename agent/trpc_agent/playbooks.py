@@ -69,6 +69,14 @@ export declare function createProduct(input: CreateProductInput): Promise<Produc
 </file>
 """.strip()
 
+BASE_GET_HANDLER_DECLARATION = """
+<file path="server/src/handlers/get_products.ts">
+import { type Product } from '../schema';
+
+export declare function getProducts(): Promise<Product[]>;
+</file>
+""".strip()
+
 
 BASE_HANDLER_IMPLEMENTATION = """
 <file path="server/src/handlers/create_product.ts">
@@ -83,19 +91,20 @@ export const createProduct = async (input: CreateProductInput): Promise<Product>
       .values({
         name: input.name,
         description: input.description,
-        price: input.price, // Type safely passed to numeric column
-        stock_quantity: input.stock_quantity // Type safely passed to integer column
+        price: input.price.toString(), // Convert number to string for numeric column
+        stock_quantity: input.stock_quantity // Integer column - no conversion needed
       })
       .returning()
       .execute();
 
-    // Return product data with proper typing
-    return result[0];
+    // Convert numeric fields back to numbers before returning
+    const product = result[0];
+    return {
+      ...product,
+      price: parseFloat(product.price) // Convert string back to number
+    };
   } catch (error) {
-    // Log the detailed error
     console.error('Product creation failed:', error);
-
-    // Re-throw the original error to preserve stack trace
     throw error;
   }
 };
@@ -149,7 +158,7 @@ describe('createProduct', () => {
     expect(products).toHaveLength(1);
     expect(products[0].name).toEqual('Test Product');
     expect(products[0].description).toEqual(testInput.description);
-    expect(products[0].price).toEqual(19.99);
+    expect(parseFloat(products[0].price)).toEqual(19.99);
     expect(products[0].created_at).toBeInstanceOf(Date);
   });
 
@@ -234,28 +243,54 @@ start();
 BASE_APP_TSX = """
 <file path="client/src/App.tsx">
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { trpc } from '@/utils/trpc';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 // Using type-only import for better TypeScript compliance
-import type { Product } from '../../../server/src/schema';
+import type { Product, CreateProductInput } from '../../server/src/schema';
 
 function App() {
   // Explicit typing with Product interface
-  const [product, setProduct] = useState<Product | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const createSampleProduct = async () => {
+  // Form state with proper typing for nullable fields
+  const [formData, setFormData] = useState<CreateProductInput>({
+    name: '',
+    description: null, // Explicitly null, not undefined
+    price: 0,
+    stock_quantity: 0
+  });
+
+  // useCallback to memoize function used in useEffect
+  const loadProducts = useCallback(async () => {
+    try {
+      const result = await trpc.getProducts.query();
+      setProducts(result);
+    } catch (error) {
+      console.error('Failed to load products:', error);
+    }
+  }, []); // Empty deps since trpc is stable
+
+  // useEffect with proper dependencies
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setIsLoading(true);
     try {
-      // Send numeric values directly - tRPC handles validation via Zod
-      const response = await trpc.createProduct.mutate({
-        name: 'Sample Product',
-        description: 'A sample product created from the UI',
-        price: 29.99,
-        stock_quantity: 50
+      const response = await trpc.createProduct.mutate(formData);
+      // Update products list with explicit typing in setState callback
+      setProducts((prev: Product[]) => [...prev, response]);
+      // Reset form
+      setFormData({
+        name: '',
+        description: null,
+        price: 0,
+        stock_quantity: 0
       });
-      // Complete response with proper types thanks to tRPC
-      setProduct(response);
     } catch (error) {
       console.error('Failed to create product:', error);
     } finally {
@@ -264,30 +299,76 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-svh gap-4">
-      <h1 className="text-2xl font-bold">Product Management</h1>
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Product Management</h1>
 
-      <Button onClick={createSampleProduct} disabled={isLoading}>
-        Create Sample Product
-      </Button>
+      <form onSubmit={handleSubmit} className="space-y-4 mb-8">
+        <Input
+          placeholder="Product name"
+          value={formData.name}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setFormData((prev: CreateProductInput) => ({ ...prev, name: e.target.value }))
+          }
+          required
+        />
+        <Input
+          placeholder="Description (optional)"
+          // Handle nullable field with fallback to empty string
+          value={formData.description || ''}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setFormData((prev: CreateProductInput) => ({
+              ...prev,
+              description: e.target.value || null // Convert empty string back to null
+            }))
+          }
+        />
+        <Input
+          type="number"
+          placeholder="Price"
+          value={formData.price}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setFormData((prev: CreateProductInput) => ({ ...prev, price: parseFloat(e.target.value) || 0 }))
+          }
+          step="0.01"
+          min="0"
+          required
+        />
+        <Input
+          type="number"
+          placeholder="Stock quantity"
+          value={formData.stock_quantity}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setFormData((prev: CreateProductInput) => ({ ...prev, stock_quantity: parseInt(e.target.value) || 0 }))
+          }
+          min="0"
+          required
+        />
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? 'Creating...' : 'Create Product'}
+        </Button>
+      </form>
 
-      {isLoading ? (
-        <p>Creating product...</p>
-      ) : product ? (
-        <div className="border p-4 rounded-md">
-          <h2 className="text-xl font-semibold">{product.name}</h2>
-          <p className="text-gray-600">{product.description}</p>
-          <div className="flex justify-between mt-2">
-            <span>${product.price.toFixed(2)}</span>
-            <span>In stock: {product.stock_quantity}</span>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">
-            {/* created_at is a Date object thanks to z.coerce.date() */}
-            Created: {product.created_at.toLocaleDateString()}
-          </p>
-        </div>
+      {products.length === 0 ? (
+        <p className="text-gray-500">No products yet. Create one above!</p>
       ) : (
-        <p>No product created yet. Click the button to create one.</p>
+        <div className="grid gap-4">
+          {products.map((product: Product) => (
+            <div key={product.id} className="border p-4 rounded-md">
+              <h2 className="text-xl font-semibold">{product.name}</h2>
+              {/* Handle nullable description */}
+              {product.description && (
+                <p className="text-gray-600">{product.description}</p>
+              )}
+              <div className="flex justify-between mt-2">
+                <span>${product.price.toFixed(2)}</span>
+                <span>In stock: {product.stock_quantity}</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Created: {product.created_at.toLocaleDateString()}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -298,36 +379,99 @@ export default App;
 """.strip()
 
 
+BASE_COMPONENT_EXAMPLE = """
+<file path="client/src/components/ProductForm.tsx">
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+// Note the extra ../ because we're in components subfolder
+import type { CreateProductInput } from '../../../server/src/schema';
+
+interface ProductFormProps {
+  onSubmit: (data: CreateProductInput) => Promise<void>;
+  isLoading?: boolean;
+}
+
+export function ProductForm({ onSubmit, isLoading = false }: ProductFormProps) {
+  const [formData, setFormData] = useState<CreateProductInput>({
+    name: '',
+    description: null,
+    price: 0,
+    stock_quantity: 0
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onSubmit(formData);
+    // Reset form after successful submission
+    setFormData({
+      name: '',
+      description: null,
+      price: 0,
+      stock_quantity: 0
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Input
+        value={formData.name}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          setFormData((prev: CreateProductInput) => ({ ...prev, name: e.target.value }))
+        }
+        placeholder="Product name"
+        required
+      />
+      <Input
+        value={formData.description || ''} // Fallback for null
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          setFormData((prev: CreateProductInput) => ({
+            ...prev,
+            description: e.target.value || null
+          }))
+        }
+        placeholder="Description (optional)"
+      />
+      <Button type="submit" disabled={isLoading}>
+        {isLoading ? 'Creating...' : 'Create Product'}
+      </Button>
+    </form>
+  );
+}
+</file>
+""".strip()
+
 TRPC_INDEX_SHIM = """
 ...
 import { createProductInputSchema } from './schema';
 import { createProduct } from './handlers/create_product';
+import { getProducts } from './handlers/get_products';
 ...
 const appRouter = router({
   createProduct: publicProcedure
     .input(createProductInputSchema)
     .mutation(({ input }) => createProduct(input)),
+  getProducts: publicProcedure
+    .query(() => getProducts()),
 });
 ...
 """.strip()
 
-TYPE_ALIGNMENT_RULES = """# CRITICAL Type Alignment Rules:
+TYPE_ALIGNMENT_RULES_SCHEMA = """# CRITICAL Type Alignment Rules for Schema Definition:
 1. Align Zod and Drizzle types exactly:
    - Drizzle `.notNull()` → Zod should NOT have `.nullable()`
    - Drizzle field without `.notNull()` → Zod MUST have `.nullable()`
    - Never use `.nullish()` in Zod - use `.nullable()` or `.optional()` as appropriate
 
-2. Numeric type handling:
+2. Numeric type definitions:
+   - CRITICAL: Drizzle `numeric()` type returns STRING values from PostgreSQL (to preserve precision)
    - Drizzle `real()` and `integer()` return native number values from the database
-   - Define your Zod schema with `z.number()` for these column types
+   - Define your Zod schema with `z.number()` for ALL numeric column types
    - For integer values, use `z.number().int()` for proper validation
-   - Example: for `integer('quantity')`, use `z.number().int()`
-   - Example: for `real('price')`, use `z.number()`
 
-3. Date handling:
+3. Date handling in schemas:
    - For Drizzle `timestamp()` fields → Use Zod `z.coerce.date()`
    - For Drizzle `date()` fields → Use Zod `z.string()` with date validation
-   - Always convert dates to proper format when inserting/retrieving
 
 4. Enum handling:
    - For Drizzle `pgEnum()` → Create matching Zod enum with `z.enum([...])`
@@ -341,71 +485,6 @@ TYPE_ALIGNMENT_RULES = """# CRITICAL Type Alignment Rules:
 6. Type exports:
    - Export types for ALL schemas using `z.infer<typeof schemaName>`
    - Create both input and output schema types for handlers
-
-7. Database query patterns:
-   - Always build queries step-by-step, applying `.where()` before `.limit()`, `.offset()`, or `.orderBy()`
-   - For conditional queries, initialize the query first, then apply filters conditionally
-   - When filtering with multiple conditions, collect conditions in an array and apply `.where(and([...conditions]))`
-   - Example pattern for conditional filters:
-     ```typescript
-     // Good pattern for conditional filters
-     let query = db.select().from(productsTable);
-
-     const conditions: SQL<unknown>[] = [];
-
-     if (filters.minPrice !== undefined) {
-       conditions.push(gte(productsTable.price, filters.minPrice));
-     }
-
-     if (filters.category) {
-       conditions.push(eq(productsTable.category, filters.category));
-     }
-
-     if (conditions.length > 0) {
-       query = query.where(conditions.length === 1 ? conditions[0] : and(conditions));
-     }
-
-     // Apply other query modifiers AFTER where clause
-     if (orderBy) {
-       query = query.orderBy(desc(productsTable[orderBy]));
-     }
-
-     // Apply pagination LAST
-     query = query.limit(limit).offset(offset);
-
-     const results = await query.execute();
-     ```
-
-8. Testing Best Practices:
-   - Create reliable test setup with prerequisite data:
-     ```typescript
-     beforeEach(async () => {
-       // Always create prerequisite data first (users, categories, etc.)
-       const user = await db.insert(usersTable)
-         .values({ name: 'Test User', email: 'test@example.com' })
-         .returning()
-         .execute();
-
-       testUserId = user[0].id; // Store IDs for relationships
-
-       // Then create dependent data referencing the prerequisites
-       await db.insert(clientsTable)
-         .values({ name: 'Test Client', user_id: testUserId })
-         .returning()
-         .execute();
-     });
-     ```
-   - Clean up after tests to prevent test interference:
-     ```typescript
-     afterEach(resetDB); // Use a reliable database reset function
-     ```
-   - Use flexible error assertions:
-     ```typescript
-     // Avoid brittle exact message checks
-     expect(() => deleteInvoice(999)).rejects.toThrow(/not found/i);
-     ```
-   - Verify both application state and database state in tests
-   - Explicitly define expected test inputs with proper types
 """
 
 BACKEND_DRAFT_SYSTEM_PROMPT = f"""
@@ -422,8 +501,10 @@ Example:
 {BASE_DRIZZLE_SCHEMA}
 
 - For each handler write its declaration in corresponding file in server/src/handlers/; prefer simple handlers, follow single responsibility principle
-Example:
+Examples:
 {BASE_HANDLER_DECLARATION}
+
+{BASE_GET_HANDLER_DECLARATION}
 
 - Generate root TRPC index file in server/src/index.ts
 Example:
@@ -434,9 +515,11 @@ Example:
 - Registering TRPC routes
 {TRPC_INDEX_SHIM}
 
-{TYPE_ALIGNMENT_RULES}
+{TYPE_ALIGNMENT_RULES_SCHEMA}
 
 Keep the things simple and do not create entities that are not explicitly required by the task.
+Make sure to follow the best software engineering practices, write structured and maintainable code.
+Even stupid requests should be handled professionally - build precisely the app that user needs, keeping its quality high.
 """.strip()
 
 BACKEND_DRAFT_USER_PROMPT = """
@@ -452,6 +535,126 @@ Task:
 """.strip()
 
 
+DATABASE_PATTERNS = """
+## Numeric Type Conversions:
+- For `numeric()` columns: Always use `parseFloat()` when returning data, `toString()` when inserting
+- Example conversions:
+  ```typescript
+  // When selecting data with numeric columns:
+  const results = await db.select().from(productsTable).execute();
+  return results.map(product => ({{
+    ...product,
+    price: parseFloat(product.price), // Convert string to number
+    amount: parseFloat(product.amount) // Convert ALL numeric fields
+  }}));
+
+  // When inserting/updating numeric columns:
+  await db.insert(productsTable).values({
+    ...input,
+    price: input.price.toString(), // Convert number to string
+    amount: input.amount.toString() // Convert ALL numeric fields
+  });
+  ```
+
+## Database Query Patterns:
+- CRITICAL: Maintain proper type inference when building queries conditionally
+- Always build queries step-by-step, applying `.where()` before `.limit()`, `.offset()`, or `.orderBy()`
+- For conditional queries, initialize the query first, then apply filters conditionally
+- When filtering with multiple conditions, collect conditions in an array and apply `.where(and(...conditions))` with spread operator
+- NEVER use `and(conditions)` - ALWAYS use `and(...conditions)` with the spread operator!
+- ALWAYS use the proper operators from 'drizzle-orm':
+  - Use eq(table.column, value) instead of table.column === value
+  - Use and(...conditions) with SPREAD operator, not and(conditions)
+  - Use isNull(table.column), not table.column === null
+  - Use desc(table.column) for descending order
+
+- Example pattern for conditional filters:
+  ```typescript
+  // Good pattern for conditional filters
+  let query = db.select().from(productsTable);
+
+  const conditions: SQL<unknown>[] = [];
+
+  if (filters.minPrice !== undefined) {
+    conditions.push(gte(productsTable.price, filters.minPrice));
+  }
+
+  if (filters.category) {
+    conditions.push(eq(productsTable.category, filters.category));
+  }
+
+  if (conditions.length > 0) {
+    query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)); // SPREAD the array!
+  }
+
+  // Apply other query modifiers AFTER where clause
+  if (orderBy) {
+    query = query.orderBy(desc(productsTable[orderBy]));
+  }
+
+  // Apply pagination LAST
+  query = query.limit(limit).offset(offset);
+
+  const results = await query.execute();
+  ```
+
+- Handle joined data structures correctly - results change shape after joins:
+  ```typescript
+  // After a join, results become nested objects
+  const results = await db.select()
+    .from(paymentsTable)
+    .innerJoin(subscriptionsTable, eq(paymentsTable.subscription_id, subscriptionsTable.id))
+    .execute();
+
+  // Access data from the correct nested property
+  return results.map(result => ({
+    id: result.payments.id,
+    amount: parseFloat(result.payments.amount), // Note: numeric conversion!
+    subscription_name: result.subscriptions.name
+  }));
+  ```
+
+- Pattern for queries with joins:
+  ```typescript
+  // Base query without join
+  let baseQuery = db.select().from(paymentsTable);
+
+  // Apply join conditionally (changes result structure!)
+  if (filters.user_id) {
+    baseQuery = baseQuery.innerJoin(
+      subscriptionsTable,
+      eq(paymentsTable.subscription_id, subscriptionsTable.id)
+    );
+  }
+
+  // Build conditions array
+  const conditions: SQL<unknown>[] = [];
+  if (filters.user_id) {
+    conditions.push(eq(subscriptionsTable.user_id, filters.user_id));
+  }
+
+  // Apply where clause
+  const query = conditions.length > 0
+    ? baseQuery.where(and(...conditions))
+    : baseQuery;
+
+  const results = await query.execute();
+
+  // Handle different result structures based on join
+  return results.map(result => {
+    // If joined, data is nested: { payments: {...}, subscriptions: {...} }
+    const paymentData = filters.user_id
+      ? (result as any).payments
+      : result;
+
+    return {
+      ...paymentData,
+      amount: parseFloat(paymentData.amount) // Don't forget numeric conversion!
+    };
+  });
+  ```
+""".strip()
+
 BACKEND_HANDLER_SYSTEM_PROMPT = f"""
 - Write implementation for the handler function
 - Write small but meaningful test set for the handler
@@ -462,46 +665,43 @@ Example Handler:
 Example Test:
 {BASE_HANDLER_TEST}
 
-# Important Drizzle Query Patterns:
-- ALWAYS store the result of a query operation before chaining additional methods
-  let query = db.select().from(myTable);
-  if (condition) {{
-    query = query.where(eq(myTable.field, value));
-  }}
-  const results = await query.execute();
+# Implementation Rules:
+{DATABASE_PATTERNS}
 
-- ALWAYS use the proper operators from 'drizzle-orm':
-  - Use eq(table.column, value) instead of table.column === value
-  - Use and([condition1, condition2]) for multiple conditions
-  - Use isNull(table.column), not table.column === null
-  - Use desc(table.column) for descending order
+## Testing Best Practices:
+- Create reliable test setup: Use `beforeEach(createDB)` and `afterEach(resetDB)`
+- Create prerequisite data first (users, categories) before dependent records
+- Use flexible error assertions: `expect().rejects.toThrow(/pattern/i)`
+- Include ALL fields in test inputs, even those with Zod defaults
+- Test numeric conversions: verify `typeof result.price === 'number'`
+- CRITICAL handler type signatures:
+  ```typescript
+  // Handler should expect the PARSED Zod type (with defaults applied)
+  export const searchProducts = async (input: SearchProductsInput): Promise<Product[]> => {{
+    // input.limit and input.offset are guaranteed to exist here
+    // because Zod has already parsed and applied defaults
+  }};
 
-- When filtering with multiple conditions, use an array approach:
-  const conditions = [];
-  if (input.field1) conditions.push(eq(table.field1, input.field1));
-  if (input.field2) conditions.push(eq(table.field2, input.field2));
-  const query = conditions.length > 0
-    ? db.select().from(table).where(and(conditions))
-    : db.select().from(table);
-  const results = await query.execute();
+  // If you need a handler that accepts pre-parsed input,
+  // create a separate input type without defaults
+  ```
 
-# Error Handling & Logging Best Practices:
+# Common Pitfalls to Avoid:
+1. **Numeric columns**: Always use parseFloat() when selecting, toString() when inserting float/decimal values as they are stored as numerics in PostgreSQL and later converted to strings in Drizzle ORM
+2. **Query conditions**: Use and(...conditions) with spread operator, NOT and(conditions)
+3. **Joined results**: Access data via nested properties (result.table1.field, result.table2.field)
+4. **Test inputs**: Include ALL fields in test inputs, even those with Zod defaults
+5. **Type annotations**: Use SQL<unknown>[] for condition arrays
+6. **Query order**: Always apply .where() before .limit(), .offset(), or .orderBy()
+7. **Foreign key validation**: For INSERT/UPDATE operations with foreign keys, verify referenced entities exist first to prevent "violates foreign key constraint" errors. Ensure tests cover the use case where foreign keys are used.
+
+# Error Handling Best Practices:
 - Wrap database operations in try/catch blocks
-- Log the full error object, not just the message:
-  ```
-  try {{
-    // Database operations
-  }} catch (error) {{
-    console.error('Operation failed:', error);
-    throw new Error('User-friendly message');
-  }}
-  ```
-- When rethrowing errors, include the original error as the cause:
-  ```
-  throw new Error('Failed to process request', {{ cause: error }});
-  ```
-- Add context to errors including input parameters (but exclude sensitive data!)
-- Error handling does not need to be tested in unit tests.
+- Log the full error object with context: `console.error('Operation failed:', error);`
+- Rethrow original errors to preserve stack traces: `throw error;`
+- Error handling does not need to be tested in unit tests
+- Do not use other handlers in implementation or tests - keep fully isolated
+- NEVER use mocks - always test against real database operations
 """.strip()
 
 BACKEND_HANDLER_USER_PROMPT = """
@@ -519,19 +719,97 @@ Return the test code within <file path="server/src/tests/{{handler_name}}.test.t
 
 FRONTEND_SYSTEM_PROMPT = f"""You are software engineer, follow those rules:
 - Generate react frontend application using radix-ui components.
-- Backend communication is done via TRPC.
+- Backend communication is done via tRPC.
+- Use Tailwind CSS for styling. Use Tailwind classes directly in JSX. Avoid using @apply unless you need to create reusable component styles. When using @apply, only use it in @layer components, never in @layer base.
 
-Example:
+Example App Component:
 {BASE_APP_TSX}
 
-# Client-Side Tips:
-- Always match frontend state types with exactly what the tRPC endpoint returns
-- For tRPC queries, store the complete response object before using its properties
-- Access nested data correctly based on the server's return structure
-- Always use type-only imports for TypeScript type definitions
-- For numeric values coming from DB via Drizzle, ensure your schemas properly transform string values to numbers
-- Remember that Date objects coming from the server can be directly used with methods like `.toLocaleDateString()`
-- Use proper TypeScript typing for all state variables and function parameters
+Example Nested Component (showing import paths):
+{BASE_COMPONENT_EXAMPLE}
+
+# Component Organization Guidelines:
+- Create separate components when:
+  - Logic becomes complex (>100 lines)
+  - Component is reused in multiple places
+  - Component has distinct responsibility (e.g., ProductForm, ProductList)
+- File structure:
+  - Shared UI components: `client/src/components/ui/`
+  - Feature components: `client/src/components/FeatureName.tsx`
+  - Complex features: `client/src/components/feature/FeatureName.tsx`
+- Keep components focused on single responsibility
+
+For the visual aspect, adjust the CSS to match the user prompt to keep the design consistent with the original request in terms of overall mood. E.g. for serious corporate business applications, default CSS is great; for more playful or nice applications, use custom colors, emojis, and other visual elements to make it more engaging.
+
+- ALWAYS calculate the correct relative path when importing from server:
+  - From `client/src/App.tsx` → use `../../server/src/schema` (2 levels up)
+  - From `client/src/components/Component.tsx` → use `../../../server/src/schema` (3 levels up)
+  - From `client/src/components/nested/Component.tsx` → use `../../../../server/src/schema` (4 levels up)
+  - Count EXACTLY: start from your file location, go up to reach client/, then up to project root, then down to server/
+- Always use type-only imports: `import type {{ Product }} from '../../server/src/schema'`
+
+# CRITICAL: TypeScript Type Matching & API Integration
+- ALWAYS inspect the actual handler implementation to verify return types:
+  - Use read_file on the handler file to see the exact return structure
+  - Don't assume field names or nested structures
+  - Example: If handler returns `Product[]`, don't expect `ProductWithSeller[]`
+- When API returns different type than needed for components:
+  - Transform data after fetching, don't change the state type
+  - Example: If API returns `Product[]` but component needs `ProductWithSeller[]`:
+    ```typescript
+    const products = await trpc.getUserProducts.query();
+    const productsWithSeller = products.map(p => ({{
+      ...p,
+      seller: {{ id: user.id, name: user.name }}
+    }}));
+    ```
+- For tRPC queries, store the complete response before using properties
+- Access nested data correctly based on server's actual return structure
+
+# Syntax & Common Errors:
+- Double-check JSX syntax:
+  - Type annotations: `onChange={{(e: React.ChangeEvent<HTMLInputElement>) => ...}}`
+  - Import lists need proper commas: `import {{ A, B, C }} from ...`
+  - Component names have no spaces: `AlertDialogFooter` not `AlertDialog Footer`
+- Handle nullable values in forms correctly:
+  - For controlled inputs, always provide a defined value: `value={{formData.field || ''}}`
+  - For nullable database fields, convert empty strings to null before submission:
+    ```typescript
+    onChange={{(e) => setFormData(prev => ({{
+      ...prev,
+      description: e.target.value || null // Empty string → null
+    }})}}
+    ```
+  - For select/dropdown components, use meaningful defaults: `value={{filter || 'all'}}` not empty string
+  - HTML input elements require string values, so convert null → '' for display, '' → null for storage
+- State initialization should match API return types exactly
+
+# TypeScript Best Practices:
+- Always provide explicit types for all callbacks:
+  - useState setters: `setData((prev: DataType) => ...)`
+  - Event handlers: `onChange={{(e: React.ChangeEvent<HTMLInputElement>) => ...}}`
+  - Array methods: `items.map((item: ItemType) => ...)`
+- For numeric values and dates from API:
+  - Frontend receives proper number types - no additional conversion needed
+  - Use numbers directly: `product.price.toFixed(2)` for display formatting
+  - Date objects from backend can be used directly: `date.toLocaleDateString()`
+- NEVER use mock data or hardcoded values - always fetch real data from the API
+
+# React Hook Dependencies:
+- Follow React Hook rules strictly:
+  - Include all dependencies in useEffect/useCallback/useMemo arrays
+  - Wrap functions used in useEffect with useCallback if they use state/props
+  - Use empty dependency array `[]` only for mount-only effects
+  - Example pattern:
+    ```typescript
+    const loadData = useCallback(async () => {{
+      // data loading logic
+    }}, [dependency1, dependency2]);
+
+    useEffect(() => {{
+      loadData();
+    }}, [loadData]);
+    ```
 """.strip()
 
 FRONTEND_USER_PROMPT = """
@@ -552,14 +830,14 @@ Original prompt to generate this website: {{ user_prompt }}.
 Console logs from the browsers:
 {{ console_logs }}
 
-Answer "yes" or "no" wrapped in <answer> tag. Follow the example below.
+Answer "yes" or "no" wrapped in <answer> tag. Explain error in logs if it exists. Follow the example below.
 
 Example 1:
 <reason>the website looks valid</reason>
 <answer>yes</answer>
 
 Example 2:
-<reason>there is nothing on the screenshot, could be rendering issue</reason>
+<reason>there is nothing on the screenshot, rendering issue caused by unhandled empty collection in the react component</reason>
 <answer>no</answer>
 
 Example 3:
@@ -571,14 +849,14 @@ FULL_UI_VALIDATION_PROMPT = """Given the attached screenshot and browser logs, d
 Console logs from the browsers:
 {{ console_logs }}
 
-Answer "yes" or "no" wrapped in <answer> tag. Follow the example below.
+Answer "yes" or "no" wrapped in <answer> tag. Explain error in logs if it exists. Follow the example below.
 
 Example 1:
 <reason>the website looks okay, but displays database connection error. Given we evaluate full app, I should answer no</reason>
 <answer>no</answer>
 
 Example 2:
-<reason>there is nothing on the screenshot, could be rendering issue</reason>
+<reason>there is nothing on the screenshot, rendering issue caused by unhandled empty collection in the react component</reason>
 <answer>no</answer>
 
 Example 3:

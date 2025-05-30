@@ -92,6 +92,7 @@ class RunFrontendBuild:
 
         result = await node.data.workspace.exec(["bun", "run", "lint"], cwd="client")
         if result.exit_code != 0:
+            logger.info(f"Linting failed with exit code {result.exit_code}")
             return f"Lint errors:\n{result.stdout}\n"
 
         return None

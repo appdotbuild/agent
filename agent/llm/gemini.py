@@ -2,12 +2,19 @@ from typing import List
 
 from google import genai
 from google.genai import types as genai_types
+from google.genai.errors import APIError
 import os
 from llm import common
 from log import get_logger
+import random
+import anyio
+
 
 logger = get_logger(__name__)
 
+
+class RetryableError(RuntimeError):
+    pass
 
 class GeminiLLM(common.AsyncLLM):
     def __init__(self,
@@ -61,19 +68,21 @@ class GeminiLLM(common.AsyncLLM):
                 )
 
         gemini_messages = await self._messages_into(messages, attach_files)
+        n_tries = 0
         while True:
-            response = await self._async_client.models.generate_content(
-                model=self.model_name,
-                contents=gemini_messages,
-                config=config,
-            )
+            if n_tries >= 5:
+                raise RuntimeError(f"Failed to get a valid completion after {n_tries} attempts")
             try:
+                response = await self._async_client.models.generate_content(
+                    model=self.model_name,
+                    contents=gemini_messages,
+                    config=config,
+                )
                 return self._completion_from(response)
-            except Exception as e:
-                if self.should_retry(response):
-                    continue
-                raise e
-        return self._completion_from(response)
+            except (RetryableError, APIError) as err:
+                logger.warning(f"Retrying completion due to error: {err}")
+                await anyio.sleep(random.uniform(0.5, 1.5))
+                n_tries += 1
 
     async def upload_files(self, files: List[str]) -> List[genai_types.File]:
         result = []
@@ -87,11 +96,12 @@ class GeminiLLM(common.AsyncLLM):
     @staticmethod
     def _completion_from(completion: genai_types.GenerateContentResponse) -> common.Completion:
         if not completion.candidates:
-            raise ValueError(f"Empty completion: {completion}")
+            raise RetryableError(f"Empty completion: {completion}")
+            # usually it is caused by an error on Gemini side
         if not completion.candidates[0].content:
-            raise ValueError(f"Empty content in completion: {completion}")
+            raise RetryableError(f"Empty content in completion: {completion}")
         if not completion.candidates[0].content.parts:
-            raise ValueError(f"Empty parts in content in completion: {completion}")
+            raise RetryableError(f"Empty parts in content in completion: {completion}")
         ours_content: list[common.TextRaw | common.ToolUse | common.ThinkingBlock] = []
         for block in completion.candidates[0].content.parts:
             if block.text:
@@ -120,6 +130,8 @@ class GeminiLLM(common.AsyncLLM):
                 stop_reason = "max_tokens"
             case genai_types.FinishReason.STOP:
                 stop_reason = "end_turn"
+            case genai_types.FinishReason.MALFORMED_FUNCTION_CALL:
+                raise RetryableError(f"Malformed function call in completion: {completion}")
             case _:
                 stop_reason = "unknown"
 
@@ -131,16 +143,6 @@ class GeminiLLM(common.AsyncLLM):
             stop_reason=stop_reason,
             thinking_tokens=usage[2],
         )
-
-    @classmethod
-    def should_retry(cls, completion: genai_types.GenerateContentResponse) -> bool:
-        if completion.candidates:
-            match completion.candidates[0].finish_reason:
-                case genai_types.FinishReason.MALFORMED_FUNCTION_CALL:
-                    return True
-                case _:
-                    return False
-        return False
 
     async def _messages_into(self, messages: list[common.Message], files: common.AttachedFiles | None) -> List[genai_types.Content]:
         theirs_messages: List[genai_types.Content] = []

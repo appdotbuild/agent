@@ -528,6 +528,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                     case "/info":
                         app_name = None
                         commit_message = None
+                        trace_id = None
 
                         # Look for app_name and commit_message in the events
                         for evt in reversed(previous_events):
@@ -539,6 +540,8 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                         commit_message = evt.message.commit_message
                                     if app_name is not None and commit_message is not None:
                                         break
+                                if evt.trace_id is not None:
+                                    trace_id = evt.trace_id
                             except AttributeError:
                                 continue
 
@@ -546,6 +549,11 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             print(f"\033[35m🚀 App Name: {app_name}\033[0m")
                         else:
                             print("\033[33mNo app name available\033[0m")
+                            
+                        if trace_id:
+                            print(f"\033[35m🔑 Trace ID: {trace_id}\033[0m")
+                        else:
+                            print("\033[33mNo trace ID available\033[0m")
 
                         if commit_message:
                             print(f"\033[35m📝 Commit Message: {commit_message}\033[0m")

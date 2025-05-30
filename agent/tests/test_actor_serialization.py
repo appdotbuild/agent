@@ -38,8 +38,8 @@ class SimpleActor(BaseActor):
 
 
 async def test_actor_recovery():
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        workspace = await Workspace.create()
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        workspace = await Workspace.create(client)
         root = Node[BaseData](BaseData(
             workspace=workspace.clone(),
             messages=[Message(role="user", content=[TextRaw("test")])],
@@ -55,7 +55,7 @@ async def test_actor_recovery():
         actor = SimpleActor(workspace, root)
         dumped = await actor.dump()
 
-        loaded = SimpleActor(await Workspace.create())
+        loaded = SimpleActor(await Workspace.create(client))
         await loaded.load(dumped)
 
         assert loaded.root is not None

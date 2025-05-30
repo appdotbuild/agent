@@ -9,6 +9,8 @@ services:
     environment:
       - PYTHONPATH=/app
       - BUILDER_TOKEN=${BUILDER_TOKEN:-}  # Optional auth token, empty string disables auth
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 3s

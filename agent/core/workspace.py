@@ -1,11 +1,12 @@
 from os import name
 from typing import Self
 import dagger
-from dagger import dag, function, object_type, Container, Directory, ReturnType
+from dagger import function, object_type, Container, Directory, ReturnType
 from log import get_logger
 import hashlib
 from core.postgres_utils import create_postgres_service
 from core.dagger_utils import ExecResult
+import uuid
 
 logger = get_logger(name)
 
@@ -16,6 +17,7 @@ def _sorted_set(s: set[str]) -> list[str]:
 
 @object_type
 class Workspace:
+    client: dagger.Client
     ctr: Container
     start: Directory
     protected: set[str]
@@ -24,22 +26,26 @@ class Workspace:
     @classmethod
     async def create(
         cls,
+        client: dagger.Client,
         base_image: str = "alpine",
-        context: Directory = dag.directory(),
+        context: Directory | None = None,
         setup_cmd: list[list[str]] = [],
         protected: list[str] = [],
         allowed: list[str] = [],
     ) -> Self:
+        my_context = context or client.directory()
         ctr = (
-            dag
+            client
             .container()
             .from_(base_image)
             .with_workdir("/app")
-            .with_directory("/app", context)
+            .with_directory("/app", my_context)
         )
         for cmd in setup_cmd:
             ctr = ctr.with_exec(cmd)
-        return cls(ctr=ctr, start=context, protected=set(protected), allowed=set(allowed))
+
+        ctr = ctr.with_env_variable("INSTANCE_ID", uuid.uuid4().hex)
+        return cls(client=client, ctr=ctr, start=my_context, protected=set(protected), allowed=set(allowed))
 
     @function
     def permissions(self, protected: list[str] = [], allowed: list[str] = []) -> Self:
@@ -95,7 +101,7 @@ class Workspace:
 
     @function
     async def diff(self) -> str:
-        start = dag.container().from_("alpine/git").with_workdir("/app").with_directory("/app", self.start)
+        start = self.client.container().from_("alpine/git").with_workdir("/app").with_directory("/app", self.start)
         if ".git" not in await self.start.entries():
             start = (
                 start.with_exec(["git", "init"])
@@ -135,7 +141,7 @@ class Workspace:
 
     @function
     async def exec_with_pg(self, command: list[str], cwd: str = ".") -> ExecResult:
-        postgresdb = create_postgres_service()
+        postgresdb = create_postgres_service(self.client)
 
         return await ExecResult.from_ctr(
             self.ctr
@@ -167,6 +173,7 @@ class Workspace:
     @function
     def clone(self) -> Self:
         return type(self)(
+            client=self.client,
             ctr=self.ctr,
             start=self.start,
             protected=self.protected,
@@ -186,7 +193,7 @@ class Workspace:
             f'baseURL: "http://{host}:{port}"'
         )
         playwright_ctr = (
-            dag.container()
+            self.client.container()
             .from_("mcr.microsoft.com/playwright:v1.52.0")
             .with_directory("/app", self.ctr.directory("."))
             .with_workdir("/app")

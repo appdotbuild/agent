@@ -1,6 +1,7 @@
+import os
 import pytest
-
-from tests.test_application_diff import create_mock_fsm, create_dagger_connection
+import dagger
+from tests.test_application_diff import create_mock_fsm
 from trpc_agent.application import FSMApplication
 
 pytestmark = pytest.mark.anyio
@@ -27,8 +28,8 @@ async def test_edit_cycle_diff():
     }
 
     # First diff: compare initial FSM files against an empty snapshot
-    async with create_dagger_connection():
-        fsm_app_v1 = FSMApplication(create_mock_fsm(initial_files))
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        fsm_app_v1 = FSMApplication(client, create_mock_fsm(initial_files))
         diff_v1 = await fsm_app_v1.get_diff_with({})
 
         # Ensure file addition is captured
@@ -39,7 +40,7 @@ async def test_edit_cycle_diff():
         snapshot_after_v1 = initial_files.copy()
 
         # Second diff: edited FSM versus snapshot from v1
-        fsm_app_v2 = FSMApplication(create_mock_fsm(edited_files))
+        fsm_app_v2 = FSMApplication(client, create_mock_fsm(edited_files))
         diff_v2 = await fsm_app_v2.get_diff_with(snapshot_after_v1)
 
         # The diff should now show modification from 0 -> 1, not a new file addition
@@ -48,4 +49,4 @@ async def test_edit_cycle_diff():
         assert "+1" in diff_v2  # new content added
 
         # Optional sanity: diff length should be > diff_v1 because it includes both add/remove markers
-        assert len(diff_v2) >= len(diff_v1) 
+        assert len(diff_v2) >= len(diff_v1)
