@@ -110,19 +110,20 @@ _init_logging()
 
 def get_logger(name):
     _logger = logging.getLogger(name)
-    
+
     # set DEBUG level for the logger if the environment variable is set
     if os.getenv('DEBUG_LOG'):
         _logger.setLevel(logging.DEBUG)
-    
+
     return _logger
 
 
 logger = get_logger(__name__)
 
 def init_sentry():
-    sentry_dsn = os.getenv("SENTRY_DSN")
+    """Deprecated. A candidate for removal in future versions."""
 
+    sentry_dsn = os.getenv("SENTRY_DSN")
     if sentry_dsn:
         logger.info("Sentry enabled")
         sentry_sdk.init(
