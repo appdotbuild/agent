@@ -258,7 +258,7 @@ class EditActor(SillyActor):
             return f"TypeScript compile errors (backend):\n{tsc_compile_err.text}\n"
 
         # client tsc compile - should be refactored for the consistency
-        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit", "--incremental"], cwd="client")
         if tsc_result.exit_code != 0:
             return f"TypeScript compile errors (frontend): {tsc_result.stdout}"
 
@@ -376,12 +376,12 @@ class EditSetActor(SillyActor):
         errors: list[str] = []
 
         logger.info("Running server tsc compile")
-        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "--incremental", "--noEmit"], cwd="server")
         if tsc_result.exit_code != 0:
             errors.append(f"Error running tsc: {tsc_result.stdout}")
 
         logger.info("Running client tsc compile")
-        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--noEmit"], cwd="client")
+        tsc_result = await node.data.workspace.exec(["bun", "run", "tsc", "-p", "tsconfig.app.json", "--incremental", "--noEmit"], cwd="client")
         if tsc_result.exit_code != 0:
             errors.append(f"Error running tsc: {tsc_result.stdout}")
 

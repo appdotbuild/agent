@@ -53,7 +53,7 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
 
 async def run_tsc_compile(node: Node[BaseData]) -> tuple[ExecResult, TextRaw | None]:
     logger.debug("Running TypeScript compilation")
-    result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit"], cwd="server")
+    result = await node.data.workspace.exec(["bun", "run", "tsc", "--noEmit", "--incremental"], cwd="server")
     if result.exit_code == 0:
         logger.info("TypeScript compilation succeeded")
         return result, None
