@@ -43,6 +43,7 @@ class TrpcAgentSession(AgentInterface):
         }
         self._template_diff_sent: bool = False
         self.client = client
+        self._sse_counter = 0
 
     @staticmethod
     def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[Message]:
@@ -78,6 +79,7 @@ class TrpcAgentSession(AgentInterface):
             request: Incoming agent request
             event_tx: Event transmission stream
         """
+        messages = None
         try:
             logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
@@ -227,6 +229,12 @@ class TrpcAgentSession(AgentInterface):
                     key="fsm_exit",
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
+            if messages:
+                snapshot_saver.save_snapshot(
+                    trace_id=self.trace_id,
+                    key="fsmtools_messages",
+                    data=[msg.to_dict() for msg in messages]
+            )
             await event_tx.aclose()
 
     # ---------------------------------------------------------------------
@@ -268,3 +276,9 @@ class TrpcAgentSession(AgentInterface):
             )
         )
         await event_tx.send(event)
+        snapshot_saver.save_snapshot(
+            trace_id=self.trace_id,
+            key=f"sse_events/{self._sse_counter}",
+            data=event.model_dump(),
+        )
+        self._sse_counter += 1
