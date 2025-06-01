@@ -35,7 +35,7 @@ from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from api.config import CONFIG
 
-from log import get_logger, init_sentry, configure_uvicorn_logging, set_trace_id, clear_trace_id
+from log import get_logger, configure_uvicorn_logging, set_trace_id, clear_trace_id
 
 logger = get_logger(__name__)
 
@@ -141,11 +141,11 @@ async def run_agent[T: AgentInterface](
                 keep_alive_interval = 30
                 sleep_interval = 0.5  # Check every 500ms
                 elapsed = 0.0
-                
+
                 while keep_alive_running:
                     await anyio.sleep(sleep_interval)
                     elapsed += sleep_interval
-                    
+
                     if keep_alive_running and elapsed >= keep_alive_interval:
                         keep_alive_event = AgentSseEvent(
                             status=AgentStatus.RUNNING,
@@ -300,8 +300,6 @@ def main(
     reload: bool = False,
     log_level: str = "info"
 ):
-    init_sentry()
-
     uvicorn.run(
         "api.agent_server.async_server:app",
         host=host,
