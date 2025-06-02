@@ -459,14 +459,17 @@ def main():
             st.subheader(f"SSE Event Stream: {trace_id}")
         else:
             file_info = st.session_state.current_file
-            if file_info and file_info.get("is_local", True):
-                file_display = file_info["name"]
-            elif file_info:
-                file_display = file_info["path"]
+            if file_info:
+                if file_info.get("is_local", True):
+                    file_display = file_info["path"]
+                else:
+                    # for S3 files, show full S3 URL
+                    bucket_name = st.session_state.trace_loader.bucket_or_path
+                    file_display = f"s3://{bucket_name}/{file_info['path']}"
             else:
                 file_display = "Unknown"
 
-            st.subheader(f"File: {file_display}")
+            st.markdown(f"**File:** `{file_display}`")
 
         if st.session_state.trace_type == "fsm" and "messages" in st.session_state:
             # FSM trace display logic
