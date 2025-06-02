@@ -12,7 +12,7 @@ using TypeSpec.Rest;
 
 @service({
   title: "Neon Agent Server API",
-  version: "1.0.0",
+  version: "1.1.0",
 })
 
 namespace AgentServerApi;
@@ -71,7 +71,19 @@ model FileEntry {
   content: string;
 }
 
-@doc("Represents a message from the agent to the user, including content, state, and any code changes.")
+@doc("Represents a single content block in an external message with timestamp.")
+model ExternalContentBlock {
+  @doc("Deprecated. The role of the block. Will be removed in the future.")
+  role: 'assistant';
+
+  @doc("The content of the block.")
+  content: string;
+
+  @doc("The timestamp of the block.")
+  timestamp: utcDateTime;
+}
+
+@doc("Represents a message from the agent to the user, including structured content blocks, state, and any code changes. The 'content' field has been deprecated in favor of the 'messages' field for better structured messaging.")
 model AgentMessage {
   @doc("Fixed field for client to detect agent message in the history") 
   role: 'assistant';
@@ -79,8 +91,8 @@ model AgentMessage {
   @doc("The type of message being sent.")
   kind: MessageKind;
 
-  @doc("Formatted content of the message. Can be long and contain formatting, including custom URLs for CLI handling.")
-  content: string;
+  @doc("Structured content blocks with timestamps. Preferred for new clients that support structured messaging.")
+  messages?: ExternalContentBlock[];
 
   @doc("Updated state of the Agent Server that should be presented in the next request to continue the conversation.")
   agentState: Record<string, unknown> | null;
@@ -187,4 +199,4 @@ model InternalServerErrorResponse {
     error: string;
     details?: string;
   };
-}
+} 
