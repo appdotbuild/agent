@@ -3,12 +3,17 @@ import uuid
 from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
 
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, FileEntry
+from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, FileEntry, MessageKind
 from api.agent_server.async_server import app, CONFIG
 from log import get_logger
 
 logger = get_logger(__name__)
 
+# Re-export MessageKind for convenient import in tests
+__all__ = [
+    "AgentApiClient",
+    "MessageKind",
+]
 
 class AgentApiClient:
     """Reusable client for interacting with the Agent API server"""
