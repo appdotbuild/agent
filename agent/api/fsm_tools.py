@@ -338,7 +338,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
         # Create the initial prompt for the AI agent
         logger.info("Sending request to LLM...")
         current_messages = [
-            Message(role="user", content=[TextRaw(initial_prompt)]),
+            InternalMessage(role="user", content=[TextRaw(initial_prompt)]),
         ]
         # Main interaction loop
         while True:
