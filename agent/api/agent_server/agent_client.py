@@ -81,62 +81,41 @@ class AgentApiClient:
         return events, request
 
     async def continue_conversation(self,
-                                  previous_events: List[AgentSseEvent],
-                                  previous_request: AgentRequest,
-                                  message: str,
-                                  all_files: Optional[List[Dict[str, str]]] = None,
-                                  settings: Optional[Dict[str, Any]] = None,
-                                  stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
-                                 ) -> Tuple[List[AgentSseEvent], AgentRequest]:
-        """Continue a conversation using the agent state from previous events"""
+                                   previous_events: List[AgentSseEvent],
+                                   previous_request: AgentRequest,
+                                   message: str,
+                                   all_files: Optional[List[Dict[str, str]]] = None,
+                                   settings: Optional[Dict[str, Any]] = None,
+                                   stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                                  ) -> Tuple[List[AgentSseEvent], AgentRequest]:
+        """Continue a conversation using the agent state from previous events."""
         agent_state = None
-        messages_history_json_str: Optional[str] = None
-
+        all_messages_history: List[ConversationMessage] = []
         for event in reversed(previous_events):
             if event.message:
-                agent_state = event.message.agent_state
-                #if event.message.messages:
-                #    messages_history_json_str = json.dumps(event.message.messages.model_dump())
-                break
-
-        messages_history_casted: List[ConversationMessage] = []
-        if messages_history_json_str:
-            try:
-                history_list_raw = json.loads(messages_history_json_str)
-                for m_raw in history_list_raw:
-                    role = m_raw.get("role")
-                    raw_content = m_raw.get("content", "")
-
-                    current_content_str = ""
-                    if isinstance(raw_content, str):
-                        current_content_str = raw_content
-                    elif isinstance(raw_content, list) and len(raw_content) > 0 and isinstance(raw_content[0], dict) and "text" in raw_content[0]:
-                        # If content is a list of dicts like [{'text': ..., 'type': ...}], extract text from first element for simplicity in history
-                        current_content_str = raw_content[0].get("text", "")
-                    else:
-                        # Fallback for other unexpected content structures
-                        current_content_str = str(raw_content)
-
-                    if role == "user":
-                        messages_history_casted.append(UserMessage(role="user", content=current_content_str))
-                    elif role == "assistant":
-                        messages_history_casted.append(AgentMessage(
+                if event.message.agent_state:
+                    agent_state = event.message.agent_state 
+                if event.message.messages:
+                    for m in event.message.messages:
+                        if m.role == "user":
+                            all_messages_history.append(UserMessage(role="user", content=m.content))
+                        elif m.role == "assistant":
+                            all_messages_history.append(AgentMessage(
                             role="assistant",
-                            content=current_content_str, # AgentMessage.content is also a string, potentially JSON string of blocks
+                            content=m.content, # AgentMessage.content is also a string, potentially JSON string of blocks
                             kind=MessageKind.STAGE_RESULT,
                             agentState=None, unifiedDiff=None, app_name=None, commit_message=None
                         ))
-            except json.JSONDecodeError:
-                logger.error("Failed to decode messages_history from event content.")
-            except Exception as e:
-                logger.error(f"Error processing message history: {e}")
-
+                break
+        
+        logger.info(f"all_messages_history: {all_messages_history}")
         trace_id = previous_request.trace_id
         application_id = previous_request.application_id
 
+        # Delegate to `send_message`, which will append the new user message
         events, request = await self.send_message(
             message=message,
-            messages_history=messages_history_casted,
+            messages_history=all_messages_history,
             application_id=application_id,
             trace_id=trace_id,
             agent_state=agent_state,
