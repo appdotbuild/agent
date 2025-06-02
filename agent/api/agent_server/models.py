@@ -247,13 +247,13 @@ def format_internal_message_for_display(message) -> str:
                 
                 # Extract meaningful information based on common input patterns
                 if "app_description" in input_data:
-                    context_parts.append(f"Building: {input_data['app_description'][:100]}...")
+                    context_parts.append(f"Building: {input_data['app_description']}")
                 elif "file_path" in input_data or "path" in input_data:
                     file_path = input_data.get("file_path") or input_data.get("path")
                     context_parts.append(f"File: {file_path}")
                 elif "command" in input_data:
                     context_parts.append(f"Command: {input_data['command']}")
-                elif "content" in input_data and len(str(input_data['content'])) < 100:
+                elif "content" in input_data and len(str(input_data['content'])) < 250:
                     context_parts.append(f"Content: {input_data['content']}")
                 elif "query" in input_data:
                     context_parts.append(f"Query: {input_data['query']}")
