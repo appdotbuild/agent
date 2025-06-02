@@ -17,6 +17,8 @@ from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,
+    UserMessage,
+    ConversationMessage,
     AgentStatus,
     ExternalContentBlock,
     MessageKind,
@@ -48,15 +50,27 @@ class TrpcAgentSession(AgentInterface):
         self._sse_counter = 0
 
     @staticmethod
-    def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[InternalMessage]:
-        """Convert AgentMessage list to LLM Message format."""
-        return [
-            InternalMessage(
-                role=m.role if m.role == "user" else "assistant",
-                content=[TextRaw(text=m.content)]
+    def convert_agent_messages_to_llm_messages(agent_messages: List[ConversationMessage]) -> List[InternalMessage]:
+        """Convert ConversationMessage list to LLM InternalMessage format."""
+        internal_messages: List[InternalMessage] = []
+        for m in agent_messages:
+            text_content = ""
+            if isinstance(m, UserMessage):
+                text_content = m.content
+            elif isinstance(m, AgentMessage):
+                # Extract content from messages field
+                if m.messages:
+                    text_content = "\n".join([block.content for block in m.messages if block.content])
+                else:
+                    text_content = ""  # Empty content if no messages
+            
+            internal_messages.append(
+                InternalMessage(
+                    role=m.role,
+                    content=[TextRaw(text=text_content)]
+                )
             )
-            for m in agent_messages
-        ]
+        return internal_messages
 
     @staticmethod
     def filter_messages_for_user(messages: List[InternalMessage]) -> List[InternalMessage]:

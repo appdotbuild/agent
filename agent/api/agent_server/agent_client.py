@@ -95,8 +95,8 @@ class AgentApiClient:
         for event in reversed(previous_events):
             if event.message:
                 agent_state = event.message.agent_state
-                if event.message.messages:
-                    messages_history_json_str = json.dumps([m.to_dict() for m in event.message.messages])
+                #if event.message.messages:
+                #    messages_history_json_str = json.dumps(event.message.messages.model_dump())
                 break
 
         messages_history_casted: List[ConversationMessage] = []

@@ -457,7 +457,7 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                         else:
                             print(content)
             #TODO: remove. Fallback to deprecated content field for backward compatibility
-            elif event.message.content:
+            elif hasattr(event.message, 'content') and event.message.content:
                 try:
                     items = json.loads(event.message.content)
                     for item in items:
