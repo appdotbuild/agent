@@ -12,7 +12,6 @@ from api.snapshot_utils import snapshot_saver
 from core.statemachine import MachineCheckpoint
 from uuid import uuid4
 import dagger
-import ujson as json
 
 from api.agent_server.models import (
     AgentRequest,
@@ -264,7 +263,6 @@ class TrpcAgentSession(AgentInterface):
                 )
                 for x in content
             ]
-            content_str = json.dumps([m.to_dict() for m in content], sort_keys=True)
         else:
             structured_blocks = [
                 ExternalContentBlock(
@@ -272,7 +270,6 @@ class TrpcAgentSession(AgentInterface):
                     timestamp=datetime.datetime.now(datetime.UTC)
                 )
             ]
-            content_str = content
 
         event = AgentSseEvent(
             status=status,
@@ -280,7 +277,6 @@ class TrpcAgentSession(AgentInterface):
             message=AgentMessage(
                 role="assistant",
                 kind=kind,
-                content=content_str,
                 messages=structured_blocks,
                 agentState={"fsm_state": fsm_state} if fsm_state else None,
                 unifiedDiff=unified_diff,
