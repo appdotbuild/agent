@@ -42,13 +42,13 @@ body {
   text-align: center;
   max-width: 600px;
 }
-h1 {
+h1.title {
   font-size: 2.5rem;
   font-weight: 700;
   margin-bottom: 1rem;
   letter-spacing: -0.02em;
 }
-p {
+p.description {
   font-size: 1.125rem;
   color: var(--text-secondary);
   margin-bottom: 2rem;
@@ -113,4 +113,19 @@ p {
   z-index: -2;
   background: radial-gradient(circle at center, var(--gradient-color) 0%, transparent 50%);
   transition: background 0.3s ease;
+}
+
+.footer {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.footer-link {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: bold;
 }
