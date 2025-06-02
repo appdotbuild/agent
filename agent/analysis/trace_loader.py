@@ -83,7 +83,6 @@ class TraceLoader:
                 for obj in page["Contents"]:
                     key = obj["Key"]
                     name = os.path.basename(key)
-
                     # check if the file matches any of the patterns
                     for pattern in patterns:
                         if self._matches_pattern(name, pattern):
@@ -109,6 +108,11 @@ class TraceLoader:
         if pattern.startswith("*") and pattern.endswith(".json"):
             suffix = pattern[1:]  # remove the *
             return filename.endswith(suffix)
+
+        if pattern.startswith("*") and pattern.endswith("*"):
+            suffix = pattern[1:-1]
+            return suffix in filename
+
         return False
 
     def load_file(self, file_info: Dict[str, Any]) -> Dict[str, Any]:

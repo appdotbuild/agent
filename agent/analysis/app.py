@@ -6,14 +6,15 @@ from analysis.utils import extract_trajectories_from_dump
 from analysis.trace_loader import TraceLoader
 
 
-def get_trace_patterns() -> List[str]:
-    """Get the patterns for trace files to search."""
-    patterns = []
-    if st.sidebar.checkbox("FSM enter states", value=False):
-        patterns.append("*fsm_enter.json")
-    if st.sidebar.checkbox("FSM exit states", value=True):
-        patterns.append("*fsm_exit.json")
-    return patterns
+def get_trace_pattern(file_type: str) -> str:
+    """Get the pattern for trace files based on selected type."""
+    patterns = {
+        "FSM enter states": "*fsm_enter.json",
+        "FSM exit states": "*fsm_exit.json", 
+        "Top level agent": "*fsmtools_messages.json",
+        "SSE events": "*sse*"
+    }
+    return patterns.get(file_type, "")
 
 
 def display_message(msg: Dict[str, Any], idx: int):
@@ -30,6 +31,74 @@ def display_message(msg: Dict[str, Any], idx: int):
         if other_fields:
             st.write("**Other fields:**")
             st.json(other_fields)
+
+
+def display_top_level_message(msg: Dict[str, Any], idx: int):
+    """Display a top-level agent message with better formatting for tool use."""
+    role = msg.get('role', 'Unknown')
+    
+    # both user and assistant blocks collapsed by default
+    expanded = False
+    
+    with st.expander(f"Message {idx + 1}: {role.upper()}", expanded=expanded):
+        content = msg.get("content", [])
+        
+        if isinstance(content, list):
+            for i, item in enumerate(content):
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        st.markdown(f"**Text:**")
+                        text_content = item.get("text", "")
+                        # use markdown for assistant messages, plain text for others
+                        if role == "assistant":
+                            st.markdown(text_content)
+                        else:
+                            st.text(text_content)
+                    
+                    elif item.get("type") == "tool_use":
+                        st.markdown("**🔧 Tool Use:**")
+                        col1, col2 = st.columns([1, 3])
+                        with col1:
+                            st.code(item.get("name", "Unknown"))
+                        with col2:
+                            st.json(item.get("input", {}))
+                    
+                    elif item.get("type") == "tool_use_result":
+                        st.markdown("**✅ Tool Result:**")
+                        tool_use = item.get("tool_use", {})
+                        tool_result = item.get("tool_result", {})
+                        
+                        # show tool info
+                        st.markdown(f"*Tool:* `{tool_use.get('name', 'Unknown')}`")
+                        
+                        # show tool result content
+                        if "content" in tool_result:
+                            try:
+                                # try to parse JSON content if it's a string
+                                import json
+                                result_content = tool_result["content"]
+                                if isinstance(result_content, str):
+                                    try:
+                                        result_content = json.loads(result_content)
+                                    except:
+                                        pass
+                                
+                                # display the content
+                                with st.container():
+                                    st.json(result_content)
+                            except:
+                                st.text(tool_result["content"])
+                    
+                    else:
+                        # fallback for unknown types
+                        st.json(item)
+                
+                # add separator between content items
+                if i < len(content) - 1:
+                    st.divider()
+        else:
+            # fallback for non-list content
+            st.json(content)
 
 
 def main():
@@ -88,17 +157,24 @@ def main():
             st.error(f"Storage location not available: {traces_location}")
             return
 
-        # get file patterns
-        patterns = get_trace_patterns()
-        if not patterns:
-            st.warning("Please select at least one trace type")
+        # file type selection
+        file_type = st.radio(
+            "Trace Type",
+            options=["FSM exit states", "FSM enter states", "Top level agent", "SSE events"],
+            help="Select the type of trace files to analyze"
+        )
+
+        # get file pattern
+        pattern = get_trace_pattern(file_type)
+        if not pattern:
+            st.warning("Invalid trace type selected")
             return
 
         # get list of files
-        fsm_files = trace_loader.list_trace_files(patterns)
+        fsm_files = trace_loader.list_trace_files([pattern])
 
         if not fsm_files:
-            st.warning("No FSM checkpoint files found")
+            st.warning(f"No {file_type} files found")
             return
 
         # File selection
@@ -124,17 +200,22 @@ def main():
                     # fallback for files without directory
                     return f"{file_info['path']} ({file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
 
-        selected_file = st.selectbox("Select FSM checkpoint file", options=fsm_files, format_func=format_file_option)
+        selected_file = st.selectbox("Select file", options=fsm_files, format_func=format_file_option)
 
-        actors_to_display = st.sidebar.multiselect(
-            "Select Actors to Display",
-            options=["Frontend", "Handler", "Draft", "Edit"],
-            default=["Frontend", "Handler", "Draft", "Edit"],
-        )
+        # actors selection - only show for FSM enter/exit files
+        if file_type in ["FSM exit states", "FSM enter states"]:
+            actors_to_display = st.sidebar.multiselect(
+                "Select Actors to Display",
+                options=["Frontend", "Handler", "Draft", "Edit"],
+                default=["Frontend", "Handler", "Draft", "Edit"],
+            )
+        else:
+            actors_to_display = []
         # Process button
         if st.button("Process File", type="primary"):
             st.session_state.current_file = selected_file
             st.session_state.trace_loader = trace_loader
+            st.session_state.actors_to_display = actors_to_display
             st.session_state.processing = True
 
     # Main content area
@@ -144,19 +225,31 @@ def main():
                 # load the file content
                 trace_loader = st.session_state.trace_loader
                 file_content = trace_loader.load_file(st.session_state.current_file)
-
-                # extract trajectories from the loaded content
-                messages = extract_trajectories_from_dump(file_content)
-                st.session_state.messages = messages
+                
+                # determine trace type based on filename
+                filename = st.session_state.current_file["name"]
+                
+                if "fsm_enter" in filename or "fsm_exit" in filename:
+                    # FSM traces - use the existing extraction logic
+                    messages = extract_trajectories_from_dump(file_content)
+                    st.session_state.messages = messages
+                    st.session_state.trace_type = "fsm"
+                elif "fsmtools_messages" in filename:
+                    # top-level agent messages - store as special type
+                    st.session_state.raw_content = file_content
+                    st.session_state.trace_type = "fsmtools"
+                else:
+                    # other traces (sse_events, etc.) - store raw content
+                    st.session_state.raw_content = file_content
+                    st.session_state.trace_type = "raw"
+                
                 st.session_state.processing = False
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
             st.session_state.processing = False
 
     # Display results
-    if "messages" in st.session_state:
-        messages = st.session_state.messages
-
+    if "trace_type" in st.session_state:
         # Show full file path/name
         file_info = st.session_state.current_file
         if file_info.get("is_local", True):
@@ -166,46 +259,94 @@ def main():
 
         st.subheader(f"File: {file_display}")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total Trajectories", len(messages))
-        with col2:
-            total_messages = sum(len(msgs) for msgs in messages.values())
-            st.metric("Total Messages", total_messages)
+        if st.session_state.trace_type == "fsm" and "messages" in st.session_state:
+            # FSM trace display logic
+            messages = st.session_state.messages
 
-        # Trajectory filter
-        st.header("Trajectories")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Trajectories", len(messages))
+            with col2:
+                total_messages = sum(len(msgs) for msgs in messages.values())
+                st.metric("Total Messages", total_messages)
 
-        # Search box
-        search_term = st.text_input("Search in messages", placeholder="Enter search term...")
+            # Trajectory filter
+            st.header("Trajectories")
 
-        # Display trajectories
-        for trajectory_name, trajectory_messages in messages.items():
-            is_displayed = False
-            for actor in actors_to_display:
-                if trajectory_name.startswith(actor.lower()):
-                    is_displayed = True
-                    break
-            if not is_displayed:
-                continue
+            # Search box
+            search_term = st.text_input("Search in messages", placeholder="Enter search term...")
 
-            # Filter messages if search term is provided
-            if search_term:
-                filtered_messages = [msg for msg in trajectory_messages if search_term.lower() in str(msg).lower()]
-                if not filtered_messages:
-                    continue
+            # Display trajectories
+            actors_to_display = st.session_state.get("actors_to_display", [])
+            for trajectory_name, trajectory_messages in messages.items():
+                # if actors filter is specified, check if trajectory matches
+                if actors_to_display:
+                    is_displayed = False
+                    for actor in actors_to_display:
+                        if trajectory_name.startswith(actor.lower()):
+                            is_displayed = True
+                            break
+                    if not is_displayed:
+                        continue
+
+                # Filter messages if search term is provided
+                if search_term:
+                    filtered_messages = [msg for msg in trajectory_messages if search_term.lower() in str(msg).lower()]
+                    if not filtered_messages:
+                        continue
+                else:
+                    filtered_messages = trajectory_messages
+
+                with st.container():
+                    st.subheader(f"📍 {trajectory_name}")
+                    st.write(f"**{len(filtered_messages)} messages**")
+
+                    # Display messages
+                    for idx, msg in enumerate(filtered_messages):
+                        display_message(msg, idx)
+
+                    st.divider()
+
+        elif st.session_state.trace_type == "fsmtools" and "raw_content" in st.session_state:
+            # FSMTools messages display logic
+            st.header("Top-Level Agent Messages")
+            
+            # parse the messages
+            messages = st.session_state.raw_content
+            if isinstance(messages, list):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Messages", len(messages))
+                with col2:
+                    # count tool uses
+                    tool_uses = sum(
+                        1 for msg in messages 
+                        if isinstance(msg.get("content"), list) 
+                        for item in msg["content"] 
+                        if isinstance(item, dict) and item.get("type") == "tool_use"
+                    )
+                    st.metric("Tool Uses", tool_uses)
+                
+                # search box
+                search_term = st.text_input("Search in messages", placeholder="Enter search term...")
+                
+                # display messages
+                for idx, msg in enumerate(messages):
+                    # filter if search term is provided
+                    if search_term and search_term.lower() not in str(msg).lower():
+                        continue
+                    
+                    display_top_level_message(msg, idx)
             else:
-                filtered_messages = trajectory_messages
-
-            with st.container():
-                st.subheader(f"📍 {trajectory_name}")
-                st.write(f"**{len(filtered_messages)} messages**")
-
-                # Display messages
-                for idx, msg in enumerate(filtered_messages):
-                    display_message(msg, idx)
-
-                st.divider()
+                st.error("Invalid message format")
+        
+        elif st.session_state.trace_type == "raw" and "raw_content" in st.session_state:
+            # Raw trace display logic - show plain JSON
+            st.header("Raw Trace Data")
+            
+            # Display the raw JSON content
+            with st.expander("Full JSON Content", expanded=True):
+                st.json(st.session_state.raw_content)
 
     else:
         st.info("👈 Select an FSM checkpoint file from the sidebar to begin analysis")
