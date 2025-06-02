@@ -178,6 +178,13 @@ class Tool(TypedDict, total=False):
     cache_control: NotRequired[dict[str, str]]
 
 
+# TODO: remove this alias after all clients are updated
+Message = InternalMessage
+
+# ----------------------------------
+# Async LLM protocol
+# ----------------------------------
+
 class AsyncLLM(Protocol):
     async def completion(
         self,
@@ -192,7 +199,3 @@ class AsyncLLM(Protocol):
         **kwargs,
     ) -> Completion:
         ...
-
-
-# Backwards compatibility alias
-Message = InternalMessage

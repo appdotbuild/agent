@@ -254,14 +254,24 @@ class TrpcAgentSession(AgentInterface):
         commit_message: Optional[str] = None,
     ) -> None:
         """Send event with specified parameters."""
-        # Handle content serialization based on type
-        messages = []
+        structured_blocks: List[ExternalContentBlock]
         if isinstance(content, list):
-            # Messages need to be serialized to JSON
-            messages = [ExternalContentBlock(content=x.to_external_message(), timestamp=datetime.datetime.now(datetime.UTC)) for x in content]
+            structured_blocks = [
+                ExternalContentBlock(
+                    content=x.to_external_message(),
+                    timestamp=datetime.datetime.now(datetime.UTC)
+                )
+                for x in content
+            ]
+            content_str = json.dumps([m.to_dict() for m in content], sort_keys=True)
         else:
-            # Error messages are already strings
-            messages = [ExternalContentBlock(content=content, timestamp=datetime.datetime.now(datetime.UTC))]
+            structured_blocks = [
+                ExternalContentBlock(
+                    content=content,
+                    timestamp=datetime.datetime.now(datetime.UTC)
+                )
+            ]
+            content_str = content
 
         event = AgentSseEvent(
             status=status,
@@ -269,7 +279,8 @@ class TrpcAgentSession(AgentInterface):
             message=AgentMessage(
                 role="assistant",
                 kind=kind,
-                messages=messages,
+                content=content_str,
+                messages=structured_blocks,
                 agentState={"fsm_state": fsm_state} if fsm_state else None,
                 unifiedDiff=unified_diff,
                 complete_diff_hash=None,

@@ -22,6 +22,7 @@ import dagger
 from dagger import dag
 import os
 import datetime
+import json
 
 from api.agent_server.models import (
     AgentRequest,
@@ -155,6 +156,7 @@ async def run_agent[T: AgentInterface](
                             message=AgentMessage(
                                 role="assistant",
                                 kind=MessageKind.KEEP_ALIVE,
+                                content="",
                                 messages=[],
                                 agentState=None,
                                 unifiedDiff=None
@@ -203,6 +205,7 @@ async def run_agent[T: AgentInterface](
                     message=AgentMessage(
                         role="assistant",
                         kind=MessageKind.RUNTIME_ERROR,
+                        content=json.dumps([{"role": "assistant", "content": [{"type": "text", "text": f"Error processing request: {str(e)}"}]}]),
                         messages=[ExternalContentBlock(
                             content=f"Error processing request: {str(e)}", 
                             timestamp=datetime.datetime.now(datetime.UTC)

@@ -64,8 +64,11 @@ class AgentMessage(BaseModel):
     """The detailed message payload from the agent."""
     role: Literal["assistant"] = Field("assistant", description="Fixed field for client to detect assistant message in the history") 
     kind: MessageKind = Field(..., description="The type of message being sent.")
-    messages: List[ExternalContentBlock] = Field(..., description="Formatted content of the message. Can be long and contain formatting.")
-    content: Literal["Deprecated"] = Field("Deprecated", description="Deprecated field, do not use.")
+    # Deprecated field, do not use. Use messages instead.
+    content: str = Field(..., description="Deprecated. Formatted content of the message encoded as JSON string for backward compatibility.")
+    messages: Optional[List[ExternalContentBlock]] = Field(
+        None,
+        description="Structured content blocks. Present only for new clients.")
     agent_state: Optional[Dict[str, Any]] = Field(
         None, 
         alias="agentState", 
