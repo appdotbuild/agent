@@ -502,6 +502,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "patch-ng" },
     { name = "sentry-sdk" },
+    { name = "tenacity" },
     { name = "ujson" },
     { name = "uvicorn" },
 ]
@@ -538,6 +539,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "patch-ng", specifier = ">=1.17.4" },
     { name = "sentry-sdk", specifier = ">=2.25.1" },
+    { name = "tenacity", specifier = ">=9.1.2" },
     { name = "ujson", specifier = ">=5.10.0" },
     { name = "uvicorn", specifier = "==0.34.0" },
 ]

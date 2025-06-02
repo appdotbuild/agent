@@ -6,8 +6,8 @@ from google.genai.errors import APIError
 import os
 from llm import common
 from log import get_logger
-import random
-import anyio
+import logging
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type, before_sleep_log
 
 
 logger = get_logger(__name__)
@@ -15,6 +15,30 @@ logger = get_logger(__name__)
 
 class RetryableError(RuntimeError):
     pass
+
+
+# retry decorator for gemini API errors
+retry_gemini_errors = retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential_jitter(initial=0.5, max=1.5),
+    retry=retry_if_exception_type((RetryableError, APIError)),
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
+
+# retry decorator for file upload errors (5xx only)
+def is_server_error(exception):
+    """Check if the exception is a 5xx server error."""
+    if isinstance(exception, APIError):
+        if hasattr(exception, 'status_code') and 500 <= exception.status_code < 600:
+            return True
+    return False
+
+retry_file_upload = retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential_jitter(initial=0.5, max=1.5),
+    retry=is_server_error,
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
 
 class GeminiLLM(common.AsyncLLM):
     def __init__(self,
@@ -68,21 +92,20 @@ class GeminiLLM(common.AsyncLLM):
                 )
 
         gemini_messages = await self._messages_into(messages, attach_files)
-        n_tries = 0
-        while True:
-            if n_tries >= 5:
-                raise RuntimeError(f"Failed to get a valid completion after {n_tries} attempts")
-            try:
-                response = await self._async_client.models.generate_content(
-                    model=self.model_name,
-                    contents=gemini_messages,
-                    config=config,
-                )
-                return self._completion_from(response)
-            except (RetryableError, APIError) as err:
-                logger.warning(f"Retrying completion due to error: {err}")
-                await anyio.sleep(random.uniform(0.5, 1.5))
-                n_tries += 1
+        return await self._generate_content_with_retry(gemini_messages, config)
+
+    @retry_gemini_errors
+    async def _generate_content_with_retry(
+        self,
+        gemini_messages: List[genai_types.Content],
+        config: genai_types.GenerateContentConfig
+    ) -> common.Completion:
+        response = await self._async_client.models.generate_content(
+            model=self.model_name,
+            contents=gemini_messages,
+            config=config,
+        )
+        return self._completion_from(response)
 
     async def upload_files(self, files: List[str]) -> List[genai_types.File]:
         result = []
@@ -90,25 +113,13 @@ class GeminiLLM(common.AsyncLLM):
             if not os.path.exists(f):
                 raise FileNotFoundError(f"File {f} does not exist")
             
-            # retry logic for file uploads
-            n_tries = 0
-            while True:
-                if n_tries >= 5:
-                    raise RuntimeError(f"Failed to upload file {f} after {n_tries} attempts")
-                try:
-                    uploaded = await self._async_client.files.upload(file=f)
-                    result.append(uploaded)
-                    break
-                except APIError as err:
-                    # check if it's a 5xx error
-                    if hasattr(err, 'status_code') and 500 <= err.status_code < 600:
-                        logger.warning(f"Retrying file upload due to server error: {err}")
-                        await anyio.sleep(random.uniform(0.5, 1.5))
-                        n_tries += 1
-                    else:
-                        # not a 5xx error, re-raise
-                        raise
+            uploaded = await self._upload_single_file(f)
+            result.append(uploaded)
         return result
+
+    @retry_file_upload
+    async def _upload_single_file(self, file_path: str) -> genai_types.File:
+        return await self._async_client.files.upload(file=file_path)
 
     @staticmethod
     def _completion_from(completion: genai_types.GenerateContentResponse) -> common.Completion:

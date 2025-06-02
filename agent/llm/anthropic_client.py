@@ -1,6 +1,4 @@
 from typing import Iterable, TypedDict, NotRequired
-import anyio
-import random
 import anthropic
 from anthropic.types import (
     ToolParam,
@@ -16,8 +14,25 @@ from anthropic.types import (
 )
 from llm import common
 from log import get_logger
+import logging
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter, before_sleep_log
 
 logger = get_logger(__name__)
+
+
+# retry decorator for anthropic rate limit errors
+def is_rate_limit_error(exception):
+    """Check if the exception is a rate limit error (status code >= 413)."""
+    if isinstance(exception, anthropic.APIStatusError):
+        return exception.status_code >= 413
+    return False
+
+retry_rate_limits = retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential_jitter(initial=1, max=5),
+    retry=is_rate_limit_error,
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
 
 
 class AnthropicParams(TypedDict):
@@ -70,19 +85,18 @@ class AnthropicLLM(common.AsyncLLM):
         if tool_choice is not None:
             call_args["tool_choice"] = {"type": "tool", "name": tool_choice}
 
-        completion = None
-        while completion is None:
-            try:
-                completion = await self.client.messages.create(**call_args)
-                return self._completion_from(completion)
-            except anthropic.APIStatusError as exc:
-                if exc.status_code >= 413:
-                    # errors meaning we can retry
-                    delay = random.randint(1, 5)
-                    logger.warning(f"Rate limit error, retrying in {delay} seconds")
-                    await anyio.sleep(delay)
-                else:
-                    raise RuntimeError(f"Anthropic API error: {exc.status_code} {exc.message}") from exc
+        return await self._create_message_with_retry(call_args)
+
+    @retry_rate_limits
+    async def _create_message_with_retry(self, call_args: AnthropicParams) -> common.Completion:
+        try:
+            completion = await self.client.messages.create(**call_args)
+            return self._completion_from(completion)
+        except anthropic.APIStatusError as exc:
+            if exc.status_code < 413:
+                # non-retryable error, raise with better message
+                raise RuntimeError(f"Anthropic API error: {exc.status_code} {exc.message}") from exc
+            raise  # let tenacity handle retryable errors
 
     @staticmethod
     def _completion_from(completion: Message) -> common.Completion:

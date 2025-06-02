@@ -7,9 +7,17 @@ import hashlib
 from core.postgres_utils import create_postgres_service
 from core.dagger_utils import ExecResult
 import uuid
+import logging
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type, before_sleep_log
 
 logger = get_logger(name)
 
+retry_transport_errors = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=1, max=10),
+    retry=retry_if_exception_type(dagger.TransportError),
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
 
 def _sorted_set(s: set[str]) -> list[str]:
     return sorted(list(s))
@@ -67,6 +75,7 @@ class Workspace:
         return self
 
     @function
+    @retry_transport_errors
     async def ls(self, path: str) -> list[str]:
         try:
             return await self.ctr.directory(path).entries()
@@ -74,6 +83,7 @@ class Workspace:
             raise FileNotFoundError(f"Directory not found: {path}")
 
     @function
+    @retry_transport_errors
     async def read_file(self, path: str) -> str:
         try:
             return await self.ctr.file(path).contents()
@@ -92,6 +102,7 @@ class Workspace:
         return self
 
     @function
+    @retry_transport_errors
     async def read_file_lines(self, path: str, start: int = 1, end: int = 100) -> str:
         return (
             await self.ctr
@@ -100,6 +111,7 @@ class Workspace:
         )
 
     @function
+    @retry_transport_errors
     async def diff(self) -> str:
         start = self.client.container().from_("alpine/git").with_workdir("/app").with_directory("/app", self.start)
         if ".git" not in await self.start.entries():
@@ -134,12 +146,14 @@ class Workspace:
         return diff_output
 
     @function
+    @retry_transport_errors
     async def exec(self, command: list[str], cwd: str = ".") -> ExecResult:
         return await ExecResult.from_ctr(
             self.ctr.with_workdir(cwd).with_exec(command, expect=ReturnType.ANY)
         )
 
     @function
+    @retry_transport_errors
     async def exec_with_pg(self, command: list[str], cwd: str = ".") -> ExecResult:
         postgresdb = create_postgres_service(self.client)
 
@@ -154,6 +168,7 @@ class Workspace:
         )
 
     @function
+    @retry_transport_errors
     async def exec_mut(self, command: list[str]) -> Self:
         ctr = self.ctr.with_exec(command, expect=ReturnType.ANY)
         if await ctr.exit_code() != 0:
@@ -181,6 +196,7 @@ class Workspace:
         )
 
     @function
+    @retry_transport_errors
     async def run_playwright(self,
                             service: dagger.Service,
                             output_path: str | None,

@@ -3,9 +3,21 @@ import boto3
 from log import get_logger
 from api.config import CONFIG
 import os
+import logging
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type, before_sleep_log
+from botocore.exceptions import ClientError, BotoCoreError
 
 
 logger = get_logger(__name__)
+
+
+# retry decorator for S3 operations
+retry_s3_errors = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=1, max=10),
+    retry=retry_if_exception_type((ClientError, BotoCoreError)),
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
 
 
 class FSMSnapshotSaver:
@@ -52,7 +64,11 @@ class FSMSnapshotSaver:
     def save_s3(self, trace_id: str, key: str, data: object):
         logger.info(f"Storing snapshot for trace: {trace_id}/{key}")
         file_key = f"{trace_id}/{key}.json"
-        boto3.resource('s3').Bucket(self.bucket_name).put_object(Key=file_key, Body=json.dumps(data))
+        self._put_object_with_retry(file_key, json.dumps(data))
+
+    @retry_s3_errors
+    def _put_object_with_retry(self, key: str, body: str):
+        boto3.resource('s3').Bucket(self.bucket_name).put_object(Key=key, Body=body)
 
 snapshot_saver = FSMSnapshotSaver()
 
