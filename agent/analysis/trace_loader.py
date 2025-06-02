@@ -72,7 +72,46 @@ class TraceLoader:
         s3_client = boto3.client("s3")
 
         try:
-            # list all objects in the bucket
+            # optimize for SSE events by using prefix-based filtering
+            if len(patterns) == 1 and patterns[0] == "*sse_events*":
+                files.extend(self._list_s3_sse_events(s3_client))
+            else:
+                # fallback to full bucket scan for other patterns
+                paginator = s3_client.get_paginator("list_objects_v2")
+                pages = paginator.paginate(Bucket=self.bucket_or_path)
+
+                for page in pages:
+                    if "Contents" not in page:
+                        continue
+
+                    for obj in page["Contents"]:
+                        key = obj["Key"]
+                        name = os.path.basename(key)
+                        # check if the file matches any of the patterns
+                        for pattern in patterns:
+                            if self._matches_s3_pattern(key, pattern):
+                                files.append(
+                                    {
+                                        "path": key,
+                                        "name": name,
+                                        "modified": obj["LastModified"],
+                                        "size": obj["Size"],
+                                        "is_local": False,
+                                    }
+                                )
+                                break
+
+        except Exception as e:
+            logger.exception(f"Error listing S3 files: {e}")
+
+        return sorted(files, key=lambda x: x["modified"], reverse=True)
+
+    def _list_s3_sse_events(self, s3_client) -> List[Dict[str, Any]]:
+        """Fast single-call listing for SSE events with client-side filtering."""
+        files = []
+
+        try:
+            # single paginated call to list all objects, filter for sse_events
             paginator = s3_client.get_paginator("list_objects_v2")
             pages = paginator.paginate(Bucket=self.bucket_or_path)
 
@@ -82,25 +121,22 @@ class TraceLoader:
 
                 for obj in page["Contents"]:
                     key = obj["Key"]
-                    name = os.path.basename(key)
-                    # check if the file matches any of the patterns
-                    for pattern in patterns:
-                        if self._matches_pattern(name, pattern):
-                            files.append(
-                                {
-                                    "path": key,
-                                    "name": name,
-                                    "modified": obj["LastModified"],
-                                    "size": obj["Size"],
-                                    "is_local": False,
-                                }
-                            )
-                            break
+                    # fast string check: only process SSE event files
+                    if "/sse_events/" in key and key.endswith(".json"):
+                        files.append(
+                            {
+                                "path": key,
+                                "name": os.path.basename(key),
+                                "modified": obj["LastModified"],
+                                "size": obj["Size"],
+                                "is_local": False,
+                            }
+                        )
 
         except Exception as e:
-            logger.exception(f"Error listing S3 files: {e}")
+            logger.exception(f"Error listing SSE events: {e}")
 
-        return sorted(files, key=lambda x: x["modified"], reverse=True)
+        return files
 
     def _matches_pattern(self, filename: str, pattern: str) -> bool:
         """Check if filename matches the glob pattern."""
@@ -114,6 +150,17 @@ class TraceLoader:
             return suffix in filename
 
         return False
+
+    def _matches_s3_pattern(self, key: str, pattern: str) -> bool:
+        """Check if S3 key matches the pattern, considering full path structure."""
+        # for SSE events pattern "*sse_events*", match both local and S3 patterns
+        if pattern == "*sse_events*":
+            # S3 pattern: {trace_id}/sse_events/{sequence}.json
+            return "/sse_events/" in key and key.endswith(".json")
+
+        # fallback to filename-only matching
+        filename = os.path.basename(key)
+        return self._matches_pattern(filename, pattern)
 
     def load_file(self, file_info: Dict[str, Any]) -> Dict[str, Any]:
         """Load a trace file from either local filesystem or S3."""
