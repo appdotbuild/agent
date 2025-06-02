@@ -3,7 +3,7 @@ import uuid
 from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
 
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, AgentMessage, MessageKind, FileEntry
+from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, FileEntry
 from api.agent_server.async_server import app, CONFIG
 from log import get_logger
 
@@ -89,26 +89,22 @@ class AgentApiClient:
                                    stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
                                   ) -> Tuple[List[AgentSseEvent], AgentRequest]:
         """Continue a conversation using the agent state from previous events."""
-        agent_state = None
-        all_messages_history: List[ConversationMessage] = []
+        # Use agent_state from the latest event (if any)
+        agent_state: Optional[Dict[str, Any]] = None
         for event in reversed(previous_events):
-            if event.message:
-                if event.message.agent_state:
-                    agent_state = event.message.agent_state 
-                if event.message.messages:
-                    for m in event.message.messages:
-                        if m.role == "user":
-                            all_messages_history.append(UserMessage(role="user", content=m.content))
-                        elif m.role == "assistant":
-                            all_messages_history.append(AgentMessage(
-                            role="assistant",
-                            content=m.content, # AgentMessage.content is also a string, potentially JSON string of blocks
-                            kind=MessageKind.STAGE_RESULT,
-                            agentState=None, unifiedDiff=None, app_name=None, commit_message=None
-                        ))
+            if event.message and event.message.agent_state is not None:
+                agent_state = event.message.agent_state
                 break
-        
-        logger.info(f"all_messages_history: {all_messages_history}")
+
+        # Fallback to the agent_state stored in the previous_request itself
+        if agent_state is None:
+            agent_state = previous_request.agent_state
+
+        # Reuse the full history that the server already knows about
+        all_messages_history: List[ConversationMessage] = (
+            list(previous_request.all_messages) if previous_request.all_messages else []
+        )
+
         trace_id = previous_request.trace_id
         application_id = previous_request.application_id
 
