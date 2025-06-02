@@ -6,7 +6,7 @@ from fire import Fire
 import enum
 from core.application import ApplicationBase
 from llm.utils import AsyncLLM
-from llm.common import Message, ToolUse, ToolResult as CommonToolResult
+from llm.common import InternalMessage, ToolUse, ToolResult as CommonToolResult
 from llm.common import ToolUseResult, TextRaw, Tool
 from log import get_logger
 import ujson as json
@@ -226,7 +226,7 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.exception(f"Error completing FSM: {str(e)}")
             return CommonToolResult(content=f"Failed to complete FSM: {str(e)}", is_error=True)
 
-    async def step(self, messages: list[Message], llm: AsyncLLM, model_params: dict) -> Tuple[list[Message], FSMStatus]:
+    async def step(self, messages: list[InternalMessage], llm: AsyncLLM, model_params: dict) -> Tuple[list[InternalMessage], FSMStatus]:
         model_args = {
             "system_prompt": self.system_prompt,
             "tools": self.tool_definitions,
@@ -257,9 +257,9 @@ class FSMToolProcessor[T: FSMInterface]:
                         case _:
                             raise RuntimeError(f"Invalid tool call: {block}")
 
-        thread = [Message(role="assistant", content=response.content)]
+        thread = [InternalMessage(role="assistant", content=response.content)]
         if tool_results:
-            thread += [Message(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
+            thread += [InternalMessage(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
         match (tool_results, self.fsm_app):
             case (_, app) if app and app.maybe_error():
                 fsm_status = FSMStatus.FAILED

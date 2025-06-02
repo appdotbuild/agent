@@ -1,9 +1,10 @@
+import datetime
 import logging
 from typing import Dict, Any, Optional, TypedDict, List, Union
 
 from anyio.streams.memory import MemoryObjectSendStream
 
-from llm.common import Message, TextRaw
+from llm.common import InternalMessage, TextRaw
 from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from api.fsm_tools import FSMToolProcessor, FSMStatus
@@ -18,6 +19,7 @@ from api.agent_server.models import (
     AgentSseEvent,
     AgentMessage,
     AgentStatus,
+    ExternalContentBlock,
     MessageKind,
 )
 from api.agent_server.interface import AgentInterface
@@ -46,10 +48,10 @@ class TrpcAgentSession(AgentInterface):
         self._sse_counter = 0
 
     @staticmethod
-    def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[Message]:
+    def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[InternalMessage]:
         """Convert AgentMessage list to LLM Message format."""
         return [
-            Message(
+            InternalMessage(
                 role=m.role if m.role == "user" else "assistant",
                 content=[TextRaw(text=m.content)]
             )
@@ -57,7 +59,7 @@ class TrpcAgentSession(AgentInterface):
         ]
 
     @staticmethod
-    def filter_messages_for_user(messages: List[Message]) -> List[Message]:
+    def filter_messages_for_user(messages: List[InternalMessage]) -> List[InternalMessage]:
         """Filter messages for user."""
         return [m for m in messages if m.role == "assistant"]
 
@@ -234,7 +236,7 @@ class TrpcAgentSession(AgentInterface):
                     trace_id=self.trace_id,
                     key="fsmtools_messages",
                     data=[msg.to_dict() for msg in messages]
-            )
+                )
             await event_tx.aclose()
 
     # ---------------------------------------------------------------------
@@ -245,7 +247,7 @@ class TrpcAgentSession(AgentInterface):
         event_tx: MemoryObjectSendStream[AgentSseEvent],
         status: AgentStatus,
         kind: MessageKind,
-        content: Union[List[Message], str],
+        content: Union[List[InternalMessage], str],
         fsm_state: Optional[MachineCheckpoint] = None,
         unified_diff: Optional[str] = None,
         app_name: Optional[str] = None,
@@ -253,12 +255,13 @@ class TrpcAgentSession(AgentInterface):
     ) -> None:
         """Send event with specified parameters."""
         # Handle content serialization based on type
+        messages = []
         if isinstance(content, list):
             # Messages need to be serialized to JSON
-            content_str = json.dumps([x.to_dict() for x in content], sort_keys=True)
+            messages = [ExternalContentBlock(content=x.to_external_message(), timestamp=datetime.datetime.now(datetime.UTC)) for x in content]
         else:
             # Error messages are already strings
-            content_str = content
+            messages = [ExternalContentBlock(content=content, timestamp=datetime.datetime.now(datetime.UTC))]
 
         event = AgentSseEvent(
             status=status,
@@ -266,7 +269,7 @@ class TrpcAgentSession(AgentInterface):
             message=AgentMessage(
                 role="assistant",
                 kind=kind,
-                content=content_str,
+                messages=messages,
                 agentState={"fsm_state": fsm_state} if fsm_state else None,
                 unifiedDiff=unified_diff,
                 complete_diff_hash=None,

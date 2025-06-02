@@ -7,6 +7,7 @@ They are used by the `async_server.py` for data validation.
 
 Refer to `architecture.puml` for context within the system.
 """
+import datetime
 from enum import Enum
 import ujson as json
 from typing import Dict, List, Optional, Any, Union, Literal, Type, TypeVar
@@ -53,12 +54,18 @@ class DiffStatEntry(BaseModel):
     insertions: int = Field(..., description="Number of lines inserted in this file during the current step.")
     deletions: int = Field(..., description="Number of lines deleted in this file during the current step.")
 
+class ExternalContentBlock(BaseModel):
+    """Represents a single content block in an external message."""
+    role: Literal["assistant"] = Field("assistant", description="Deprecated. The role of the block. Will be removed in the future.")
+    content: str = Field(..., description="The content of the block.")
+    timestamp: datetime.datetime = Field(..., description="The timestamp of the block.")
 
 class AgentMessage(BaseModel):
     """The detailed message payload from the agent."""
     role: Literal["assistant"] = Field("assistant", description="Fixed field for client to detect assistant message in the history") 
     kind: MessageKind = Field(..., description="The type of message being sent.")
-    content: str = Field(..., description="Formatted content of the message. Can be long and contain formatting.")
+    messages: List[ExternalContentBlock] = Field(..., description="Formatted content of the message. Can be long and contain formatting.")
+    content: Literal["Deprecated"] = Field("Deprecated", description="Deprecated field, do not use.")
     agent_state: Optional[Dict[str, Any]] = Field(
         None, 
         alias="agentState", 

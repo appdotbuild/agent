@@ -21,6 +21,7 @@ from fire import Fire
 import dagger
 from dagger import dag
 import os
+import datetime
 
 from api.agent_server.models import (
     AgentRequest,
@@ -28,7 +29,8 @@ from api.agent_server.models import (
     AgentMessage,
     AgentStatus,
     MessageKind,
-    ErrorResponse
+    ErrorResponse,
+    ExternalContentBlock
 )
 from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import TrpcAgentSession
@@ -153,7 +155,7 @@ async def run_agent[T: AgentInterface](
                             message=AgentMessage(
                                 role="assistant",
                                 kind=MessageKind.KEEP_ALIVE,
-                                content="",
+                                messages=[],
                                 agentState=None,
                                 unifiedDiff=None
                             )
@@ -201,7 +203,10 @@ async def run_agent[T: AgentInterface](
                     message=AgentMessage(
                         role="assistant",
                         kind=MessageKind.RUNTIME_ERROR,
-                        content=f"Error processing request: {str(e)}", # Keep simple message for client
+                        messages=[ExternalContentBlock(
+                            content=f"Error processing request: {str(e)}", 
+                            timestamp=datetime.datetime.now(datetime.UTC)
+                        )],
                         agentState=None,
                         unifiedDiff=""
                     )
