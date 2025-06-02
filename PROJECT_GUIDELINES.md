@@ -44,9 +44,46 @@ Commands should typically be run from the `./agent` directory:
 - Never use mocks in tests unless explicitly required
 
 ## Cursor Learned
-- The state machine pattern in `core` requires explicit state transitions
-- The logger setup requires using the `get_logger` function from `agent.log`
-- Always check for existing patterns before implementing new functionality
+
+Track learnings and work progress here.
+
+### SSE Message Handling Enhancement (Latest)
+
+**Problem Solved**: Fixed JSON double-encoding issue in SSE events where content was being JSON-encoded twice, resulting in escaped JSON strings like `{\"status\":\"idle\",\"content\":\"[{\\\"role\\\"...}]\"...}`.
+
+**Solution Implemented**:
+1. **Model Changes**: Updated `AgentMessage` to use structured `messages` field (`List[ExternalContentBlock]`) instead of string `content` field
+2. **Backward Compatibility**: Kept deprecated `content` field for legacy clients  
+3. **Agent Session**: Modified `send_event()` to populate both fields - structured messages for new clients, JSON string for legacy
+4. **Interactive Client**: Enhanced `print_event()` function to:
+   - Use new structured `messages` field when available
+   - Fall back to deprecated `content` field for backward compatibility
+   - Display timestamps with messages in format `[HH:MM:SS] message content`
+   - Handle multi-line content properly with indentation
+
+**New Interactive Commands Added**:
+- `/messages` - Show detailed message history with timestamps, event metadata, and structured formatting
+- `/last` - Show latest messages from most recent event for quick review
+
+**Technical Details**:
+- `ExternalContentBlock` contains: `content: str`, `timestamp: datetime`, `role: Literal["assistant"]`  
+- Messages are displayed with subtle timestamp formatting: `[90m[HH:MM:SS][0m content`
+- Event status (idle/running) and kind (StageResult/ReviewResult/etc) shown with color coding
+- Graceful handling of legacy JSON content for backward compatibility
+
+This eliminates the double-JSON-encoding issue while providing a better user experience with structured, timestamped messages.
+
+**Architectural Improvement**: Moved user-facing message formatting logic from `llm/common.py` to `api/agent_server/models.py` via `format_internal_message_for_display()` function, centralizing SSE-related user interface logic
+
+**User-Friendly Tool Reporting**:
+- Tool uses now display with emoji icons and descriptive names instead of technical format
+- Context extraction shows relevant information (file paths, commands, descriptions) without JSON dumps
+- Tool results show completion status with appropriate success/error indicators
+- Before: `[Tool Use: start_fsm] Input: {"app_description": "..."}`
+- After: `🚀 Starting application development | Building: A simple application that displays...`
+
+This eliminates the double-JSON-encoding issue while providing a better user experience with structured, timestamped messages.
+
 # Code Style Guidelines
 
 ## Python

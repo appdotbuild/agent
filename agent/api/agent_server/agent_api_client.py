@@ -447,14 +447,28 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
     def print_event(event: AgentSseEvent) -> None:
         logger.info(f"Got an event: {event.status} {event.message.kind}")
         if event.message:
-            if event.message.content:
-                items = json.loads(event.message.content)
-                for item in items:
-                    if isinstance(item, dict):
-                        if item.get("role") == "assistant":
-                            for part in item.get("content", []):
-                                if isinstance(part, dict) and part.get("type") == "text":
-                                    print(part.get("text", ""), end="\n", flush=True)
+            if event.message.messages:
+                for msg_block in event.message.messages:
+                    content = msg_block.content.strip()
+                    if content:
+                        timestamp = msg_block.timestamp.strftime("%H:%M:%S") if hasattr(msg_block, 'timestamp') and msg_block.timestamp else ""
+                        if timestamp:
+                            print(f"\033[90m[{timestamp}]\033[0m {content}")
+                        else:
+                            print(content)
+            #TODO: remove. Fallback to deprecated content field for backward compatibility
+            elif event.message.content:
+                try:
+                    items = json.loads(event.message.content)
+                    for item in items:
+                        if isinstance(item, dict):
+                            if item.get("role") == "assistant":
+                                for part in item.get("content", []):
+                                    if isinstance(part, dict) and part.get("type") == "text":
+                                        print(part.get("text", ""), end="\n", flush=True)
+                except json.JSONDecodeError:
+                    # If content is not valid JSON, print it as-is
+                    print(event.message.content)
                 
             if event.message.unified_diff:
                 print("\n\n\033[36m--- Auto-Detected Diff ---\033[0m")
@@ -509,8 +523,9 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                             "/help       Show this help\\n"
                             "/exit, /quit Exit chat\\n"
                             "/clear      Clear conversation\\n"
-                            "/save       Save state to file"
-                            "\\n"
+                            "/save       Save state to file\\n"
+                            "/messages   Show detailed message history\\n"
+                            "/last       Show latest messages from most recent event\\n"
                             "/diff       Show the latest unified diff\\n"
                             f"/apply [target_path] Apply diff to [target_path]. If no path, applies to project folder ({project_dir}).\\n"
                             "/export     Export the latest diff to a patchfile\\n"
@@ -569,6 +584,111 @@ async def run_chatbot_client(host: str, port: int, state_file: str, settings: Op
                                 "timestamp": datetime.now().isoformat()
                             }, f, indent=2)
                         print(f"State saved to {state_file}")
+                        continue
+                    case "/messages":
+                        if not previous_events:
+                            print("No message history available.")
+                            continue
+                        
+                        print("\n\033[1m=== Message History ===\033[0m")
+                        for i, event in enumerate(previous_events):
+                            if not event.message:
+                                continue
+                            
+                            # Show event metadata
+                            status_color = "\033[92m" if event.status == "idle" else "\033[93m"  # Green for idle, yellow for running
+                            kind_color = "\033[94m"  # Blue for kind
+                            print(f"\n\033[90m[Event {i+1}]\033[0m {status_color}{event.status}\033[0m | {kind_color}{event.message.kind}\033[0m")
+                            
+                            # Show structured messages if available
+                            if event.message.messages:
+                                for j, msg_block in enumerate(event.message.messages):
+                                    timestamp_str = ""
+                                    if hasattr(msg_block, 'timestamp') and msg_block.timestamp:
+                                        timestamp_str = f" \033[90m[{msg_block.timestamp.strftime('%H:%M:%S')}]\033[0m"
+                                    
+                                    content = msg_block.content.strip()
+                                    if content:
+                                        # Add indentation for readability
+                                        lines = content.split('\n')
+                                        for line_idx, line in enumerate(lines):
+                                            if line_idx == 0:
+                                                print(f"  {timestamp_str} {line}")
+                                            else:
+                                                print(f"    {line}")
+                            elif event.message.content:
+                                # Fallback to deprecated content field
+                                try:
+                                    items = json.loads(event.message.content)
+                                    for item in items:
+                                        if isinstance(item, dict) and item.get("role") == "assistant":
+                                            for part in item.get("content", []):
+                                                if isinstance(part, dict) and part.get("type") == "text":
+                                                    lines = part.get("text", "").split('\n')
+                                                    for line in lines:
+                                                        if line.strip():
+                                                            print(f"    {line}")
+                                except json.JSONDecodeError:
+                                    print(f"    {event.message.content}")
+                            
+                            # Show additional info if present
+                            if event.message.app_name:
+                                print(f"  \033[35m🚀 App: {event.message.app_name}\033[0m")
+                            if event.message.commit_message:
+                                print(f"  \033[35m📝 Commit: {event.message.commit_message}\033[0m")
+                            if event.message.unified_diff:
+                                diff_lines = len(event.message.unified_diff.splitlines())
+                                print(f"  \033[36m📄 Diff: {diff_lines} lines\033[0m")
+                        
+                        print("\n\033[1m=== End History ===\033[0m\n")
+                        continue
+                    case "/last":
+                        if not previous_events:
+                            print("No message history available.")
+                            continue
+                        
+                        # Find the most recent event with messages
+                        latest_event = None
+                        for event in reversed(previous_events):
+                            if event.message and (event.message.messages or event.message.content):
+                                latest_event = event
+                                break
+                        
+                        if not latest_event:
+                            print("No recent messages found.")
+                            continue
+                        
+                        print("\n\033[1m=== Latest Messages ===\033[0m")
+                        status_color = "\033[92m" if latest_event.status == "idle" else "\033[93m"
+                        kind_color = "\033[94m"
+                        print(f"{status_color}{latest_event.status}\033[0m | {kind_color}{latest_event.message.kind}\033[0m")
+                        
+                        if latest_event.message.messages:
+                            for msg_block in latest_event.message.messages:
+                                timestamp_str = ""
+                                if hasattr(msg_block, 'timestamp') and msg_block.timestamp:
+                                    timestamp_str = f"\033[90m[{msg_block.timestamp.strftime('%H:%M:%S')}]\033[0m "
+                                
+                                content = msg_block.content.strip()
+                                if content:
+                                    lines = content.split('\n')
+                                    for line_idx, line in enumerate(lines):
+                                        if line_idx == 0:
+                                            print(f"{timestamp_str}{line}")
+                                        else:
+                                            print(f"  {line}")
+                        elif latest_event.message.content:
+                            try:
+                                items = json.loads(latest_event.message.content)
+                                for item in items:
+                                    if isinstance(item, dict) and item.get("role") == "assistant":
+                                        for part in item.get("content", []):
+                                            if isinstance(part, dict) and part.get("type") == "text":
+                                                print(part.get("text", ""))
+                            except json.JSONDecodeError:
+                                print(latest_event.message.content)
+                        
+                        print("\n")
                         continue
                     case "/diff":
                         diff = latest_unified_diff(previous_events)

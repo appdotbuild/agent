@@ -183,3 +183,108 @@ class ErrorResponse(BaseModel):
     def from_json(cls: Type[T], json_str: str) -> T:
         """Deserialize a JSON string to a model instance."""
         return cls.model_validate(json.loads(json_str))
+
+
+def format_internal_message_for_display(message) -> str:
+    """
+    Convert an InternalMessage to user-friendly display format.
+    
+    Args:
+        message: InternalMessage object to format
+        
+    Returns:
+        User-friendly string representation
+    """
+    # Tool name to user-friendly description mapping
+    tool_descriptions = {
+        "start_fsm": "🚀 Starting application development",
+        "create_file": "📄 Creating file",
+        "edit_file": "✏️  Editing file", 
+        "read_file": "📖 Reading file",
+        "run_command": "⚡ Running command",
+        "install_dependencies": "📦 Installing dependencies",
+        "build_project": "🔨 Building project",
+        "test_project": "🧪 Running tests",
+        "deploy_project": "🌐 Deploying project",
+        "analyze_code": "🔍 Analyzing code",
+        "fix_errors": "🔧 Fixing errors",
+        "validate_schema": "✅ Validating schema",
+        "generate_code": "⚙️  Generating code",
+        "refactor_code": "🔄 Refactoring code",
+        "optimize_performance": "⚡ Optimizing performance",
+        "setup_database": "🗄️  Setting up database",
+        "migrate_database": "🔄 Migrating database",
+        "backup_data": "💾 Backing up data",
+        "restore_data": "📥 Restoring data",
+        "configure_environment": "⚙️  Configuring environment",
+        "setup_ci_cd": "🔄 Setting up CI/CD",
+        "security_scan": "🔒 Running security scan",
+        "lint_code": "✨ Linting code",
+        "format_code": "💅 Formatting code",
+    }
+    
+    parts = []
+    for block in message.content:
+        block_type = type(block).__name__
+        
+        if block_type == "TextRaw":
+            parts.append(block.text)
+        elif block_type == "ToolUse":
+            # Use friendly description if available, otherwise format the name nicely
+            name = block.name
+            if name in tool_descriptions:
+                description = tool_descriptions[name]
+            else:
+                # Convert snake_case to Title Case for unknown tools
+                description = f"🔧 {name.replace('_', ' ').title()}"
+            
+            parts.append(description)
+            
+            # Add relevant context from input in a user-friendly way
+            input_data = block.input
+            if input_data and isinstance(input_data, dict):
+                context_parts = []
+                
+                # Extract meaningful information based on common input patterns
+                if "app_description" in input_data:
+                    context_parts.append(f"Building: {input_data['app_description'][:100]}...")
+                elif "file_path" in input_data or "path" in input_data:
+                    file_path = input_data.get("file_path") or input_data.get("path")
+                    context_parts.append(f"File: {file_path}")
+                elif "command" in input_data:
+                    context_parts.append(f"Command: {input_data['command']}")
+                elif "content" in input_data and len(str(input_data['content'])) < 100:
+                    context_parts.append(f"Content: {input_data['content']}")
+                elif "query" in input_data:
+                    context_parts.append(f"Query: {input_data['query']}")
+                elif "message" in input_data:
+                    context_parts.append(f"Message: {input_data['message']}")
+                
+                if context_parts:
+                    parts.append(f"  {' | '.join(context_parts)}")
+                    
+        elif block_type == "ToolUseResult":
+            tool_use = block.tool_use
+            tool_result = block.tool_result
+            
+            if tool_result.is_error:
+                parts.append(f"❌ Error in {tool_use.name}: {tool_result.content}")
+            else:
+                # For successful tool results, show a brief success message
+                tool_name = tool_use.name
+                if tool_name in tool_descriptions:
+                    base_desc = tool_descriptions[tool_name].replace("🚀 Starting", "✅ Started").replace("📄 Creating", "✅ Created").replace("✏️  Editing", "✅ Edited").replace("⚡ Running", "✅ Completed")
+                    parts.append(base_desc)
+                else:
+                    parts.append(f"✅ {tool_name.replace('_', ' ').title()} completed")
+                
+                # Show brief result summary if content is short and meaningful
+                if tool_result.content and len(tool_result.content.strip()) < 200:
+                    content_preview = tool_result.content.strip()
+                    if not content_preview.startswith(('{"', '[', '<')):  # Skip JSON/XML/HTML output
+                        parts.append(f"  → {content_preview}")
+        elif block_type == "ThinkingBlock":
+            # Skip thinking blocks for external display
+            pass
+    
+    return "\n".join(parts).strip()

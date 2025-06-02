@@ -106,34 +106,6 @@ class InternalMessage:
 
     def to_dict(self) -> dict:
         return {"role": self.role, "content": dump_content(self.content)}
-    
-    def to_external_message(self) -> str:
-        """
-        Report a result as a single message with plain structured content and
-        human readable text, so that it can be displayed in a chat interface.
-        """
-        
-        parts = []
-        for block in self.content:
-            match block:
-                case TextRaw(text):
-                    parts.append(text)
-                case ToolUse(name, input, id):
-                    parts.append(f"[Tool Use: {name}]")
-                    if input:
-                        input_str = json.dumps(input, indent=2)
-                        parts.append(f"Input:\n{input_str}")
-                case ToolUseResult(tool_use, tool_result):
-                    parts.append(f"[Tool Result: {tool_use.name}]")
-                    if tool_result.is_error:
-                        parts.append(f"Error: {tool_result.content}")
-                    else:
-                        parts.append(tool_result.content)
-                case ThinkingBlock(thinking):
-                    # Skip thinking blocks for external display
-                    pass
-        
-        return "\n".join(parts).strip()
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:

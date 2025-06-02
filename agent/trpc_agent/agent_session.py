@@ -21,6 +21,7 @@ from api.agent_server.models import (
     AgentStatus,
     ExternalContentBlock,
     MessageKind,
+    format_internal_message_for_display,
 )
 from api.agent_server.interface import AgentInterface
 from llm.llm_generators import generate_app_name, generate_commit_message
@@ -258,7 +259,7 @@ class TrpcAgentSession(AgentInterface):
         if isinstance(content, list):
             structured_blocks = [
                 ExternalContentBlock(
-                    content=x.to_external_message(),
+                    content=format_internal_message_for_display(x),
                     timestamp=datetime.datetime.now(datetime.UTC)
                 )
                 for x in content
