@@ -52,7 +52,6 @@ class TrpcAgentSession(AgentInterface):
         self.model_params = {
             "max_tokens": 8192,
         }
-        self._template_diff_sent: bool = False
         self.client = client
         self._sse_counter = 0
         self._snapshot_key = self.trace_id + "_" + datetime.now().strftime("%m%d%H%M%S")
@@ -142,16 +141,18 @@ class TrpcAgentSession(AgentInterface):
             # Processing
             logger.info(f"Last user message: {fsm_message_history[-1].content}")
 
-
-            messages = fsm_message_history
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
             top_level_agent_llm = get_llm_client(model_name="gemini-flash")
 
             while True:
-                new_messages, fsm_status = await self.processor_instance.step(messages, top_level_agent_llm, self.model_params)
+                new_messages, fsm_status = await self.processor_instance.step(
+                    agent_state["fsm_messages"],
+                    top_level_agent_llm,
+                    self.model_params
+                )
 
                 # Add messages for agentic loop
-                messages += new_messages
+                agent_state["fsm_messages"] += new_messages
                 messages_to_user = self.filter_messages_for_user(new_messages)
 
                 if self.processor_instance.fsm_app is not None:
