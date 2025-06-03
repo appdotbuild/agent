@@ -69,6 +69,8 @@ class Workspace:
     @function
     def rm(self, path: str) -> Self:
         protected = self.protected - self.allowed # allowed take precedence
+        if self.allowed and not any(path.startswith(p) for p in self.allowed):
+            raise PermissionError(f"Attempted to remove {path} which is not in allowed paths: {_sorted_set(self.allowed)}")
         if any(path.startswith(p) for p in protected):
             raise PermissionError(f"Attempted to remove {path} which is in protected paths: {_sorted_set(protected)}")
         self.ctr = self.ctr.without_file(path)

@@ -11,7 +11,7 @@ from core.base_node import Node
 from core.statemachine import MachineCheckpoint
 from core.workspace import Workspace
 from trpc_agent import playbooks
-from trpc_agent.silly import EditActor
+from trpc_agent.diff_edit_actor import EditActor
 from trpc_agent.actors import DraftActor, HandlersActor, FrontendActor, ConcurrentActor
 import dagger
 
@@ -137,7 +137,6 @@ class FSMApplication:
         llm = get_llm_client()
         vlm = get_llm_client(model_name="gemini-flash-lite")
         model_params = settings or {}
-        g_llm = get_llm_client(model_name="gemini-pro")
         workspace = await Workspace.create(
             client=client,
             base_image="oven/bun:1.2.5-alpine",
@@ -150,33 +149,7 @@ class FSMApplication:
             handlers=HandlersActor(llm, workspace.clone(), model_params, beam_width=3),
             frontend=FrontendActor(llm, vlm, workspace.clone(), model_params, beam_width=1, max_depth=20)
         )
-        edit_actor = EditActor(
-            g_llm,
-            vlm,
-            workspace.clone(),
-            playbooks.SILLY_PROMPT,
-            ws_allowed=[
-                "server/src/schema.ts",
-                "server/src/db/schema.ts",
-                "server/src/handlers/",
-                "server/src/tests/",
-                "server/src/index.ts",
-                "client/src/App.tsx",
-                "client/src/components/",
-                "client/src/App.css",
-            ],
-            ws_protected=[
-                "server/src/db/index.ts",
-                "client/src/utils/trpc.ts",
-                "client/src/components/ui",
-            ],
-            ws_injected=[
-                "client/src/utils/trpc.ts",
-                "client/src/lib/utils.ts",
-            ],
-            ws_visible=["client/src/components/ui/"],
-            max_depth=70,
-        )
+        edit_actor = EditActor(llm, vlm, workspace.clone())
 
         # Define state machine states
         states = State[ApplicationContext, FSMEvent](
@@ -228,7 +201,7 @@ class FSMApplication:
                 FSMState.APPLY_FEEDBACK: State(
                     invoke={
                         "src": edit_actor,
-                        "input_fn": lambda ctx: (ctx.files, ctx.feedback_data),
+                        "input_fn": lambda ctx: (ctx.files, ctx.user_prompt, ctx.feedback_data),
                         "on_done": {
                             "target": FSMState.COMPLETE,
                             "actions": [update_node_files]
