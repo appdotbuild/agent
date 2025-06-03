@@ -535,7 +535,7 @@ requires-dist = [
     { name = "dagger-io", specifier = ">=0.18.9" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fire", specifier = ">=0.7.0" },
-    { name = "google-genai", specifier = ">=1.7.0" },
+    { name = "google-genai", specifier = ">=1.18.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "patch-ng", specifier = ">=1.17.4" },
     { name = "sentry-sdk", specifier = ">=2.25.1" },
@@ -599,7 +599,7 @@ wheels = [
 
 [[package]]
 name = "google-genai"
-version = "1.7.0"
+version = "1.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -610,9 +610,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/24/3f3282c82e0cd678ea7bdfe53bc5d908059fb9628643b783129724c3bcfb/google_genai-1.7.0.tar.gz", hash = "sha256:bf8909ba25527e125f07de99cd16ec8bba4d989b67c31c235114418a65404967", size = 146088 }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/c2/4dac4192aa3f1273d117b54002bde9df565becd0fb5489ec1f58777ce2a3/google_genai-1.18.0.tar.gz", hash = "sha256:242a02df3248e291f03e37019ce5a1c8a21a14ec245b59668c9f2b4d8965295e", size = 197394 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/e1/8495491b7ff694c940765061283d562a428b7f9d8d93fc5fdaf2d672d735/google_genai-1.7.0-py3-none-any.whl", hash = "sha256:62b7b67d16b2fa0a6a989f029414a072c6e9e6f0479bb7d18e0532b8090ea895", size = 144732 },
+    { url = "https://files.pythonhosted.org/packages/94/db/dce044ddf3f272248aa517fb8e525b31685b483210a8e08773596dbcc611/google_genai-1.18.0-py3-none-any.whl", hash = "sha256:3527bb93c8306e725401aca0a0a684610bbf1ef9aa61c2ed3333a695f43dc9af", size = 199485 },
 ]
 
 [[package]]
