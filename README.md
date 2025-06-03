@@ -8,12 +8,11 @@
 
 ## What it builds
 
-- **Full-stack web apps** with React, Vite, and Fastify
+- **Full-stack web apps** with Bun, React, Vite, Fastify and Drizzle
 - **Neon Postgres database** provisioned instantly via API
-- **Authentication** via Neon Auth
-- **End-to-end tests** written in Playwright
+- **Applications tested** ahead of generation with smoke tests using Playwright
 - **GitHub repository** with complete source code
-- **CI/CD and deployment** via Koyeb
+- **CI/CD and deployment** via the [app.build platform](https://github.com/appdotbuild/platform)
 - **Automatic validation** with ESLint, TypeScript, and runtime verification
 
 ## Try it
@@ -29,7 +28,6 @@ This agent doesn't generate entire applications at once. Instead, it breaks down
 1. **Database schema generation** - Creates typed database models
 2. **API handler logic** - Builds validated Fastify routes
 3. **Frontend components** - Generates React UI with proper typing
-4. **Test suite creation** - Writes comprehensive Playwright tests
 
 Each task is validated independently using ESLint, TypeScript compilation, test execution, and runtime logs before being accepted.
 
