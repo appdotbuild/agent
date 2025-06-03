@@ -1,6 +1,4 @@
-import os
 import re
-import anyio
 import jinja2
 import logging
 import dataclasses
@@ -187,7 +185,7 @@ class EditActor(BaseActor, LLMActor):
                     solution = new_node
                     break
         if solution is None:
-            logger.error(f"EditActor failed to find a solution")
+            logger.error("EditActor failed to find a solution")
             raise ValueError("No solutions found")
         return solution
 

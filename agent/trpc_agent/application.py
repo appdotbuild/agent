@@ -10,7 +10,6 @@ from core.actors import BaseData
 from core.base_node import Node
 from core.statemachine import MachineCheckpoint
 from core.workspace import Workspace
-from trpc_agent import playbooks
 from trpc_agent.diff_edit_actor import EditActor
 from trpc_agent.actors import DraftActor, HandlersActor, FrontendActor, ConcurrentActor
 import dagger
