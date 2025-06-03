@@ -19,7 +19,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uvicorn
 from fire import Fire
 import dagger
-from dagger import dag
 import os
 import json
 
