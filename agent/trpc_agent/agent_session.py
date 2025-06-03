@@ -9,6 +9,7 @@ from llm.utils import AsyncLLM, get_llm_client
 from api.fsm_tools import FSMToolProcessor, FSMStatus
 from api.snapshot_utils import snapshot_saver
 from core.statemachine import MachineCheckpoint
+from datetime import datetime
 from uuid import uuid4
 import dagger
 
@@ -48,8 +49,10 @@ class TrpcAgentSession(AgentInterface):
         self._template_diff_sent: bool = False
         self.client = client
         self._sse_counter = 0
+        self._snapshot_key = self.trace_id + "_" + datetime.now().strftime("%m%d%H%M%S")
 
     @staticmethod
+
     def convert_agent_messages_to_llm_messages(saved_messages: List[ConversationMessage | InternalMessage]) -> List[InternalMessage]:
         """Convert ConversationMessage list to LLM InternalMessage format."""
         internal_messages: List[InternalMessage] = []
@@ -112,6 +115,7 @@ class TrpcAgentSession(AgentInterface):
                     InternalMessage.from_dict(msg) for msg in request.agent_state.get("fsm_messages", [])
                 ]
                 fsm_message_history += self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
+                logger.info(f"Last user message: {fsm_message_history[-1].content}")
 
                 match fsm_state:
                     case None:
@@ -124,7 +128,7 @@ class TrpcAgentSession(AgentInterface):
 
             if self.processor_instance.fsm_app is not None:
                 snapshot_saver.save_snapshot(
-                    trace_id=self.trace_id,
+                    trace_id=self._snapshot_key,
                     key="fsm_enter",
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
@@ -253,13 +257,13 @@ class TrpcAgentSession(AgentInterface):
         finally:
             if self.processor_instance.fsm_app is not None:
                 snapshot_saver.save_snapshot(
-                    trace_id=self.trace_id,
+                    trace_id=self._snapshot_key,
                     key="fsm_exit",
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
             if messages:
                 snapshot_saver.save_snapshot(
-                    trace_id=self.trace_id,
+                    trace_id=self._snapshot_key,
                     key="fsmtools_messages",
                     data=[msg.to_dict() for msg in messages]
                 )
@@ -315,7 +319,7 @@ class TrpcAgentSession(AgentInterface):
         )
         await event_tx.send(event)
         snapshot_saver.save_snapshot(
-            trace_id=self.trace_id,
+            trace_id=self._snapshot_key,
             key=f"sse_events/{self._sse_counter}",
             data=event.model_dump(),
         )

@@ -358,8 +358,8 @@ def main():
         if file_type in ["FSM exit states", "FSM enter states"]:
             actors_to_display = st.sidebar.multiselect(
                 "Select Actors to Display",
-                options=["Frontend", "Handler", "Draft", "Edit"],
-                default=["Frontend", "Handler", "Draft", "Edit"],
+                options=["Frontend", "Backend", "Draft", "Edit"],
+                default=["Frontend", "Backend", "Draft", "Edit"],
             )
         else:
             actors_to_display = []
@@ -490,6 +490,7 @@ def main():
 
             # Display trajectories
             actors_to_display = st.session_state.get("actors_to_display", [])
+
             for trajectory_name, trajectory_messages in messages.items():
                 # if actors filter is specified, check if trajectory matches
                 if actors_to_display:

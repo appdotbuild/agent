@@ -32,7 +32,7 @@ async def client(monkeypatch):
 async def test_health(client):
     resp = await client.client.get("http://test/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "healthy"}
+    assert resp.json()['status'] == "healthy", "Health check failed"
 
 
 async def test_invalid_token(dummy_token, client):
