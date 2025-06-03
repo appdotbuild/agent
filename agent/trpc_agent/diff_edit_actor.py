@@ -119,7 +119,7 @@ class EditActor(BaseActor, LLMActor):
         vlm: AsyncLLM,
         workspace: Workspace,
         beam_width: int = 3,
-        max_depth: int = 20,
+        max_depth: int = 30,
     ):
         self.llm = llm
         self.workspace = workspace
