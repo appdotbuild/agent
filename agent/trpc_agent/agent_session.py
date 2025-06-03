@@ -98,6 +98,7 @@ class TrpcAgentSession(AgentInterface):
             event_tx: Event transmission stream
         """
         messages = None
+        fsm_message_history: List[ConversationMessage] = self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
         try:
             logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
