@@ -30,9 +30,15 @@ from llm.llm_generators import generate_app_name, generate_commit_message
 logger = logging.getLogger(__name__)
 
 
+class StateMetadata(TypedDict):
+    app_name: str | None
+    template_diff_sent: bool
+
+
 class AgentState(TypedDict):
-    fsm_state: MachineCheckpoint
+    fsm_state: MachineCheckpoint | None
     fsm_messages: List[InternalMessage]
+    metadata: StateMetadata
 
 
 class TrpcAgentSession(AgentInterface):
@@ -102,36 +108,39 @@ class TrpcAgentSession(AgentInterface):
             request: Incoming agent request
             event_tx: Event transmission stream
         """
-        messages = None
-        fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
         try:
             logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
-            # Check if we need to initialize or if this is a continuation with an existing state
+            # build always valid blank state
+            fsm_app: FSMApplication | None = None
+            fsm_state: MachineCheckpoint | None = None
+            fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
+            metadata: StateMetadata = {
+                "app_name": None,
+                "template_diff_sent": False,
+            }
+
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
-                fsm_state = request.agent_state.get("fsm_state")
-                fsm_message_history = [
-                    InternalMessage.from_dict(msg) for msg in request.agent_state.get("fsm_messages", [])
-                ]
-                fsm_message_history += self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
-                logger.info(f"Last user message: {fsm_message_history[-1].content}")
-
-                match fsm_state:
-                    case None:
-                        self.processor_instance = FSMToolProcessor(self.client, FSMApplication)
-                    case _:
-                        fsm = await FSMApplication.load(self.client, fsm_state)
-                        self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm)
+                if (fsm_messages := request.agent_state.get("fsm_messages", [])):
+                    fsm_message_history = [InternalMessage.from_dict(m) for m in fsm_messages] + fsm_message_history
+                if (req_fsm_state := request.agent_state.get("fsm_state")):
+                    fsm_state = req_fsm_state
+                    fsm_app = await FSMApplication.load(self.client, req_fsm_state)
+                    snapshot_saver.save_snapshot(trace_id=self._snapshot_key, key="fsm_enter", data=req_fsm_state)
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
-            if self.processor_instance.fsm_app is not None:
-                snapshot_saver.save_snapshot(
-                    trace_id=self._snapshot_key,
-                    key="fsm_enter",
-                    data=await self.processor_instance.fsm_app.fsm.dump(),
-                )
+            # Unconditional initialization
+            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app)
+            agent_state: AgentState = {
+                "fsm_messages": fsm_message_history,
+                "fsm_state": fsm_state,
+                "metadata": metadata,
+            }
+
+            # Processing
+            logger.info(f"Last user message: {fsm_message_history[-1].content}")
 
 
             messages = fsm_message_history
@@ -143,35 +152,17 @@ class TrpcAgentSession(AgentInterface):
 
                 # Add messages for agentic loop
                 messages += new_messages
-
-                # Filter messages for user
                 messages_to_user = self.filter_messages_for_user(new_messages)
 
-                fsm_state = None
-                if self.processor_instance.fsm_app is None:
-                    logger.info("FSMApplication is empty")
-                    # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
-                else:
-                    fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    # fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages)
+                if self.processor_instance.fsm_app is not None:
+                    agent_state["fsm_state"] = await self.processor_instance.fsm_app.fsm.dump()
 
-                app_name = None
-                agent_state = AgentState(fsm_state=fsm_state, fsm_messages=fsm_message_history)
-                # Send initial template diff if we are not working on a FSM and we are not restoring a previous state
-                #FIXME: simplify this condition and write unit test for this
-                if (not self._template_diff_sent
-                    and request.agent_state is None
-                    and self.processor_instance.fsm_app):
-
+                if agent_state["metadata"]["template_diff_sent"] == False and self.processor_instance.fsm_app is not None:
+                    logger.info("GENERATING APP NAME")
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     app_name = await generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
                     initial_template_diff = await self.processor_instance.fsm_app.get_diff_with({})
-
-                    # Mark template diff as sent so subsequent iterations do not resend it.
-                    self._template_diff_sent = True
-
-                    #TODO: move into FSM in intial state to control this?
                     await self.send_event(
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
@@ -182,6 +173,10 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                         commit_message="Initial commit"
                     )
+                    agent_state["metadata"].update({
+                        "app_name": app_name,
+                        "template_diff_sent": True,
+                    })
 
 
                 # Send event based on FSM status
@@ -193,7 +188,7 @@ class TrpcAgentSession(AgentInterface):
                             kind=MessageKind.STAGE_RESULT,
                             content=messages_to_user,
                             agent_state=agent_state,
-                            app_name=app_name,
+                            app_name=agent_state["metadata"]["app_name"],
                         )
                     case FSMStatus.REFINEMENT_REQUEST:
                         await self.send_event(
@@ -202,7 +197,7 @@ class TrpcAgentSession(AgentInterface):
                             kind=MessageKind.REFINEMENT_REQUEST,
                             content=messages_to_user,
                             agent_state=agent_state,
-                            app_name=app_name,
+                            app_name=agent_state["metadata"]["app_name"],
                         )
                     case FSMStatus.FAILED:
                         await self.send_event(
@@ -213,6 +208,7 @@ class TrpcAgentSession(AgentInterface):
                         )
                     case FSMStatus.COMPLETED:
                         try:
+                            assert self.processor_instance.fsm_app is not None
                             logger.info("FSM is completed")
 
                             #TODO: write unit test for this
@@ -236,7 +232,7 @@ class TrpcAgentSession(AgentInterface):
                                 content=messages_to_user,
                                 agent_state=agent_state,
                                 unified_diff=final_diff,
-                                app_name=app_name,
+                                app_name=agent_state["metadata"]["app_name"],
                                 commit_message=commit_message
                             )
                         except Exception as e:
@@ -260,12 +256,6 @@ class TrpcAgentSession(AgentInterface):
                     trace_id=self._snapshot_key,
                     key="fsm_exit",
                     data=await self.processor_instance.fsm_app.fsm.dump(),
-                )
-            if messages:
-                snapshot_saver.save_snapshot(
-                    trace_id=self._snapshot_key,
-                    key="fsmtools_messages",
-                    data=[msg.to_dict() for msg in messages]
                 )
             await event_tx.aclose()
 
