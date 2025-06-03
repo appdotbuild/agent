@@ -20,7 +20,7 @@ class RetryableError(RuntimeError):
 # retry decorator for gemini API errors
 retry_gemini_errors = retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential_jitter(initial=0.5, max=1.5),
+    wait=wait_exponential_jitter(initial=1.5, max=30),
     retry=retry_if_exception_type((RetryableError, APIError)),
     before_sleep=before_sleep_log(logger, logging.WARNING)
 )
