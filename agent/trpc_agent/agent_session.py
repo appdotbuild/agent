@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class AgentState(TypedDict):
     fsm_state: MachineCheckpoint
+    fsm_messages: List[InternalMessage]
 
 
 class TrpcAgentSession(AgentInterface):
@@ -89,6 +90,7 @@ class TrpcAgentSession(AgentInterface):
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
                 fsm_state = request.agent_state.get("fsm_state")
+                fsm_message_history = request.agent_state.get("fsm_messages")
                 match fsm_state:
                     case None:
                         self.processor_instance = FSMToolProcessor(self.client, FSMApplication)
@@ -106,7 +108,7 @@ class TrpcAgentSession(AgentInterface):
                 )
 
             # Process the initial step
-            messages = self.convert_agent_messages_to_llm_messages(request.all_messages)
+            messages = self.convert_agent_messages_to_llm_messages(fsm_message_history)
 
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
             top_level_agent_llm = get_llm_client(model_name="gemini-flash")
@@ -126,8 +128,10 @@ class TrpcAgentSession(AgentInterface):
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
+                    #fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
                 app_name = None
+                agent_state = AgentState(fsm_state=fsm_state, fsm_messages=fsm_message_history)
                 # Send initial template diff if we are not working on a FSM and we are not restoring a previous state
                 #FIXME: simplify this condition and write unit test for this
                 if (not self._template_diff_sent
@@ -148,7 +152,7 @@ class TrpcAgentSession(AgentInterface):
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
                         content="Initializing...",
-                        fsm_state=fsm_state,
+                        fsm_state=agent_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
                         commit_message="Initial commit"
@@ -163,7 +167,7 @@ class TrpcAgentSession(AgentInterface):
                             status=AgentStatus.RUNNING,
                             kind=MessageKind.STAGE_RESULT,
                             content=messages_to_user,
-                            fsm_state=fsm_state,
+                            fsm_state=agent_state,
                             app_name=app_name,
                         )
                     case FSMStatus.REFINEMENT_REQUEST:
@@ -172,7 +176,7 @@ class TrpcAgentSession(AgentInterface):
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REFINEMENT_REQUEST,
                             content=messages_to_user,
-                            fsm_state=fsm_state,
+                            fsm_state=agent_state,
                             app_name=app_name,
                         )
                     case FSMStatus.FAILED:
@@ -205,7 +209,7 @@ class TrpcAgentSession(AgentInterface):
                                 status=AgentStatus.IDLE,
                                 kind=MessageKind.REVIEW_RESULT,
                                 content=messages_to_user,
-                                fsm_state=fsm_state,
+                                fsm_state=agent_state,
                                 unified_diff=final_diff,
                                 app_name=app_name,
                                 commit_message=commit_message
@@ -249,7 +253,7 @@ class TrpcAgentSession(AgentInterface):
         status: AgentStatus,
         kind: MessageKind,
         content: Union[List[InternalMessage], str],
-        fsm_state: Optional[MachineCheckpoint] = None,
+        agent_state: Optional[AgentState] = None,
         unified_diff: Optional[str] = None,
         app_name: Optional[str] = None,
         commit_message: Optional[str] = None,
@@ -279,7 +283,7 @@ class TrpcAgentSession(AgentInterface):
                 role="assistant",
                 kind=kind,
                 messages=structured_blocks,
-                agentState={"fsm_state": fsm_state} if fsm_state else None,
+                agentState={"fsm_state": agent_state["fsm_state"], "fsm_messages": agent_state["fsm_messages"]} if agent_state else None,
                 unifiedDiff=unified_diff,
                 complete_diff_hash=None,
                 diff_stat=None,
