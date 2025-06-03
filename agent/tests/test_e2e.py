@@ -57,7 +57,7 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True):
                 events, request = await client.continue_conversation(
                     previous_events=events,
                     previous_request=request,
-                    message="just do it!",
+                    message="just do it! no more questions, please",
                 )
 
             diff = latest_unified_diff(events)
