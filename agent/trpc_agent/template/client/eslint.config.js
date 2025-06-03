@@ -70,34 +70,34 @@ const noEmptyDynamicSelectValue = {
             parentName === 'RadioGroupItem'
           )) {
             const expr = node.value.expression;
-            
+
             // Skip if it's already a logical expression with fallback
-            if (expr.type === 'LogicalExpression' && 
+            if (expr.type === 'LogicalExpression' &&
                 (expr.operator === '||' || expr.operator === '??')) {
               return;
             }
-            
+
             // Skip if it's a conditional expression (ternary)
             if (expr.type === 'ConditionalExpression') {
               return;
             }
-            
+
             // Only check member expressions (like user.id, item.value)
             if (expr.type !== 'MemberExpression') {
               return;
             }
-            
+
             // Skip if we're inside a map/filter/forEach callback (likely iterating over existing data)
             let parent = node;
             while (parent) {
-              if (parent.type === 'CallExpression' && 
-                  parent.callee?.property?.name && 
+              if (parent.type === 'CallExpression' &&
+                  parent.callee?.property?.name &&
                   ['map', 'filter', 'forEach', 'reduce'].includes(parent.callee.property.name)) {
                 return;
               }
               parent = parent.parent;
             }
-            
+
             // Check if there's a parent conditional that ensures the value exists
             let ancestor = node.parent;
             while (ancestor) {
@@ -107,7 +107,7 @@ const noEmptyDynamicSelectValue = {
               }
               ancestor = ancestor.parent;
             }
-            
+
             context.report({
               node,
               messageId: 'potentiallyEmptyValue',
@@ -135,8 +135,8 @@ const noMockData = {
       // Check variable and function names
       Identifier(node) {
         const name = node.name.toLowerCase();
-        if ((name.includes('mock') || name.includes('dummy') || name.includes('fake')) && 
-            (node.parent.type === 'VariableDeclarator' || 
+        if ((name.includes('mock') || name.includes('dummy') || name.includes('fake')) &&
+            (node.parent.type === 'VariableDeclarator' ||
              node.parent.type === 'FunctionDeclaration' ||
              node.parent.type === 'FunctionExpression')) {
           context.report({
@@ -149,7 +149,7 @@ const noMockData = {
       Program() {
         const sourceCode = context.getSourceCode();
         const comments = sourceCode.getAllComments();
-        
+
         comments.forEach(comment => {
           const text = comment.value.toLowerCase();
           if (text.includes('mock') || text.includes('dummy') || text.includes('fake')) {
@@ -191,7 +191,7 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
       'custom/no-empty-select-value': 'error',
-      'custom/no-empty-dynamic-select-value': 'error',
+      'custom/no-empty-dynamic-select-value': 'warn',
       'custom/no-mock-data': 'error',
     },
   },

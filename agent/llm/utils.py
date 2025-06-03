@@ -12,7 +12,7 @@ from hashlib import md5
 logger = get_logger(__name__)
 
 # Cache for LLM clients
-_llm_clients: Dict[str, AsyncLLM] = {}
+llm_clients_cache: Dict[str, AsyncLLM] = {}
 
 LLMBackend = Literal["bedrock", "anthropic", "gemini"]
 
@@ -92,9 +92,9 @@ def get_llm_client(
     cache_key = _cache_key_from_seq((model_name, params_key))
 
     # Return existing client if one exists with the same configuration
-    if cache_key in _llm_clients:
+    if cache_key in llm_clients_cache:
         logger.debug(f"Returning existing LLM client for {backend}/{model_name}")
-        return _llm_clients[cache_key]
+        return llm_clients_cache[cache_key]
 
     # Otherwise create a new client
     models_map = {
@@ -139,6 +139,6 @@ def get_llm_client(
         client = CachedLLM(client, cache_mode=cache_mode, cache_path=cache_path, max_cache_size=256)
 
     # Store the client in the cache
-    _llm_clients[cache_key] = client
+    llm_clients_cache[cache_key] = client
     logger.debug(f"Created new LLM client for {backend}/{model_name}")
     return client
