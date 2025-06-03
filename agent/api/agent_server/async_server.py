@@ -206,7 +206,7 @@ async def run_agent[T: AgentInterface](
                         kind=MessageKind.RUNTIME_ERROR,
                         content=json.dumps([{"role": "assistant", "content": [{"type": "text", "text": f"Error processing request: {str(e)}"}]}]),
                         messages=[ExternalContentBlock(
-                            content=f"Error processing request: {str(e)}", 
+                            content=f"Error processing request: {str(e)}",
                             #timestamp=datetime.datetime.now(datetime.UTC)
                         )],
                         agentState=None,
@@ -280,19 +280,13 @@ async def message(
             detail=error_response.to_json()
         )
 
+
 @app.get("/health")
-async def healthcheck():
-    """Health check endpoint"""
-    logger.debug("Health check requested")
-    return {"status": "healthy"}
-
-
-@app.get("/health/dagger")
 async def dagger_healthcheck():
     """Dagger connection health check endpoint"""
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Try a simple Dagger operation to verify connectivity
-        container = dag.container().from_("alpine:latest")
+        container = client.container().from_("alpine:latest")
         version = await container.with_exec(["cat", "/etc/alpine-release"]).stdout()
         return {
             "status": "healthy",
