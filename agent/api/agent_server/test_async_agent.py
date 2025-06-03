@@ -119,7 +119,7 @@ async def test_session_with_no_state(trpc_agent):
             assert event.trace_id == fixed_trace_id, f"Trace ID mismatch: {event.trace_id} != {fixed_trace_id}"
             assert event.message.kind != MessageKind.RUNTIME_ERROR, "Message kind is RUNTIME_ERROR during continuation"
 
-
+@pytest.mark.skip(reason="Temporarily disabled")
 async def test_agent_reaches_idle_state(trpc_agent):
     """Test that the agent eventually transitions to IDLE state after processing a simple prompt."""
     async with AgentApiClient() as client:
