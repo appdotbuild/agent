@@ -137,12 +137,6 @@ class TrpcAgentSession(AgentInterface):
                 "fsm_state": fsm_state,
                 "metadata": metadata,
             }
-<<<<<<< HEAD
-=======
-
-            # Processing
-            logger.info(f"Last user message: {fsm_message_history[-1].content}")
->>>>>>> origin/main
 
             # Processing
             logger.info(f"Last user message: {fsm_message_history[-1].content}")
@@ -158,11 +152,7 @@ class TrpcAgentSession(AgentInterface):
                 )
 
                 # Add messages for agentic loop
-<<<<<<< HEAD
                 agent_state["fsm_messages"] += new_messages
-=======
-                messages += new_messages
->>>>>>> origin/main
                 messages_to_user = self.filter_messages_for_user(new_messages)
 
                 if self.processor_instance.fsm_app is not None:
