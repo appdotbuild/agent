@@ -71,9 +71,18 @@ class TrpcAgentSession(AgentInterface):
                         content=blocks
                     )
                 )
-            
+            elif isinstance(m, InternalMessage):
+                internal_messages.append(
+                    InternalMessage(
+                        role=m.role,
+                        content=m.content
+                    )
+                )
+            else:
+                raise ValueError(f"Unsupported message type: {type(m)}")
+
         return internal_messages
-        
+
     @staticmethod
     def filter_messages_for_user(messages: List[InternalMessage]) -> List[InternalMessage]:
         """Filter messages for user."""
@@ -98,7 +107,7 @@ class TrpcAgentSession(AgentInterface):
             event_tx: Event transmission stream
         """
         messages = None
-        fsm_message_history: List[ConversationMessage] = self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
+        fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
         try:
             logger.info(f"Processing request for {self.application_id}:{self.trace_id}")
 
@@ -106,7 +115,7 @@ class TrpcAgentSession(AgentInterface):
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
                 fsm_state = request.agent_state.get("fsm_state")
-                fsm_message_history = request.agent_state.get("fsm_messages")
+                fsm_message_history: List[InternalMessage]  = request.agent_state.get("fsm_messages", [])
                 match fsm_state:
                     case None:
                         self.processor_instance = FSMToolProcessor(self.client, FSMApplication)
@@ -123,9 +132,8 @@ class TrpcAgentSession(AgentInterface):
                     data=await self.processor_instance.fsm_app.fsm.dump(),
                 )
 
-            # Process the initial step
-            messages = self.convert_agent_messages_to_llm_messages(fsm_message_history)
 
+            messages = fsm_message_history
             flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
             top_level_agent_llm = get_llm_client(model_name="gemini-flash")
 
@@ -144,7 +152,7 @@ class TrpcAgentSession(AgentInterface):
                     # this is legit if we did not start a FSM as initial message is not informative enough (e.g. just 'hello')
                 else:
                     fsm_state = await self.processor_instance.fsm_app.fsm.dump()
-                    #fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages)
+                    # fsm_message_history = self.convert_agent_messages_to_llm_messages(request.all_messages)
 
                 app_name = None
                 agent_state = AgentState(fsm_state=fsm_state, fsm_messages=fsm_message_history)
@@ -168,7 +176,7 @@ class TrpcAgentSession(AgentInterface):
                         status=AgentStatus.RUNNING,
                         kind=MessageKind.REVIEW_RESULT,
                         content="Initializing...",
-                        fsm_state=agent_state,
+                        agent_state=agent_state,
                         unified_diff=initial_template_diff,
                         app_name=app_name,
                         commit_message="Initial commit"
@@ -183,7 +191,7 @@ class TrpcAgentSession(AgentInterface):
                             status=AgentStatus.RUNNING,
                             kind=MessageKind.STAGE_RESULT,
                             content=messages_to_user,
-                            fsm_state=agent_state,
+                            agent_state=agent_state,
                             app_name=app_name,
                         )
                     case FSMStatus.REFINEMENT_REQUEST:
@@ -192,7 +200,7 @@ class TrpcAgentSession(AgentInterface):
                             status=AgentStatus.IDLE,
                             kind=MessageKind.REFINEMENT_REQUEST,
                             content=messages_to_user,
-                            fsm_state=agent_state,
+                            agent_state=agent_state,
                             app_name=app_name,
                         )
                     case FSMStatus.FAILED:
@@ -225,7 +233,7 @@ class TrpcAgentSession(AgentInterface):
                                 status=AgentStatus.IDLE,
                                 kind=MessageKind.REVIEW_RESULT,
                                 content=messages_to_user,
-                                fsm_state=agent_state,
+                                agent_state=agent_state,
                                 unified_diff=final_diff,
                                 app_name=app_name,
                                 commit_message=commit_message
