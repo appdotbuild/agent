@@ -15,7 +15,7 @@ logger = get_logger(name)
 retry_transport_errors = retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential_jitter(initial=1, max=10),
-    retry=retry_if_exception_type(dagger.TransportError),
+    retry=retry_if_exception_type((dagger.TransportError, dagger.QueryError)),
     before_sleep=before_sleep_log(logger, logging.WARNING)
 )
 
