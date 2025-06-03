@@ -50,7 +50,7 @@ class TrpcAgentSession(AgentInterface):
         self._sse_counter = 0
 
     @staticmethod
-    def convert_agent_messages_to_llm_messages(saved_messages: List[ConversationMessage]) -> List[InternalMessage]:
+    def convert_agent_messages_to_llm_messages(saved_messages: List[ConversationMessage | InternalMessage]) -> List[InternalMessage]:
         """Convert ConversationMessage list to LLM InternalMessage format."""
         internal_messages: List[InternalMessage] = []
         for m in saved_messages:
@@ -69,13 +69,6 @@ class TrpcAgentSession(AgentInterface):
                     InternalMessage(
                         role=m.role,
                         content=blocks
-                    )
-                )
-            elif isinstance(m, InternalMessage):
-                internal_messages.append(
-                    InternalMessage(
-                        role=m.role,
-                        content=m.content
                     )
                 )
             else:
@@ -115,7 +108,11 @@ class TrpcAgentSession(AgentInterface):
             if request.agent_state:
                 logger.info(f"Continuing with existing state for trace {self.trace_id}")
                 fsm_state = request.agent_state.get("fsm_state")
-                fsm_message_history: List[InternalMessage]  = request.agent_state.get("fsm_messages", [])
+                fsm_message_history = [
+                    InternalMessage.from_dict(msg) for msg in request.agent_state.get("fsm_messages", [])
+                ]
+                fsm_message_history += self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
+
                 match fsm_state:
                     case None:
                         self.processor_instance = FSMToolProcessor(self.client, FSMApplication)
@@ -300,6 +297,7 @@ class TrpcAgentSession(AgentInterface):
                 )
             ]
 
+
         event = AgentSseEvent(
             status=status,
             traceId=self.trace_id,
@@ -307,7 +305,7 @@ class TrpcAgentSession(AgentInterface):
                 role="assistant",
                 kind=kind,
                 messages=structured_blocks,
-                agentState={"fsm_state": agent_state["fsm_state"], "fsm_messages": agent_state["fsm_messages"]} if agent_state else None,
+                agentState={"fsm_state": agent_state["fsm_state"], "fsm_messages": [x.to_dict() for x in agent_state["fsm_messages"]]} if agent_state else None,
                 unifiedDiff=unified_diff,
                 complete_diff_hash=None,
                 diff_stat=None,

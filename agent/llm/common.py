@@ -94,6 +94,8 @@ def load_content(data: list[dict]) -> list[ContentBlock]:
                     ToolUse(tool_use["name"], tool_use["input"], tool_use["id"]),
                     ToolResult(tool_result["content"], tool_result["name"], tool_result["is_error"])
                 ))
+            case _:
+                raise ValueError(f"Unknown block type in content: {block}")
     return content
 
 
