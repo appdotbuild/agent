@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, TypedDict, List, Union
 
 from anyio.streams.memory import MemoryObjectSendStream
 
-from llm.common import InternalMessage, TextRaw
+from llm.common import ContentBlock, InternalMessage, TextRaw
 from trpc_agent.application import FSMApplication
 from llm.utils import AsyncLLM, get_llm_client
 from api.fsm_tools import FSMToolProcessor, FSMStatus
@@ -16,6 +16,7 @@ from api.agent_server.models import (
     AgentRequest,
     AgentSseEvent,
     AgentMessage,
+    ConversationMessage,
     UserMessage,
     AgentStatus,
     ExternalContentBlock,
@@ -49,15 +50,29 @@ class TrpcAgentSession(AgentInterface):
         self._sse_counter = 0
 
     @staticmethod
-    def convert_agent_messages_to_llm_messages(agent_messages: List[AgentMessage]) -> List[InternalMessage]:
-        """Convert AgentMessage list to LLM Message format."""
-        return [
-            InternalMessage(
-                role=m.role if m.role == "user" else "assistant",
-                content=[TextRaw(text=m.content)]
-            )
-            for m in agent_messages
-        ]
+    def convert_agent_messages_to_llm_messages(saved_messages: List[ConversationMessage]) -> List[InternalMessage]:
+        """Convert ConversationMessage list to LLM InternalMessage format."""
+        internal_messages: List[InternalMessage] = []
+        for m in saved_messages:
+            if isinstance(m, UserMessage):
+                internal_messages.append(
+                    InternalMessage(
+                        role=m.role,
+                        content=[TextRaw(text=m.content)]
+                    )
+                )
+            elif isinstance(m, AgentMessage):
+                blocks: List[ContentBlock] = []
+                for block in m.messages or []:
+                    blocks.append(TextRaw(text=block.content))
+                internal_messages.append(
+                    InternalMessage(
+                        role=m.role,
+                        content=blocks
+                    )
+                )
+            
+        return internal_messages
         
     @staticmethod
     def filter_messages_for_user(messages: List[InternalMessage]) -> List[InternalMessage]:
