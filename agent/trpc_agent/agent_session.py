@@ -115,6 +115,7 @@ class TrpcAgentSession(AgentInterface):
                     InternalMessage.from_dict(msg) for msg in request.agent_state.get("fsm_messages", [])
                 ]
                 fsm_message_history += self.convert_agent_messages_to_llm_messages(request.all_messages[-1:])
+                logger.info(f"Last user message: {fsm_message_history[-1].content}")
 
                 match fsm_state:
                     case None:

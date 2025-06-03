@@ -451,6 +451,8 @@ class FrontendActor(BaseTRPCActor):
         match data:
             case dict():
                 node = data.get("node")
+                if not node:
+                    return
                 if not isinstance(node, list):
                     raise ValueError(f"Expected list got {type(node)}")
                 self.root = await self.load_node(node)
