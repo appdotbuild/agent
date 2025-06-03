@@ -1,8 +1,10 @@
 import asyncio
+import json
 import pytest
 from anthropic.types import Message
 from fsm_core.llm_common import get_sync_client
 import os
+from unittest.mock import patch, MagicMock
 
 
 # Mark all tests in this module as anyio tests with asyncio backend only
@@ -50,6 +52,23 @@ def test_gemini_client_sync(model_name):
     assert response.content[0].text
     assert isinstance(response, Message)
 
+@skip_if_no_api_key("AWS_ACCESS_KEY_ID")
+def test_deepseek_client_integration():
+    """Integration test for Deepseek client."""
+    client = get_sync_client(
+        backend="bedrock",
+        model_name="deepseek-r1",
+        cache_mode="off",
+    )
+    response = client.messages.create(
+        messages=make_basic_test_prompt(),
+        max_tokens=20
+    )
+    assert response is not None
+    assert response.content[0].text
+    assert isinstance(response, Message)
+
+
 @skip_if_no_api_key("ANTHROPIC_API_KEY")
 async def test_anthropic_client_async():
     """Test the Anthropic client with async API."""
@@ -63,6 +82,7 @@ async def test_anthropic_client_async():
     assert response is not None
     assert response.content
     assert isinstance(response, Message)
+
 
 @skip_if_no_api_key("GEMINI_API_KEY")
 @pytest.mark.parametrize("model_name", ["gemini-2.0-flash", "gemma-3-27b-it"])
