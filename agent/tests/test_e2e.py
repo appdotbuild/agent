@@ -76,8 +76,10 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True):
                     previous_request=request,
                     message=DEFAULT_EDIT_REQUEST,
                 )
-                diff = latest_unified_diff(new_events)
-                assert diff, "No diff was generated in the agent response after edit"
+                updated_diff = latest_unified_diff(new_events)
+                assert updated_diff, "No diff was generated in the agent response after edit"
+                # NEW ASSERTION: diff after edit must differ from the original diff, i.e. edit applied
+                assert updated_diff != diff, "Edit did not produce a new diff"
 
             with tempfile.TemporaryDirectory() as temp_dir:
 
