@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="app.build logo" width="400">
+  <img src="logo.png" alt="app.build logo" width="150">
 </div>
 
 # app.build (agent)
@@ -8,11 +8,12 @@
 
 ## What it builds
 
-- **Full-stack web apps** with Bun, React, Vite, Fastify and Drizzle
+- **Full-stack web apps** with React, Vite, and Fastify
 - **Neon Postgres database** provisioned instantly via API
-- **Applications tested** ahead of generation with smoke tests using Playwright
+- **Authentication** via Neon Auth
+- **End-to-end tests** written in Playwright
 - **GitHub repository** with complete source code
-- **CI/CD and deployment** via the [app.build platform](https://github.com/appdotbuild/platform)
+- **CI/CD and deployment** via Koyeb
 - **Automatic validation** with ESLint, TypeScript, and runtime verification
 
 ## Try it
@@ -28,6 +29,7 @@ This agent doesn't generate entire applications at once. Instead, it breaks down
 1. **Database schema generation** - Creates typed database models
 2. **API handler logic** - Builds validated Fastify routes
 3. **Frontend components** - Generates React UI with proper typing
+4. **Test suite creation** - Writes comprehensive Playwright tests
 
 Each task is validated independently using ESLint, TypeScript compilation, test execution, and runtime logs before being accepted.
 
@@ -38,11 +40,16 @@ This is the **agent** repository containing the core code generation engine and 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
 
 ## Running locally
 
 Local development instructions are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
+Local development instructions are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+---
+
+Built to showcase agent-native infrastructure patterns. Fork it, remix it, use it as a reference for your own projects.
 Built to showcase agent-native infrastructure patterns. Fork it, remix it, use it as a reference for your own projects.
