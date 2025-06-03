@@ -232,9 +232,7 @@ class FSMToolProcessor[T: FSMInterface]:
             "tools": self.tool_definitions,
             **model_params,
         }
-        
-        logger.warning(f"messages before model call: {messages}")
-        
+
         response = await llm.completion(messages, **model_args)
         tool_results = []
         for block in response.content:
