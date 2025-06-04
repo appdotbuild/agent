@@ -165,7 +165,7 @@ const noMockData = {
 };
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  { ignores: ['dist', '.cursor/**/*'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
