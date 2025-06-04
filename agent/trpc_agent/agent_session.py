@@ -221,9 +221,13 @@ class TrpcAgentSession(AgentInterface):
                                 self.processor_instance.fsm_app.current_state,
                             )
 
-                            recent_user_input = " ".join([msg.content for msg in request.all_messages[-10:] if isinstance(msg, UserMessage)]) if request.all_messages else ""
-                            commit_message = await generate_commit_message(
-                                self.processor_instance.fsm_app.fsm.context.user_prompt, recent_user_input, flash_lite_client)
+                            # Last user message is the user request
+                            if isinstance(request.all_messages[-1], UserMessage):
+                                user_request = request.all_messages[-1].content
+                            else:
+                                user_request = self.processor_instance.fsm_app.fsm.context.user_prompt
+
+                            commit_message = await generate_commit_message(user_request, flash_lite_client)
 
                             await self.send_event(
                                 event_tx=event_tx,

@@ -260,7 +260,7 @@ class FSMToolProcessor[T: FSMInterface]:
 
         thread = [InternalMessage(role="assistant", content=response.content)]
         if tool_results:
-            thread += [InternalMessage(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])]
+            thread += [InternalMessage(role="user", content=[*tool_results, TextRaw("Analyze tool results.")])] # TODO: change this for assistant message since it's not a user message
         match (tool_results, self.fsm_app):
             case (_, app) if app and app.maybe_error():
                 fsm_status = FSMStatus.FAILED
