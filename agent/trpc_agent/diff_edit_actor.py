@@ -363,8 +363,8 @@ class EditActor(BaseActor, LLMActor):
         return await self.dump_node(self.root)
 
     async def load(self, data: object):
-        if not isinstance(data, list):
-            raise ValueError(f"Expected list got {type(data)}")
         if not data:
             return
+        if not isinstance(data, list):
+            raise ValueError(f"Expected list got {type(data)}")
         self.root = await self.load_node(data)
