@@ -18,6 +18,7 @@ dependencies = [
     "boto3>=1.37.18",
     "aiohttp>=3.12.4",
     "tenacity>=9.1.2",
+    "brotli-asgi>=1.4.0",
 ]
 
 [build-system]

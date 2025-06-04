@@ -21,6 +21,7 @@ from fire import Fire
 import dagger
 import os
 import json
+from brotli_asgi import BrotliMiddleware
 
 from api.agent_server.models import (
     AgentRequest,
@@ -53,6 +54,15 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# add Brotli compression middleware with optimized settings for SSE
+app.add_middleware(
+    BrotliMiddleware,
+    quality=4,  # balanced compression/speed for streaming
+    minimum_size=500,  # compress responses >= 500 bytes
+    gzip_fallback=True  # fallback to gzip for older clients
+)
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
