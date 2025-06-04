@@ -6,15 +6,19 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic[bedrock]>=0.49.0",
     "anyio>=4.9.0",
-    "dagger-io>=0.17.1",
+    "dagger-io>=0.18.9",
     "fastapi>=0.115.12",
     "fire>=0.7.0",
-    "google-genai>=1.7.0",
+    "google-genai>=1.18.0",
     "jinja2>=3.1.6",
     "sentry-sdk>=2.25.1",
     "ujson>=5.10.0",
     "uvicorn==0.34.0",
     "patch-ng>=1.17.4",
+    "boto3>=1.37.18",
+    "aiohttp>=3.12.4",
+    "tenacity>=9.1.2",
+    "brotli-asgi>=1.4.0",
 ]
 
 [build-system]
@@ -26,14 +30,39 @@ packages = ["api", "core", "llm", "fsm_core", "compiler", "trpc_agent"]
 
 [project.scripts]
 server = "api.agent_server.async_server:main"
+test = "commands:run_tests_with_cache"
+test_e2e = "commands:run_e2e_tests"
+update_cache = "commands:update_cache"
+lint = "commands:run_lint"
+type_check = "commands:type_check"
+format = "commands:run_format"
+generate = "commands:generate"
+interactive = "commands:interactive"
+help = "commands:help_command"
+
+[tool.agent.command_docs]
+server = "Runs the API server. Example: uv run server"
+test = "Runs pytest with VCR cache in replay mode. Accepts pytest arguments. Example: uv run test -k test_specific_function"
+test_e2e = "Runs end-to-end tests (subset of 'test' focused on e2e). Example: uv run test_e2e"
+update_cache = "Updates VCR cache for tests by running pytest in record mode. Example: uv run update_cache tests/test_specific_file.py"
+lint = "Runs ruff to check and fix linting issues. Example: uv run lint"
+type_check = "Runs type checking with pyright. Example: uv run type_check"
+format = "Runs ruff to format code, optionally accepts target. Example: uv run format [file.py]"
+generate = "Generates code based on a prompt. Example: uv run generate --prompt='your app description'"
+interactive = "Starts an interactive CLI session with the agent. Examples: uv run interactive (local server), uv run interactive --host=prod-agent-service-alb-999031216.us-west-2.elb.amazonaws.com --port=80 (remote server). Make sure to use BUILDER_TOKEN env fvar for access grant."
+help = "Displays this help message. Example: uv run help"
 
 [dependency-groups]
 dev = [
     "coloredlogs>=15.0.1",
     "docker>=7.1.0",
- "pdbpp>=0.10.3",
- "pytest>=8.3.5",
- "ruff>=0.11.5",
+    "pdbpp>=0.10.3",
+    "pytest>=8.3.5",
+    "ruff>=0.11.5",
+    "pytest-xdist>=3.6.1",
+    "ipython>=9.2.0",
+    "pyright>=1.1.400",
+    "streamlit>=1.45.1",
 ]
 google = ["google-genai>=1.7.0"]
 openai = ["openai>=1.68.2"]

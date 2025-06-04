@@ -53,6 +53,18 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
 # FixMe: how to pull dev dependencies from the children workspace?
 [dependency-groups]
-dev = ["ruff>=0.11.5", "pdbpp>=0.10.3", "pytest>=8.3.5", "coloredlogs>=15.0.1"]
+dev = [
+    "coloredlogs>=15.0.1",
+    "docker>=7.1.0",
+    "pdbpp>=0.10.3",
+    "pytest>=8.3.5",
+    "ruff>=0.11.5",
+    "pytest-xdist>=3.6.1",
+    "streamlit>=1.45.1",
+]

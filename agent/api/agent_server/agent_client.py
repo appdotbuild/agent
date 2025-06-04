@@ -1,19 +1,19 @@
-import json
+import ujson as json
 import uuid
-import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Callable
 from httpx import AsyncClient, ASGITransport
 
-from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, AgentMessage, MessageKind
+from api.agent_server.models import AgentSseEvent, AgentRequest, UserMessage, ConversationMessage, FileEntry, MessageKind
 from api.agent_server.async_server import app, CONFIG
 from log import get_logger
-from llm.common import Message
 
 logger = get_logger(__name__)
 
-# Set dummy token for tests
-os.environ["BUILDER_TOKEN"] = "dummy_token_for_tests"
-
+# Re-export MessageKind for convenient import in tests
+__all__ = [
+    "AgentApiClient",
+    "MessageKind",
+]
 
 class AgentApiClient:
     """Reusable client for interacting with the Agent API server"""
@@ -48,77 +48,81 @@ class AgentApiClient:
                           application_id: Optional[str] = None,
                           trace_id: Optional[str] = None,
                           agent_state: Optional[Dict[str, Any]] = None,
+                          all_files: Optional[List[Dict[str, str]]] = None,
                           settings: Optional[Dict[str, Any]] = None,
-                          auth_token: Optional[str] = CONFIG.builder_token) -> Tuple[List[AgentSseEvent], AgentRequest]:
+                          auth_token: Optional[str] = CONFIG.builder_token,
+                          stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                         ) -> Tuple[List[AgentSseEvent], AgentRequest]:
 
         """Send a message to the agent and return the parsed SSE events"""
 
         if request is None:
-            request = self.create_request(message, messages_history, application_id, trace_id, agent_state, settings)
+            request = self.create_request(message, messages_history, application_id, trace_id, agent_state, all_files, settings)
         else:
-            logger.info(f"Using existing request with trace ID: {request.trace_id}, ignoring the message parameter")
+            logger.info(f"Using existing request with trace ID: {request.trace_id}, ignoring some parameters like message, all_files")
+            if all_files is not None:
+                request.all_files = [FileEntry(**f) for f in all_files]
 
-        # Use the base_url if provided, otherwise use the EXTERNAL_SERVER_URL env var or fallback to test URL
-        url = "/message" if self.base_url else os.getenv("EXTERNAL_SERVER_URL", "http://test") + "/message"
-        headers={"Accept": "text/event-stream"}
+        url = self.base_url or "http://test"
+        url += "/message"
+        headers={"Accept": "text/event-stream", "Accept-Encoding": "br, gzip, deflate"}
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
             logger.debug("Added authorization header")
         else:
             logger.info("No auth token available for authorization")
 
-        response = await self.client.post(
+        async with self.client.stream(
+            "POST",
             url,
             json=request.model_dump(by_alias=True),
             headers=headers,
             timeout=None
-        )
-
-        if response.status_code != 200:
-            raise ValueError(f"Request failed with status code {response.status_code}")
-
-        events = await self.parse_sse_events(response)
+        ) as response:
+            if response.status_code != 200:
+                await response.aread()
+                raise ValueError(f"Request failed with status code {response.status_code}: {response.json()}")
+            events = await self.parse_sse_events(response, stream_cb)
         return events, request
 
     async def continue_conversation(self,
-                                  previous_events: List[AgentSseEvent],
-                                  previous_request: AgentRequest,
-                                  message: str,
-                                  settings: Optional[Dict[str, Any]] = None) -> Tuple[List[AgentSseEvent], AgentRequest]:
-        """Continue a conversation using the agent state from previous events"""
-        agent_state = None
-        messages_history = None
-
-        # Extract agent state from the last event
+                                   previous_events: List[AgentSseEvent],
+                                   previous_request: AgentRequest,
+                                   message: str,
+                                   all_files: Optional[List[Dict[str, str]]] = None,
+                                   settings: Optional[Dict[str, Any]] = None,
+                                   stream_cb: Optional[Callable[[AgentSseEvent], None]] = None
+                                  ) -> Tuple[List[AgentSseEvent], AgentRequest]:
+        """Continue a conversation using the agent state from previous events."""
+        # Use agent_state from the latest event (if any)
+        agent_state: Optional[Dict[str, Any]] = None
         for event in reversed(previous_events):
-            if event.message and event.message.agent_state:
+            if event.message and event.message.agent_state is not None:
                 agent_state = event.message.agent_state
-                messages_history = event.message.content
                 break
 
-        # Use the same trace ID for continuity
+        # Fallback to the agent_state stored in the previous_request itself
+        if agent_state is None:
+            agent_state = previous_request.agent_state
+
+        # Reuse the full history that the server already knows about
+        all_messages_history: List[ConversationMessage] = (
+            list(previous_request.all_messages) if previous_request.all_messages else []
+        )
+
         trace_id = previous_request.trace_id
         application_id = previous_request.application_id
 
-        messages_history_casted = []
-        for m in [Message.from_dict(x) for x in json.loads(messages_history or "[]")]:
-            role = m.role if m.role == "user" else "assistant"
-            content = "".join([getattr(x, "text", "") for x in m.content])  # skipping tool calls content 
-
-            if role == "user":
-                msg = UserMessage(role=role, content=content)
-            else:
-                msg = AgentMessage(role="assistant", content=content, agentState=None, unifiedDiff=None, kind=MessageKind.STAGE_RESULT)
-
-            messages_history_casted.append(msg)
-
+        # Delegate to `send_message`, which will append the new user message
         events, request = await self.send_message(
             message=message,
-            messages_history=messages_history_casted,
+            messages_history=all_messages_history,
             application_id=application_id,
             trace_id=trace_id,
             agent_state=agent_state,
-            settings=settings
+            all_files=all_files,
+            settings=settings,
+            stream_cb=stream_cb
         )
 
         return events, request
@@ -129,22 +133,28 @@ class AgentApiClient:
                      application_id: Optional[str] = None,
                      trace_id: Optional[str] = None,
                      agent_state: Optional[Dict[str, Any]] = None,
+                     all_files: Optional[List[Dict[str, str]]] = None,
                      settings: Optional[Dict[str, Any]] = None) -> AgentRequest:
         """Create a request object for the agent API"""
 
-        all_messages = messages_history or []
-        all_messages += [UserMessage(role="user", content=message)]
+        all_messages_list = list(messages_history) if messages_history else []
+        all_messages_list.append(UserMessage(role="user", content=message))
+
+        file_entries: Optional[List[FileEntry]] = None
+        if all_files is not None:
+            file_entries = [FileEntry(**f) for f in all_files]
 
         return AgentRequest(
-            allMessages=all_messages,
+            allMessages=all_messages_list,
             applicationId=application_id or f"test-bot-{uuid.uuid4().hex[:8]}",
             traceId=trace_id or uuid.uuid4().hex,
             agentState=agent_state,
+            allFiles=file_entries,
             settings=settings or {"max-iterations": 3}
         )
 
     @staticmethod
-    async def parse_sse_events(response) -> List[AgentSseEvent]:
+    async def parse_sse_events(response, stream_cb: Optional[Callable[[AgentSseEvent], None]] = None) -> List[AgentSseEvent]:
         """Parse the SSE events from a response stream"""
         event_objects = []
         buffer = ""
@@ -157,14 +167,17 @@ class AgentApiClient:
                     if len(data_parts) > 1:
                         data_str = data_parts[1].strip()
                         try:
-                            # Parse as both raw JSON and model objects
                             event_obj = AgentSseEvent.from_json(data_str)
                             event_objects.append(event_obj)
+                            if stream_cb:
+                                try:
+                                    stream_cb(event_obj)
+                                except Exception:
+                                    logger.exception("Callback failed")
                         except json.JSONDecodeError as e:
-                            print(f"JSON decode error: {e}, data: {data_str[:100]}...")
+                            logger.warning(f"JSON decode error: {e}, data: {data_str[:100]}...")
                         except Exception as e:
-                            print(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
-                # Reset buffer for next event
+                            logger.warning(f"Error parsing SSE event: {e}, data: {data_str[:100]}...")
                 buffer = ""
 
         return event_objects

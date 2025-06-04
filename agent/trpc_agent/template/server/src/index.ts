@@ -12,15 +12,19 @@ const publicProcedure = t.procedure;
 const router = t.router;
 
 const appRouter = router({
-  // define your API here
+  healthcheck: publicProcedure.query(() => {
+    return { status: 'ok', timestamp: new Date().toISOString() };
+  }),
 });
 
 export type AppRouter = typeof appRouter;
 
 async function start() {
-  const port = process.env['PORT'] || 2022;
+  const port = process.env['SERVER_PORT'] || 2022;
   const server = createHTTPServer({
-    middleware: cors(),
+    middleware: (req, res, next) => {
+      cors()(req, res, next);
+    },
     router: appRouter,
     createContext() {
       return {};

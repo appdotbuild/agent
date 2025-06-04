@@ -12,7 +12,7 @@ using TypeSpec.Rest;
 
 @service({
   title: "Neon Agent Server API",
-  version: "1.0.0",
+  version: "1.1.0",
 })
 
 namespace AgentServerApi;
@@ -33,15 +33,57 @@ enum MessageKind {
   @doc("An intermediate result/update while the agent is still running. The platform should not typically query API during this state unless restoring after a failure.")
   StageResult,
 
-  @doc("The agent has paused and requires feedback or input from the user.")
-  FeedbackResponse,
+  @doc("The agent has paused and requires feedback or additional information from the user.")
+  RefinementRequest,
 
   @doc("The agent encountered an error it couldn't recover from. Retrying likely requires user intervention or infrastructure changes.")
   RuntimeError,
+
+  @doc("The final successful result indicating the application generation is complete and ready for review.")
+  ReviewResult,
+
+  @doc("Empty event sent periodically to keep the connection alive during long periods of inactivity.")
+  KeepAlive,
+}
+
+// --- Diff summary ---
+
+@doc("A lightweight summary entry describing modifications to a single file in the current step.")
+model DiffStatEntry {
+  @doc("Path of the file that changed (relative to the project root).")
+  path: string;
+
+  @doc("Number of lines inserted in this file during the current step.")
+  insertions: int32;
+
+  @doc("Number of lines deleted in this file during the current step.")
+  deletions: int32;
 }
 
 // --- Models ---
-@doc("Represents a message from the agent to the user, including content, state, and any code changes.")
+
+@doc("Represents a single file with its path and content.")
+model FileEntry {
+  @doc("The relative path of the file.")
+  path: string;
+
+  @doc("The content of the file.")
+  content: string;
+}
+
+@doc("Represents a single content block in an external message with timestamp.")
+model ExternalContentBlock {
+  @doc("Deprecated. The role of the block. Will be removed in the future.")
+  role: 'assistant';
+
+  @doc("The content of the block.")
+  content: string;
+
+  // @doc("The timestamp of the block.")
+  // timestamp: utcDateTime;
+}
+
+@doc("Represents a message from the agent to the user, including structured content blocks, state, and any code changes. The 'content' field has been deprecated in favor of the 'messages' field for better structured messaging.")
 model AgentMessage {
   @doc("Fixed field for client to detect agent message in the history") 
   role: 'assistant';
@@ -49,14 +91,26 @@ model AgentMessage {
   @doc("The type of message being sent.")
   kind: MessageKind;
 
-  @doc("Formatted content of the message. Can be long and contain formatting, including custom URLs for CLI handling.")
-  content: string;
+  @doc("Structured content blocks with timestamps. Preferred for new clients that support structured messaging.")
+  messages?: ExternalContentBlock[];
 
   @doc("Updated state of the Agent Server that should be presented in the next request to continue the conversation.")
   agentState: Record<string, unknown> | null;
 
   @doc("A unified diff format string representing code changes made by the agent, if any. Null if no diff is available.")
   unifiedDiff: string | null;
+
+  @doc("Hash (e.g., SHA-256 hex) of the complete unified diff that corresponds to the current full application state.")
+  completeDiffHash: string | null;
+
+  @doc("A lightweight per-file summary of what changed since the previous message.")
+  diffStat: DiffStatEntry[] | null;
+  
+  @doc("Generated application name suitable for use as a GitHub repository name.")
+  app_name: string | null;
+  
+  @doc("Generated commit message suitable for use in Git commits.")
+  commit_message: string | null;
 }
 
 @doc("Structure of the data payload within each Server-Sent Event (SSE).")
@@ -91,6 +145,9 @@ union ConversationMessage {
 model AgentRequest {
   @doc("History of all user messages in the current conversation thread.")
   allMessages: ConversationMessage[];
+
+  @doc("All files in the workspace to be used as a base for diff generation.")
+  allFiles?: FileEntry[];
 
   @doc("Unique identifier for the application instance. Used for tracing and context.")
   applicationId: string;
@@ -142,4 +199,4 @@ model InternalServerErrorResponse {
     error: string;
     details?: string;
   };
-}
+} 

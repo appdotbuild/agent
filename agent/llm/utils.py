@@ -1,18 +1,20 @@
 import itertools
 import os
-from typing import Literal, Dict, Tuple
+from typing import Literal, Dict, Sequence
 from anthropic import AsyncAnthropic, AsyncAnthropicBedrock
 from llm.common import AsyncLLM, Message, TextRaw, ContentBlock
 from llm.anthropic_client import AnthropicLLM
 from llm.cached import CachedLLM, CacheMode
+from llm.gemini import GeminiLLM
 from log import get_logger
+from hashlib import md5
 
 logger = get_logger(__name__)
 
 # Cache for LLM clients
-_llm_clients: Dict[Tuple[str, str, CacheMode, str, frozenset], AsyncLLM] = {}
+llm_clients_cache: Dict[str, AsyncLLM] = {}
 
-LLMBackend = Literal["bedrock", "anthropic"]
+LLMBackend = Literal["bedrock", "anthropic", "gemini"]
 
 
 def merge_text(content: list[ContentBlock]) -> list[ContentBlock]:
@@ -25,11 +27,11 @@ def merge_text(content: list[ContentBlock]) -> list[ContentBlock]:
     return merged
 
 
-async def loop_completion(m_client: AsyncLLM, messages: list[Message], **kwargs) -> Message:
+async def loop_completion(m_client: AsyncLLM, messages: list[Message], system_prompt: str | None = None, **kwargs) -> Message:
     content: list[ContentBlock] = []
     while True:
         payload = messages + [Message(role="assistant", content=content)] if content else messages
-        completion = await m_client.completion(messages=payload, **kwargs)
+        completion = await m_client.completion(messages=payload, system_prompt=system_prompt, **kwargs)
         content.extend(completion.content)
         if completion.stop_reason != "max_tokens":
             break
@@ -45,15 +47,23 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
                 return "anthropic"
             # that is rare case, but may be non-trivial AWS config, try Bedrock again
             return "bedrock"
+        case ("gemini-flash" | "gemini-pro" | "gemini-flash-lite"):
+            if os.getenv("GEMINI_API_KEY"):
+                return "gemini"
+            raise ValueError("Gemini backend requires GEMINI_API_KEY to be set")
         case _:
             raise ValueError(f"Unknown model name: {model_name}")
 
 
+def _cache_key_from_seq(key: Sequence) -> str:
+    s = "/".join(map(str, key))
+    return md5(s.encode()).hexdigest()
+
+
 def get_llm_client(
     backend: Literal["auto"] | LLMBackend = "auto",
-    model_name: Literal["sonnet", "haiku"] = "sonnet",
+    model_name: Literal["sonnet", "haiku", "gemini-flash", "gemini-pro", "gemini-flash-lite"] = "sonnet",
     cache_mode: CacheMode = "auto",
-    cache_path: str = os.path.join(os.path.dirname(__file__), "llm_cache.json"),
     client_params: dict | None = None,
 ) -> AsyncLLM:
     """Get a configured LLM client for the fullstack application.
@@ -79,42 +89,56 @@ def get_llm_client(
         backend = _guess_llm_backend(model_name)
         logger.info(f"Auto-detected backend: {backend}")
 
-    # Create a unique key for this client configuration
-    cache_key = (backend, model_name, cache_mode, cache_path, params_key)
+    cache_key = _cache_key_from_seq((model_name, params_key))
 
     # Return existing client if one exists with the same configuration
-    if cache_key in _llm_clients:
+    if cache_key in llm_clients_cache:
         logger.debug(f"Returning existing LLM client for {backend}/{model_name}")
-        return _llm_clients[cache_key]
+        return llm_clients_cache[cache_key]
 
     # Otherwise create a new client
     models_map = {
         "sonnet": {
-            "bedrock": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "anthropic": "claude-3-7-sonnet-20250219"
+            "bedrock": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic": "claude-sonnet-4-20250514"
         },
         "haiku": {
             "bedrock": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
             "anthropic": "claude-3-5-haiku-20241022"
         },
+        "gemini-pro":
+            {
+                "gemini": "gemini-2.5-pro-preview-05-06",
+            },
+        "gemini-flash":
+            {
+                "gemini": "gemini-2.5-flash-preview-05-20",
+            },
+        "gemini-flash-lite":
+            {
+                "gemini": "gemini-2.0-flash-lite",
+            },
     }
 
     chosen_model = models_map[model_name][backend]
 
     match backend:
-        case "bedrock":
-            base_client = AsyncAnthropicBedrock(**client_params)
-        case "anthropic":
-            base_client = AsyncAnthropic(**client_params)
+        case "bedrock" | "anthropic":
+            base_client = AsyncAnthropicBedrock(**client_params) if backend == "bedrock" else AsyncAnthropic(**client_params)
+            client = AnthropicLLM(base_client, default_model=chosen_model)
+        case "gemini":
+            client_params["model_name"] = chosen_model
+            client = GeminiLLM(**client_params)
         case _:
             raise ValueError(f"Unknown backend: {backend}")
 
-    client = AnthropicLLM(base_client, default_model=chosen_model)
     if cache_mode != "off":
-        client = CachedLLM(client, cache_mode, cache_path)
+        current_dir = os.path.dirname(__file__)
+        cache_path = os.path.join(current_dir, "caches", f"{cache_key}.json")
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        client = CachedLLM(client, cache_mode=cache_mode, cache_path=cache_path, max_cache_size=256)
 
     # Store the client in the cache
-    _llm_clients[cache_key] = client
+    llm_clients_cache[cache_key] = client
     logger.debug(f"Created new LLM client for {backend}/{model_name}")
-
     return client

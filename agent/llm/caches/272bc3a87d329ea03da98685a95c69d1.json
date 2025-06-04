@@ -1,0 +1,36 @@
+{
+  "7316a29a77d416da633f88e8b692c426": {
+    "data": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "app.build\n"
+        }
+      ],
+      "input_tokens": 1817,
+      "output_tokens": 4,
+      "stop_reason": "end_turn",
+      "thinking_tokens": null
+    },
+    "params": {
+      "attach_files": "test",
+      "max_tokens": 512,
+      "messages": [
+        {
+          "content": [
+            {
+              "text": "Answer only what is written in the image, single word",
+              "type": "text"
+            }
+          ],
+          "role": "user"
+        }
+      ],
+      "model": null,
+      "temperature": 1.0,
+      "tool_choice": null,
+      "tools": null
+    }
+  }
+}

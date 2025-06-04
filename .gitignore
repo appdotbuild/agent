@@ -161,5 +161,16 @@ cython_debug/
 
 # TypeScript
 node_modules
+test_results/
 tsp-output/
 .aider*
+.opencode
+
+**/.claude/settings.local.json
+debug_logs/*
+traces/
+**/.DS_Store
+sandbox/*
+agent/app_dumps.zip
+agent/FSMAppRecovery.ipynb
+agent/app_dumps/*.*

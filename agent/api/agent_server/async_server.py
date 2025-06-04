@@ -19,8 +19,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uvicorn
 from fire import Fire
 import dagger
-from dagger import dag
 import os
+import json
+from brotli_asgi import BrotliMiddleware
 
 from api.agent_server.models import (
     AgentRequest,
@@ -28,14 +29,15 @@ from api.agent_server.models import (
     AgentMessage,
     AgentStatus,
     MessageKind,
-    ErrorResponse
+    ErrorResponse,
+    ExternalContentBlock
 )
 from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
 from rusty import Config as CONFIG
 
-from log import get_logger, init_sentry, configure_uvicorn_logging
+from log import get_logger, configure_uvicorn_logging, set_trace_id, clear_trace_id
 
 logger = get_logger(__name__)
 
@@ -45,12 +47,22 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Shutting down Async Agent Server API")
 
+
 app = FastAPI(
     title="Async Agent Server API",
     description="Async API for communication between the Platform (Backend) and the Agent Server",
     version="1.0.0",
     lifespan=lifespan
 )
+
+# add Brotli compression middleware with optimized settings for SSE
+app.add_middleware(
+    BrotliMiddleware,
+    quality=4,  # balanced compression/speed for streaming
+    minimum_size=500,  # compress responses >= 500 bytes
+    gzip_fallback=True  # fallback to gzip for older clients
+)
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -83,6 +95,7 @@ class SessionManager:
 
     def get_or_create_session[T: AgentInterface](
         self,
+        client: dagger.Client,
         request: AgentRequest,
         agent_class: type[T],
         *args,
@@ -90,19 +103,20 @@ class SessionManager:
     ) -> T:
         session_id = f"{request.application_id}:{request.trace_id}"
 
-        if session_id in self.sessions:
-            logger.info(f"Reusing existing session for {session_id}")
-            return self.sessions[session_id]
+        #if session_id in self.sessions:
+        #    logger.info(f"Reusing existing session for {session_id}")
+        #    return self.sessions[session_id]
 
         logger.info(f"Creating new agent session for {session_id}")
         agent = agent_class(
+            client=client,
             application_id=request.application_id,
             trace_id=request.trace_id,
             settings=request.settings,
             *args,
             **kwargs
         )
-        self.sessions[session_id] = agent
+        #self.sessions[session_id] = agent
         return agent
 
     def cleanup_session(self, application_id: str, trace_id: str) -> None:
@@ -121,16 +135,56 @@ async def run_agent[T: AgentInterface](
 ) -> AsyncGenerator[str, None]:
     logger.info(f"Running agent for session {request.application_id}:{request.trace_id}")
 
-    # Establish Dagger connection for the agent's execution context
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        agent = session_manager.get_or_create_session(request, agent_class, *args, **kwargs)
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        # Establish Dagger connection for the agent's execution context
+        agent = session_manager.get_or_create_session(client, request, agent_class, *args, **kwargs)
 
         event_tx, event_rx = anyio.create_memory_object_stream[AgentSseEvent](max_buffer_size=0)
+        keep_alive_tx = event_tx.clone()  # Clone the sender for use in the keep-alive task
         final_state = None
+
+        # Use this flag to control the keep-alive task
+        keep_alive_running = True
+
+        async def send_keep_alive():
+            try:
+                # Use shorter sleep intervals to be more responsive
+                keep_alive_interval = 30
+                sleep_interval = 0.5  # Check every 500ms
+                elapsed = 0.0
+
+                while keep_alive_running:
+                    await anyio.sleep(sleep_interval)
+                    elapsed += sleep_interval
+
+                    if keep_alive_running and elapsed >= keep_alive_interval:
+                        keep_alive_event = AgentSseEvent(
+                            status=AgentStatus.RUNNING,
+                            traceId=request.trace_id,
+                            message=AgentMessage(
+                                role="assistant",
+                                kind=MessageKind.KEEP_ALIVE,
+                                content="",
+                                messages=[],
+                                agentState=None,
+                                unifiedDiff=None
+                            )
+                        )
+                        await keep_alive_tx.send(keep_alive_event)
+                        elapsed = 0.0  # Reset elapsed time
+
+            except Exception:
+                pass
+            finally:
+                await keep_alive_tx.aclose()
 
         try:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(agent.process, request, event_tx)
+
+                # Start the keep-alive task
+                tg.start_soon(send_keep_alive)
+
                 async with event_rx:
                     async for event in event_rx:
                         # Keep track of the last state in events with non-null state
@@ -141,10 +195,13 @@ async def run_agent[T: AgentInterface](
                         # This ensures compatibility with SSE standard
                         yield f"data: {event.to_json()}\n\n"
 
-                        # Only log that we'll clean up later - don't do the actual cleanup here
-                        # The actual cleanup happens in the finally block
-                        if event.status == AgentStatus.IDLE and request.agent_state is None:
-                            logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
+                        if event.status == AgentStatus.IDLE:
+                            keep_alive_running = False
+
+                            # Only log that we'll clean up later - don't do the actual cleanup here
+                            # The actual cleanup happens in the finally block
+                            if request.agent_state is None:
+                                logger.info(f"Agent idle, will clean up session for {request.application_id}:{request.trace_id} when all events are processed")
 
         except* Exception as excgroup:
             for e in excgroup.exceptions:
@@ -156,7 +213,11 @@ async def run_agent[T: AgentInterface](
                     message=AgentMessage(
                         role="assistant",
                         kind=MessageKind.RUNTIME_ERROR,
-                        content=f"Error processing request: {str(e)}", # Keep simple message for client
+                        content=json.dumps([{"role": "assistant", "content": [{"type": "text", "text": f"Error processing request: {str(e)}"}]}]),
+                        messages=[ExternalContentBlock(
+                            content=f"Error processing request: {str(e)}",
+                            #timestamp=datetime.datetime.now(datetime.UTC)
+                        )],
                         agentState=None,
                         unifiedDiff=""
                     )
@@ -172,6 +233,7 @@ async def run_agent[T: AgentInterface](
             if request.agent_state is None and (final_state is None or final_state == {}):
                 logger.info(f"Cleaning up completed agent session for {request.application_id}:{request.trace_id}")
                 session_manager.cleanup_session(request.application_id, request.trace_id)
+                clear_trace_id()
 
 
 @app.post("/message", response_model=None)
@@ -204,9 +266,8 @@ async def message(
     """
     try:
         logger.info(f"Received message request for application {request.application_id}, trace {request.trace_id}")
-
-        # Start the SSE stream
-        logger.info(f"Starting SSE stream for application {request.application_id}, trace {request.trace_id}")
+        set_trace_id(request.trace_id)
+        logger.info("Starting SSE stream for application")
         agent_type = {
             "template_diff": TemplateDiffAgentImplementation,
             "trpc_agent": TrpcAgentSession,
@@ -228,19 +289,13 @@ async def message(
             detail=error_response.to_json()
         )
 
+
 @app.get("/health")
-async def healthcheck():
-    """Health check endpoint"""
-    logger.debug("Health check requested")
-    return {"status": "healthy"}
-
-
-@app.get("/health/dagger")
 async def dagger_healthcheck():
     """Dagger connection health check endpoint"""
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
         # Try a simple Dagger operation to verify connectivity
-        container = dag.container().from_("alpine:latest")
+        container = client.container().from_("alpine:latest")
         version = await container.with_exec(["cat", "/etc/alpine-release"]).stdout()
         return {
             "status": "healthy",
@@ -255,8 +310,6 @@ def main(
     reload: bool = False,
     log_level: str = "info"
 ):
-    init_sentry()
-
     uvicorn.run(
         "api.agent_server.async_server:app",
         host=host,

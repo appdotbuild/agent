@@ -23,6 +23,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
+    "noErrorTruncation": true,
 
     // Paths
     "baseUrl": ".",

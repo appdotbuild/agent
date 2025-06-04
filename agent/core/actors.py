@@ -7,6 +7,7 @@ from core.base_node import Node
 from llm.common import AsyncLLM, Message
 from llm.utils import loop_completion
 from core.workspace import Workspace
+import hashlib
 
 
 @dataclasses.dataclass
@@ -21,6 +22,13 @@ class BaseData:
         if self.messages[0].role != "assistant":
             raise ValueError(f"Expected assistant role in message: {self.messages}")
         return self.messages[0]
+
+    @property
+    def file_cache_key(self) -> str:
+        s = ""
+        for file, content in sorted(self.files.items(), key=lambda x: x[0]):
+            s += f"{file}:{content}"
+        return hashlib.md5(s.encode()).hexdigest()
 
 
 class BaseActor(statemachine.Actor):
@@ -77,13 +85,13 @@ class BaseActor(statemachine.Actor):
 class LLMActor(Protocol):
     llm: AsyncLLM
 
-    async def run_llm(self, nodes: list[Node[BaseData]], **kwargs) -> list[Node[BaseData]]:
+    async def run_llm(self, nodes: list[Node[BaseData]], system_prompt: str | None = None, **kwargs) -> list[Node[BaseData]]:
         async def node_fn(node: Node[BaseData], tx: MemoryObjectSendStream[Node[BaseData]]):
             history = [m for n in node.get_trajectory() for m in n.data.messages]
             new_node = Node[BaseData](
                 data=BaseData(
                     workspace=node.data.workspace.clone(),
-                    messages=[await loop_completion(self.llm, history, **kwargs)],
+                    messages=[await loop_completion(self.llm, history, system_prompt=system_prompt, **kwargs)],
                 ),
                 parent=node
             )

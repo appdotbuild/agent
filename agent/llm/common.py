@@ -1,6 +1,6 @@
-from typing import Literal, Protocol, Self, Iterable, TypedDict, TypeAlias, Union, Required
+from typing import Literal, Protocol, Self, Iterable, TypedDict, TypeAlias, Union, Required, NotRequired
 from dataclasses import dataclass
-
+import hashlib
 
 @dataclass
 class TextRaw:
@@ -35,6 +35,18 @@ class ToolUseResult:
     @classmethod
     def from_tool_use(cls, tool_use: ToolUse, content: str, is_error: bool | None = None) -> "ToolUseResult":
         return cls(tool_use, ToolResult(content, tool_use.id, tool_use.name, is_error))
+
+
+@dataclass
+class AttachedFiles:
+    files: list[str]
+    _cache_key: str | None = None
+
+    @property
+    def cache_key(self) -> str:
+        if self._cache_key is None:
+            return hashlib.md5("".join(sorted(self.files)).encode()).hexdigest()
+        return self._cache_key
 
 
 ContentBlock: TypeAlias = Union[TextRaw, ToolUse, ToolUseResult, ThinkingBlock]
@@ -82,11 +94,13 @@ def load_content(data: list[dict]) -> list[ContentBlock]:
                     ToolUse(tool_use["name"], tool_use["input"], tool_use["id"]),
                     ToolResult(tool_result["content"], tool_result["name"], tool_result["is_error"])
                 ))
+            case _:
+                raise ValueError(f"Unknown block type in content: {block}")
     return content
 
 
 @dataclass
-class Message:
+class InternalMessage:
     role: Literal["user", "assistant"]
     content: Iterable[ContentBlock]
 
@@ -133,7 +147,15 @@ class Tool(TypedDict, total=False):
     name: Required[str]
     description: str
     input_schema: Required[dict[str, object]]
+    cache_control: NotRequired[dict[str, str]]
 
+
+# TODO: remove this alias after all clients are updated
+Message = InternalMessage
+
+# ----------------------------------
+# Async LLM protocol
+# ----------------------------------
 
 class AsyncLLM(Protocol):
     async def completion(

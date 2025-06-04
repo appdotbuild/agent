@@ -10,7 +10,8 @@ from core.actors import BaseData
 from core.base_node import Node
 from core.statemachine import MachineCheckpoint
 from core.workspace import Workspace
-from trpc_agent.actors import DraftActor, HandlersActor, IndexActor, FrontendActor
+from trpc_agent.diff_edit_actor import EditActor
+from trpc_agent.actors import DraftActor, HandlersActor, FrontendActor, ConcurrentActor
 import dagger
 
 # Set up logging
@@ -24,12 +25,9 @@ for package in ['urllib3', 'httpx', 'google_genai.models']:
 class FSMState(str, enum.Enum):
     DRAFT = "draft"
     REVIEW_DRAFT = "review_draft"
-    HANDLERS = "handlers"
-    REVIEW_HANDLERS = "review_handlers"
-    INDEX = "index"
-    REVIEW_INDEX = "review_index"
-    FRONTEND = "frontend"
-    REVIEW_FRONTEND = "review_frontend"
+    APPLICATION = "application"
+    REVIEW_APPLICATION = "review_application"
+    APPLY_FEEDBACK = "apply_feedback"
     COMPLETE = "complete"
     FAILURE = "failure"
 
@@ -59,11 +57,8 @@ class FSMEvent:
 class ApplicationContext(Context):
     """Context for the fullstack application state machine"""
     user_prompt: str
-    draft: Optional[str] = None
     feedback_data: Optional[str] = None
-    feedback_component: Optional[str] = None
-    server_files: Dict[str, str] = field(default_factory=dict)
-    frontend_files: Dict[str, str] = field(default_factory=dict)
+    files: Dict[str, str] = field(default_factory=dict)
     error: Optional[str] = None
 
     def dump(self) -> dict:
@@ -71,11 +66,8 @@ class ApplicationContext(Context):
         # Convert dataclass to dictionary
         data = {
             "user_prompt": self.user_prompt,
-            "draft": self.draft,
             "feedback_data":self.feedback_data,
-            "feedback_component": self.feedback_component,
-            "server_files": self.server_files,
-            "frontend_files": self.frontend_files,
+            "files": self.files,
             "error": self.error
         }
         return data
@@ -90,35 +82,36 @@ class ApplicationContext(Context):
 
 class FSMApplication:
 
-    def __init__(self, fsm: StateMachine[ApplicationContext, FSMEvent]):
+    def __init__(self, client: dagger.Client, fsm: StateMachine[ApplicationContext, FSMEvent]):
         self.fsm = fsm
+        self.client = client
 
     @classmethod
-    async def load(cls, data: MachineCheckpoint) -> Self:
-        root = await cls.make_states()
+    async def load(cls, client: dagger.Client, data: MachineCheckpoint) -> Self:
+        root = await cls.make_states(client)
         fsm = await StateMachine[ApplicationContext, FSMEvent].load(root, data, ApplicationContext)
-        return cls(fsm)
+        return cls(client, fsm)
 
     @classmethod
     def base_execution_plan(cls) -> str:
-         return "\n".join([
-            "1. Draft app design",
-            "2. Implement handlers",
-            "3. Create index file",
-            "4. Build frontend",
-         ])
+        return "\n".join([
+            "1. Application draft. Contains types, database tables and handler declarations only.",
+            "2. Core backend implementations and application frontend.",
+            "",
+            "The result application will be based on Typescript, Drizzle, tRPC and React."
+        ])
 
     @classmethod
-    async def start_fsm(cls, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:
+    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any] | None = None) -> Self:
         """Create the state machine for the application"""
-        states = await cls.make_states(settings)
+        states = await cls.make_states(client, settings)
         context = ApplicationContext(user_prompt=user_prompt)
         fsm = StateMachine[ApplicationContext, FSMEvent](states, context)
         await fsm.send(FSMEvent("CONFIRM")) # confirm running first stage immediately
-        return cls(fsm)
+        return cls(client, fsm)
 
     @classmethod
-    async def make_states(cls, settings: Dict[str, Any] | None = None) -> State[ApplicationContext, FSMEvent]:
+    async def make_states(cls, client: dagger.Client, settings: Dict[str, Any] | None = None) -> State[ApplicationContext, FSMEvent]:
         def agg_node_files(solution: Node[BaseData]) -> dict[str, str]:
             files = {}
             for node in solution.get_trajectory():
@@ -126,24 +119,13 @@ class FSMApplication:
             return files
 
         # Define actions to update context
-        async def update_handler_files(ctx: ApplicationContext, result: dict[str, Node[BaseData]]) -> None:
-            logger.info("Updating handler files from result")
-            for handler_name, node in result.items():
-                ctx.server_files.update(agg_node_files(node))
-
-        async def update_frontend_files(ctx: ApplicationContext, result: Node[BaseData]) -> None:
-            logger.info("Updating frontend files from result")
-            ctx.frontend_files.update(agg_node_files(result))
-
-        async def update_draft(ctx: ApplicationContext, result: Node[BaseData]) -> None:
-            logger.info("Updating draft in context")
-            files = agg_node_files(result)
-            ctx.server_files.update(files)
-            ctx.draft = "\n".join(files.values())
-
-        async def update_index_files(ctx: ApplicationContext, result: Node[BaseData]) -> None:
-            logger.info("Updating index files from result.")
-            ctx.server_files.update(agg_node_files(result))
+        async def update_node_files(ctx: ApplicationContext, result: Node[BaseData] | Dict[str, Node[BaseData]]) -> None:
+            logger.info("Updating context files from result")
+            if isinstance(result, Node):
+                ctx.files.update(agg_node_files(result))
+            elif isinstance(result, dict):
+                for key, node in result.items():
+                    ctx.files.update(agg_node_files(node))
 
         async def set_error(ctx: ApplicationContext, error: Exception) -> None:
             """Set error in context"""
@@ -152,27 +134,27 @@ class FSMApplication:
             ctx.error = str(error)
 
         llm = get_llm_client()
+        vlm = get_llm_client(model_name="gemini-flash-lite")
         model_params = settings or {}
-
         workspace = await Workspace.create(
+            client=client,
             base_image="oven/bun:1.2.5-alpine",
-            context=dagger.dag.host().directory("./trpc_agent/template"),
+            context=client.host().directory("./trpc_agent/template"),
             setup_cmd=[["bun", "install"]],
         )
-        backend_workspace = workspace.clone().cwd("/app/server")
-        frontend_workspace = workspace.clone().cwd("/app/client")
 
-        draft_actor = DraftActor(llm, backend_workspace.clone(), model_params)
-
-        beam_width = 3
-        handlers_actor = HandlersActor(llm, backend_workspace.clone(), model_params, beam_width=beam_width)
-        index_actor = IndexActor(llm, backend_workspace.clone(), model_params, beam_width=beam_width)
-        front_actor = FrontendActor(llm, frontend_workspace.clone(), model_params, beam_width=1, max_depth=20)
+        draft_actor = DraftActor(llm, workspace.clone(), model_params)
+        application_actor = ConcurrentActor(
+            handlers=HandlersActor(llm, workspace.clone(), model_params, beam_width=3),
+            frontend=FrontendActor(llm, vlm, workspace.clone(), model_params, beam_width=1, max_depth=20)
+        )
+        edit_actor = EditActor(llm, vlm, workspace.clone())
 
         # Define state machine states
         states = State[ApplicationContext, FSMEvent](
             on={
-                FSMEvent("CONFIRM"): FSMState.DRAFT
+                FSMEvent("CONFIRM"): FSMState.DRAFT,
+                FSMEvent("FEEDBACK"): FSMState.APPLY_FEEDBACK,
             },
             states={
                 FSMState.DRAFT: State(
@@ -181,7 +163,7 @@ class FSMApplication:
                         "input_fn": lambda ctx: (ctx.feedback_data or ctx.user_prompt,),
                         "on_done": {
                             "target": FSMState.REVIEW_DRAFT,
-                            "actions": [update_draft],
+                            "actions": [update_node_files],
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
@@ -191,17 +173,17 @@ class FSMApplication:
                 ),
                 FSMState.REVIEW_DRAFT: State(
                     on={
-                        FSMEvent("CONFIRM"): FSMState.HANDLERS,
+                        FSMEvent("CONFIRM"): FSMState.APPLICATION,
                         FSMEvent("FEEDBACK"): FSMState.DRAFT,
                     },
                 ),
-                FSMState.HANDLERS: State(
+                FSMState.APPLICATION: State(
                     invoke={
-                        "src": handlers_actor,
-                        "input_fn": lambda ctx: (ctx.server_files,),
+                        "src": application_actor,
+                        "input_fn": lambda ctx: (ctx.user_prompt, ctx.files, ctx.feedback_data),
                         "on_done": {
-                            "target": FSMState.REVIEW_HANDLERS,
-                            "actions": [update_handler_files],
+                            "target": FSMState.REVIEW_APPLICATION,
+                            "actions": [update_node_files],
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
@@ -209,51 +191,25 @@ class FSMApplication:
                         },
                     },
                 ),
-                FSMState.REVIEW_HANDLERS: State(
+                FSMState.REVIEW_APPLICATION: State(
                     on={
-                        FSMEvent("CONFIRM"): FSMState.INDEX,
-                        FSMEvent("FEEDBACK"): FSMState.HANDLERS,
+                        FSMEvent("CONFIRM"): FSMState.COMPLETE,
+                        FSMEvent("FEEDBACK"): FSMState.APPLICATION,
                     },
                 ),
-                FSMState.INDEX: State(
+                FSMState.APPLY_FEEDBACK: State(
                     invoke={
-                        "src": index_actor,
-                        "input_fn": lambda ctx: (ctx.server_files,),
+                        "src": edit_actor,
+                        "input_fn": lambda ctx: (ctx.files, ctx.user_prompt, ctx.feedback_data),
                         "on_done": {
-                            "target": FSMState.REVIEW_INDEX,
-                            "actions": [update_index_files],
+                            "target": FSMState.COMPLETE,
+                            "actions": [update_node_files]
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
                             "actions": [set_error],
                         },
                     }
-                ),
-                FSMState.REVIEW_INDEX: State(
-                    on={
-                        FSMEvent("CONFIRM"): FSMState.FRONTEND,
-                        FSMEvent("FEEDBACK"): FSMState.INDEX,
-                    },
-                ),
-                FSMState.FRONTEND: State(
-                    invoke={
-                        "src": front_actor,
-                        "input_fn": lambda ctx: (ctx.user_prompt, ctx.server_files),
-                        "on_done": {
-                            "target": FSMState.REVIEW_FRONTEND,
-                            "actions": [update_frontend_files],
-                        },
-                        "on_error": {
-                            "target": FSMState.FAILURE,
-                            "actions": [set_error],
-                        },
-                    },
-                ),
-                FSMState.REVIEW_FRONTEND: State(
-                    on={
-                        FSMEvent("CONFIRM"): FSMState.COMPLETE,
-                        FSMEvent("FEEDBACK"): FSMState.FRONTEND,
-                    },
                 ),
                 FSMState.COMPLETE: State(),
                 FSMState.FAILURE: State(),
@@ -265,9 +221,8 @@ class FSMApplication:
     async def confirm_state(self):
         await self.fsm.send(FSMEvent("CONFIRM"))
 
-    async def provide_feedback(self, feedback: str, component_name: str):
+    async def apply_changes(self, feedback: str):
         self.fsm.context.feedback_data = feedback
-        self.fsm.context.feedback_component = component_name
         await self.fsm.send(FSMEvent("FEEDBACK"))
 
     async def complete_fsm(self):
@@ -291,22 +246,11 @@ class FSMApplication:
     def state_output(self) -> dict:
         match self.current_state:
             case FSMState.REVIEW_DRAFT:
-                return {"draft": self.fsm.context.draft}
-            case FSMState.REVIEW_HANDLERS:
-                handler_files = {
-                    filename: content for filename, content in self.fsm.context.server_files.items()
-                    if "/handlers/" in filename
-                }
-                return {"handlers": handler_files}
-            case FSMState.REVIEW_INDEX:
-                return {"index": self.fsm.context.server_files["src/index.ts"]}
-            case FSMState.REVIEW_FRONTEND:
-                return {"frontend": self.fsm.context.frontend_files}
+                return {"draft": self.fsm.context.files}
+            case FSMState.REVIEW_APPLICATION:
+                return {"application": self.fsm.context.files}
             case FSMState.COMPLETE:
-                return {
-                    "server_files": self.fsm.context.server_files,
-                    "frontend_files": self.fsm.context.frontend_files,
-                }
+                return {"application": self.fsm.context.files}
             case FSMState.FAILURE:
                 return {"error": self.fsm.context.error or "Unknown error"}
             case _:
@@ -317,14 +261,14 @@ class FSMApplication:
     def available_actions(self) -> dict[str, str]:
         actions = {}
         match self.current_state:
-            case FSMState.REVIEW_DRAFT | FSMState.REVIEW_HANDLERS | FSMState.REVIEW_INDEX | FSMState.REVIEW_FRONTEND:
-                actions = {
-                    "confirm": "Accept current output and continue",
-                    "revise": "Provide feedback and revise"
-                }
-                logger.debug(f"Review state detected: {self.current_state}, offering confirm/revise actions")
+            case FSMState.REVIEW_DRAFT | FSMState.REVIEW_APPLICATION:
+                actions = {"confirm": "Accept current output and continue"}
+                logger.debug(f"Review state detected: {self.current_state}, offering confirm action")
             case FSMState.COMPLETE:
-                actions = {"complete": "Finalize and get all artifacts"}
+                actions = {
+                    "complete": "Finalize and get all artifacts",
+                    "change": "Submit feedback for the current FSM state and trigger revision",
+                }
                 logger.debug("FSM is in COMPLETE state, offering complete action")
             case FSMState.FAILURE:
                 actions = {"get_error": "Get error details"}
@@ -334,60 +278,93 @@ class FSMApplication:
                 logger.debug(f"FSM is in processing state: {self.current_state}, offering wait action")
         return actions
 
-    @classmethod
-    def get_files_at_root(cls, context: ApplicationContext) -> dict[str, str]:
-        merged = {}
-        for key, value in context.server_files.items():
-            merged[f"server/{key}"] = value
-        for key, value in context.frontend_files.items():
-            merged[f"client/{key}"] = value
-        return merged
-
     async def get_diff_with(self, snapshot: dict[str, str]) -> str:
-        # Start with the template directory
-        context = dagger.dag.host().directory("./trpc_agent/template")
-        
-        # Write snapshot (initial) files
+        logger.info(f"SERVER get_diff_with: Received snapshot with {len(snapshot)} files.")
+        if snapshot:
+            # Sort keys for consistent sample logging, especially in tests
+            sorted_snapshot_keys = sorted(snapshot.keys())
+            logger.info(f"SERVER get_diff_with: Snapshot sample paths (up to 5): {sorted_snapshot_keys[:5]}")
+            if len(snapshot) > 5:
+                logger.debug(f"SERVER get_diff_with: All snapshot paths: {sorted_snapshot_keys}")
+            # Log content of a very small, specific file if it exists, for deep debugging
+            # Example: if "client/src/App.tsx" in snapshot:
+            #    logger.debug(f"SERVER get_diff_with: Content of snapshot file 'client/src/App.tsx':\n{snapshot['client/src/App.tsx'][:200]}...")
+        else:
+            logger.info("SERVER get_diff_with: Snapshot is empty. Diff will be against template + FSM context files.")
+
+        logger.debug("SERVER get_diff_with: Initializing Dagger context from empty directory")
+        context = self.client.directory()
+
+        gitignore_path = "./trpc_agent/template/.gitignore"
+        try:
+            gitignore_file = self.client.host().file(gitignore_path)
+            context = context.with_file(".gitignore", gitignore_file)
+            logger.info(f"SERVER get_diff_with: Added .gitignore from {gitignore_path} to Dagger context.")
+        except Exception as e:
+            logger.warning(f"SERVER get_diff_with: Could not load/add .gitignore from {gitignore_path}: {e}. Proceeding without.")
+
+        logger.info(f"SERVER get_diff_with: Writing {len(snapshot)} files from received snapshot to Dagger context.")
         for key, value in snapshot.items():
+            logger.debug(f"SERVER get_diff_with:  Adding snapshot file to Dagger context: {key}")
             context = context.with_new_file(key, value)
-        
-        # Create workspace with git
-        workspace = await Workspace.create(base_image="alpine/git", context=context)
-        
-        # Write current (final) files
-        final_files = self.get_files_at_root(self.fsm.context)
-        for key, value in final_files.items():
-            workspace.write_file(key, value)
-        
-        # If we're in the COMPLETE state, ensure we return a diff even if empty
-        if self.current_state == FSMState.COMPLETE:
-            diff = await workspace.diff()
-            # If the diff is empty but we have files, return a special marker
-            if not diff.strip() and final_files:
-                # Return empty string, but with special note that the system can recognize
-                return "# Note: This is a valid empty diff (means no changes from template)"
-            return diff
-        
-        return await workspace.diff()
+
+        logger.info("SERVER get_diff_with: Creating Dagger workspace for diff generation.")
+        workspace = await Workspace.create(self.client, base_image="alpine/git", context=context)
+        logger.debug("SERVER get_diff_with: Dagger workspace created with initial snapshot context.")
+
+        template_dir_path = "./trpc_agent/template"
+        try:
+            template_dir = self.client.host().directory(template_dir_path)
+            workspace.ctr = workspace.ctr.with_directory(".", template_dir)
+            logger.info(f"SERVER get_diff_with: Template directory {template_dir_path} merged into Dagger workspace root.")
+        except Exception as e:
+            logger.error(f"SERVER get_diff_with: FAILED to merge template directory {template_dir_path} into workspace: {e}")
+
+        fsm_files_count = len(self.fsm.context.files)
+        logger.info(f"SERVER get_diff_with: Writing {fsm_files_count} files from FSM context to Dagger workspace (overlaying snapshot & template).")
+        if fsm_files_count > 0:
+             logger.debug(f"SERVER get_diff_with: FSM files (sample): {list(self.fsm.context.files.keys())[:5]}")
+        for key, value in self.fsm.context.files.items():
+            logger.debug(f"SERVER get_diff_with:  Writing FSM file to Dagger workspace: {key} (Length: {len(value)})")
+            try:
+                workspace.write_file(key, value)
+            except Exception as e:
+                logger.error(f"SERVER get_diff_with: FAILED to write FSM file {key} to workspace: {e}")
+
+        logger.info("SERVER get_diff_with: Calling workspace.diff() to generate final diff.")
+        final_diff_output = ""
+        try:
+            final_diff_output = await workspace.diff()
+            logger.info(f"SERVER get_diff_with: workspace.diff() Succeeded. Diff length: {len(final_diff_output)}")
+            if not final_diff_output:
+                 logger.warning("SERVER get_diff_with: Diff output is EMPTY. This might be expected if states match or an issue.")
+        except Exception as e:
+            logger.exception("SERVER get_diff_with: Error during workspace.diff() execution.")
+            final_diff_output = f"# ERROR GENERATING DIFF: {e}"
+
+        return final_diff_output
 
 
-async def main(user_prompt="Simple todo app"):
-    async with dagger.connection(dagger.Config(log_output=open(os.devnull, "w"))):
-        fsm_app = await FSMApplication.start_fsm(user_prompt)
+async def main(user_prompt="Minimal persistent counter application"):
+    async with dagger.Connection(dagger.Config(log_output=open(os.devnull, "w"))) as client:
+        fsm_app: FSMApplication = await FSMApplication.start_fsm(client, user_prompt)
 
         while (fsm_app.current_state not in (FSMState.COMPLETE, FSMState.FAILURE)):
             await fsm_app.fsm.send(FSMEvent("CONFIRM"))
 
-        # Print the results
         context = fsm_app.fsm.context
         if fsm_app.maybe_error():
             logger.error(f"Application run failed: {context.error or 'Unknown error'}")
         else:
             logger.info("Application run completed successfully")
-            # Count files generated
-            server_files = context.server_files or {}
-            frontend_files = context.frontend_files or {}
-            logger.info(f"Generated {len(server_files)} server files and {len(frontend_files)} frontend files")
+            logger.info(f"Generated {len(context.files)} files")
+            logger.info("Applying edit to application.")
+            await fsm_app.apply_changes("Add header that says 'Hello World'")
+
+            if fsm_app.maybe_error():
+                logger.error(f"Failed to apply edit: {context.error or 'Unknown error'}")
+            else:
+                logger.info("Edit applied successfully")
 
 
 if __name__ == "__main__":

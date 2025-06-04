@@ -13,7 +13,7 @@ Generates full stack apps using trpc + shadcn components.
 
 ## Usage:
 
-`uv run main.py --num_beams 1 --export_dir demo_app`
+`uv run generate "my app description"`
 
 ### Running generated code
 

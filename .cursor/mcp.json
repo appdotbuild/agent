@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "app-build": {
-      "command": "/Users/arseny/dev/bot-new/mcp_tools/run_mcp.sh",
-      "args": []
-    }
-  }
-}

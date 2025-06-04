@@ -17,4 +17,9 @@ class Config:
     def builder_token(self):
         return os.getenv("BUILDER_TOKEN")
 
+    @property
+    def snapshot_bucket(self):
+        return os.getenv("SNAPSHOT_BUCKET", None)
+
+
 CONFIG = Config()
