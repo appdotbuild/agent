@@ -129,6 +129,8 @@ class TrpcAgentSession(AgentInterface):
                         fsm_state["context"]["files"].update({p.path: p.content for p in request.all_files}) # pyright: ignore
                     fsm_app = await FSMApplication.load(self.client, req_fsm_state)
                     snapshot_saver.save_snapshot(trace_id=self._snapshot_key, key="fsm_enter", data=req_fsm_state)
+                if (req_metadata := request.agent_state.get("metadata")):
+                    metadata.update(req_metadata)
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
@@ -167,6 +169,7 @@ class TrpcAgentSession(AgentInterface):
                     app_name = await generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
                     initial_template_diff = await self.processor_instance.fsm_app.get_diff_with({})
+                    agent_state["metadata"].update({"app_name": app_name, "template_diff_sent": True})
                     await self.send_event(
                         event_tx=event_tx,
                         status=AgentStatus.RUNNING,
@@ -177,11 +180,6 @@ class TrpcAgentSession(AgentInterface):
                         app_name=app_name,
                         commit_message="Initial commit"
                     )
-                    agent_state["metadata"].update({
-                        "app_name": app_name,
-                        "template_diff_sent": True,
-                    })
-
 
                 # Send event based on FSM status
                 match fsm_status:
@@ -301,7 +299,11 @@ class TrpcAgentSession(AgentInterface):
                 role="assistant",
                 kind=kind,
                 messages=structured_blocks,
-                agentState={"fsm_state": agent_state["fsm_state"], "fsm_messages": [x.to_dict() for x in agent_state["fsm_messages"]]} if agent_state else None,
+                agentState={
+                    "fsm_state": agent_state["fsm_state"],
+                    "fsm_messages": [x.to_dict() for x in agent_state["fsm_messages"]],
+                    "metadata": agent_state["metadata"],
+                } if agent_state else None,
                 unifiedDiff=unified_diff,
                 complete_diff_hash=None,
                 diff_stat=None,
