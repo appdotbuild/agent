@@ -38,16 +38,11 @@ This is the **agent** repository containing the core code generation engine and 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
 
 ## Running locally
 
 Local development instructions are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
-Local development instructions are available in [CONTRIBUTING.md](CONTRIBUTING.md).
 
----
-
-Built to showcase agent-native infrastructure patterns. Fork it, remix it, use it as a reference for your own projects.
 Built to showcase agent-native infrastructure patterns. Fork it, remix it, use it as a reference for your own projects.
