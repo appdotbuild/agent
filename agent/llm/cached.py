@@ -87,6 +87,7 @@ class CachedLLM(AsyncLLM):
         self._cache: Dict[str, Any] = {}
         self._cache_lru: OrderedDict[str, None] = OrderedDict()
         self.lock = anyio.Lock()
+        self._pending_requests: Dict[str, anyio.Event] = {}
 
         match (self.cache_mode, Path(self.cache_path)):
             case ("replay", file) if not file.exists():
@@ -222,47 +223,115 @@ class CachedLLM(AsyncLLM):
                 return response
 
             case "record":
+                norm_params, cache_key = self._get_cache_key(**request_params)
+                logger.info(f"Caching response with key: {cache_key}")
+                
+                # Check cache and pending requests
+                event = None
+                make_request = False
                 async with self.lock:
-                    norm_params, cache_key = self._get_cache_key(**request_params)
-                    logger.info(f"Caching response with key: {cache_key}")
                     if cache_key in self._cache:
                         logger.info("Fetching from cache")
                         return Completion.from_dict(self._cache[cache_key]["data"])
+                    elif cache_key in self._pending_requests:
+                        # Another coroutine is already making this request
+                        event = self._pending_requests[cache_key]
                     else:
-                        response = await self.client.completion(
-                            model=model,
-                            messages=messages,
-                            max_tokens=max_tokens,
-                            temperature=temperature,
-                            tools=tools,
-                            tool_choice=tool_choice,
-                            **kwargs,
-                        )
+                        # We'll make the request
+                        event = anyio.Event()
+                        self._pending_requests[cache_key] = event
+                        make_request = True
+                
+                if not make_request:
+                    # Wait for the other coroutine to complete
+                    await event.wait()
+                    async with self.lock:
+                        return Completion.from_dict(self._cache[cache_key]["data"])
+                
+                try:
+                    # Make API call without holding lock
+                    response = await self.client.completion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        **kwargs,
+                    )
+                    
+                    # Update cache with lock
+                    async with self.lock:
                         self._cache[cache_key] = {"data": response.to_dict(), "params": norm_params}
                         self._save_cache()
+                        del self._pending_requests[cache_key]
+                    
+                    # Signal waiting coroutines
+                    event.set()
                     return response
+                except Exception:
+                    # Clean up on error
+                    async with self.lock:
+                        del self._pending_requests[cache_key]
+                    event.set()
+                    raise
 
             case "lru":
+                norm_params, cache_key = self._get_cache_key(**request_params)
+                
+                # Check cache and pending requests
+                event = None
+                make_request = False
                 async with self.lock:
-                    norm_params, cache_key = self._get_cache_key(**request_params)
                     if cache_key in self._cache:
                         logger.info(f"lru cache hit: {cache_key}")
                         self._update_lru_cache(cache_key)
                         return Completion.from_dict(self._cache[cache_key]['data'])
+                    elif cache_key in self._pending_requests:
+                        # Another coroutine is already making this request
+                        event = self._pending_requests[cache_key]
                     else:
-                        logger.info(f"lru cache miss: {cache_key}")
-                        response = await self.client.completion(
-                            model=model,
-                            messages=messages,
-                            max_tokens=max_tokens,
-                            temperature=temperature,
-                            tools=tools,
-                            tool_choice=tool_choice,
-                            **kwargs,
-                        )
+                        # We'll make the request
+                        event = anyio.Event()
+                        self._pending_requests[cache_key] = event
+                        make_request = True
+                
+                logger.info(f"lru cache miss: {cache_key}")
+                
+                if not make_request:
+                    # Wait for the other coroutine to complete
+                    await event.wait()
+                    async with self.lock:
+                        self._update_lru_cache(cache_key)
+                        return Completion.from_dict(self._cache[cache_key]['data'])
+                
+                try:
+                    # Make API call without holding lock
+                    response = await self.client.completion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        **kwargs,
+                    )
+                    
+                    # Update cache with lock
+                    async with self.lock:
                         self._cache[cache_key] = {"data": response.to_dict(), "params": norm_params}
                         self._update_lru_cache(cache_key)
-                        return response
+                        del self._pending_requests[cache_key]
+                    
+                    # Signal waiting coroutines
+                    event.set()
+                    return response
+                except Exception:
+                    # Clean up on error
+                    async with self.lock:
+                        del self._pending_requests[cache_key]
+                    event.set()
+                    raise
 
             case "replay":
                 norm_params, cache_key = self._get_cache_key(**request_params)
