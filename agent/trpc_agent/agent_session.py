@@ -125,6 +125,8 @@ class TrpcAgentSession(AgentInterface):
                     fsm_message_history = [InternalMessage.from_dict(m) for m in fsm_messages] + fsm_message_history
                 if (req_fsm_state := request.agent_state.get("fsm_state")):
                     fsm_state = req_fsm_state
+                    if request.all_files:
+                        fsm_state["context"]["files"].update({p.path: p.content for p in request.all_files}) # pyright: ignore
                     fsm_app = await FSMApplication.load(self.client, req_fsm_state)
                     snapshot_saver.save_snapshot(trace_id=self._snapshot_key, key="fsm_enter", data=req_fsm_state)
             else:
@@ -137,6 +139,7 @@ class TrpcAgentSession(AgentInterface):
                 "fsm_state": fsm_state,
                 "metadata": metadata,
             }
+            snapshot_files = {**fsm_state["context"]["files"]} if fsm_state else {} # pyright: ignore
 
             # Processing
             logger.info(f"Last user message: {fsm_message_history[-1].content}")
@@ -212,8 +215,6 @@ class TrpcAgentSession(AgentInterface):
                             assert self.processor_instance.fsm_app is not None
                             logger.info("FSM is completed")
 
-                            #TODO: write unit test for this
-                            snapshot_files = self.prepare_snapshot_from_request(request)
                             final_diff = await self.processor_instance.fsm_app.get_diff_with(snapshot_files)
 
                             logger.info(
