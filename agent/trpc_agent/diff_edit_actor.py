@@ -329,6 +329,7 @@ class EditActor(BaseActor, LLMActor):
     @property
     def files_protected(self) -> list[str]:
         return [
+            "Dockerfile",
             "server/src/db/index.ts",
             "client/src/utils/trpc.ts",
             "client/src/components/ui/",
