@@ -33,7 +33,7 @@ Each task is validated independently using ESLint, TypeScript compilation, test 
 
 ## Repository structure
 
-This is the **agent** repository containing the core code generation engine and runtime environment. The CLI and platform code are available in the [platform repository](link-to-platform-repo).
+This is the **agent** repository containing the core code generation engine and runtime environment. The CLI and platform code are available in the [platform repository](https://github.com/appdotbuild/platform).
 
 ## Contributing
 
