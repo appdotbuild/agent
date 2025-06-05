@@ -254,7 +254,7 @@ class FSMApplication:
             case FSMState.REVIEW_APPLICATION:
                 return {"application": self.truncated_files}
             case FSMState.COMPLETE:
-                return {"application": self.truncated_files}
+                return {"application": self.fsm.context.files}
             case FSMState.FAILURE:
                 return {"error": self.fsm.context.error or "Unknown error"}
             case _:
