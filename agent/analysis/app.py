@@ -37,9 +37,10 @@ def group_sse_events(sse_files: List[Dict[str, Any]]) -> Dict[str, List[Dict[str
         else:
             # s3 pattern: app-{app_id}.req-{req_id}_{timestamp}/sse_events/{sequence}.json
             path = file_info["path"]
-            match = re.match(r"(app-[a-f0-9-]+\.req-[a-f0-9-]+_\d+)/sse_events/(\d+)\.json", path)
+            match = re.match(r"(app-[a-f0-9-]+\.req-[a-f0-9-]+)_\d+/sse_events/(\d+)\.json", path)
             if match:
                 trace_id, sequence = match.groups()
+                # trace_id now has timestamp stripped (app-xxx.req-xxx)
 
         if trace_id and sequence is not None:
             file_info["trace_id"] = trace_id
@@ -288,8 +289,8 @@ def main():
         # file type selection
         file_type = st.radio(
             "Trace Type",
-            options=["FSM exit states", "FSM enter states", "Top level agent", "SSE events"],
-            help="Select the type of trace files to analyze. Note: Top level agent data is now embedded in SSE events.",
+            options=["FSM exit states", "FSM enter states", "SSE events"],
+            help="Select the type of trace files to analyze. Note: Top level agent data is embedded in SSE events.",
         )
 
         # get file pattern
@@ -336,9 +337,22 @@ def main():
                 modified_str = latest_file["modified"].strftime("%Y-%m-%d %H:%M:%S")
                 return f"{trace_id[:12]}... ({files_count} events, {modified_str})"
 
-            selected_trace_id = st.selectbox(
-                "Select SSE Event Trace", options=list(trace_groups.keys()), format_func=format_trace_option
-            )
+            # add trace filter
+            trace_filter = st.text_input("Filter traces", placeholder="Enter text to filter trace IDs...")
+            
+            # filter traces based on user input
+            trace_ids = list(trace_groups.keys())
+            if trace_filter:
+                filter_lower = trace_filter.lower()
+                trace_ids = [tid for tid in trace_ids if filter_lower in tid.lower()]
+            
+            if not trace_ids:
+                st.warning(f"No traces found matching '{trace_filter}'" if trace_filter else "No traces available")
+                selected_trace_id = None
+            else:
+                selected_trace_id = st.selectbox(
+                    "Select SSE Event Trace", options=trace_ids, format_func=format_trace_option
+                )
 
             # store the selected trace group
             selected_file = None
@@ -368,7 +382,23 @@ def main():
                         # fallback for files without directory
                         return f"{file_info['path']} ({file_info['modified'].strftime('%Y-%m-%d %H:%M:%S')})"
 
-            selected_file = st.selectbox("Select file", options=fsm_files, format_func=format_file_option)
+            # add file filter
+            file_filter = st.text_input("Filter files", placeholder="Enter text to filter files...")
+            
+            # filter files based on user input
+            filtered_files = fsm_files
+            if file_filter:
+                filter_lower = file_filter.lower()
+                filtered_files = [
+                    f for f in fsm_files 
+                    if filter_lower in f.get("name", "").lower() or filter_lower in f.get("path", "").lower()
+                ]
+            
+            if not filtered_files:
+                st.warning(f"No files found matching '{file_filter}'" if file_filter else "No files available")
+                selected_file = None
+            else:
+                selected_file = st.selectbox("Select file", options=filtered_files, format_func=format_file_option)
             selected_trace_group = []
 
         # actors selection - only show for FSM enter/exit files
@@ -382,7 +412,15 @@ def main():
             actors_to_display = []
         # Process button
         process_label = "Process Trace" if file_type == "SSE events" else "Process File"
-        if st.button(process_label, type="primary"):
+        
+        # check if something is selected
+        can_process = False
+        if file_type == "SSE events":
+            can_process = selected_trace_id is not None
+        else:
+            can_process = selected_file is not None
+            
+        if st.button(process_label, type="primary", disabled=not can_process):
             if file_type == "SSE events":
                 st.session_state.current_trace_group = selected_trace_group
                 st.session_state.selected_trace_id = selected_trace_id
