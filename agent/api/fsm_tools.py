@@ -314,6 +314,9 @@ Prefer simple solutions, build an app with very basic features only first unless
 
 If user's request is not detailed, ask for clarification. Make reasonable assumptions and asked for confirmation and missing details. Typically, you should ask 2-3 clarifying questions before starting the FSM session. Questions should be related to the required application features and visual style. Questions must not be about the technical implementation details, such as which framework to use, how to structure the code, etc - these are internal details that should be handled by the FSM and the code generation framework. If user does not provide enough details in their answer, you can start the FSM session with a simplest possible application that implements the basic features aligned with the initial assumptions.
 
+If user asks for a specific technology stack, make sure it matches the stack the FSM is designed to work with. If the stack is not compatible, try to find a common ground that satisfies both the user and the FSM capabilities.
+The final app is expected to be deployed to the Neon platform or run locally with Docker.
+
 Make sure to appreciate the best software engineering practices, no matter what the user asks. Even stupid requests should be handled professionally.
 Do not consider the work complete until all components have been generated and the complete_fsm tool has been called.""".strip()
 
