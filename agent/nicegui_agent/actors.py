@@ -144,8 +144,6 @@ class NiceguiActor(BaseActor, LLMActor):
             *repo_files,
             "Writeable files and directories:",
             *self.files_allowed,
-            "Protected files and directories:",
-            *self.files_protected
         ])
         user_prompt_rendered = user_prompt_template.render(
             project_context=project_context,
@@ -316,15 +314,14 @@ class NiceguiActor(BaseActor, LLMActor):
     def files_protected(self) -> list[str]:
         return [
             "pyproject.toml",
-            "uv.lock",
             "main.py",
             "tests/conftest.py",
         ]
 
     async def get_repo_files(self, workspace: Workspace, files: dict[str, str]) -> list[str]:
         repo_files = set(files.keys())
-        repo_files.update(await workspace.ls("tests"))
-        repo_files.update(await workspace.ls("app"))
+        repo_files.update(f"tests/{file_path}" for file_path in await workspace.ls("tests"))
+        repo_files.update(f"app/{file_path}" for file_path in await workspace.ls("app"))
         return sorted(list(repo_files))
 
     async def dump(self) -> object:
