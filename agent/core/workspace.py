@@ -171,12 +171,9 @@ class Workspace:
 
     @function
     @retry_transport_errors
-    async def exec_mut(self, command: list[str]) -> Self:
-        ctr = self.ctr.with_exec(command, expect=ReturnType.ANY)
-        if await ctr.exit_code() != 0:
-            raise Exception(f"Command failed: {command}\nError: {await ctr.stderr()}")
-        self.ctr = ctr
-        return self
+    async def exec_mut(self, command: list[str]) -> ExecResult:
+        self.ctr = self.ctr.with_exec(command, expect=ReturnType.ANY)
+        return await ExecResult.from_ctr(self.ctr)
 
     @function
     def reset(self) -> Self:
