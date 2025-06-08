@@ -65,7 +65,19 @@ BASE_HANDLER_DECLARATION = """
 <file path="server/src/handlers/create_product.ts">
 import { type CreateProductInput, type Product } from '../schema';
 
-export declare function createProduct(input: CreateProductInput): Promise<Product>;
+export const async createProduct(input: CreateProductInput): Promise<Product> => {
+    // This is a placeholder declaration! Real code should be implemented here.
+    return Promise.resolve({
+        id: 0, // Placeholder ID
+        name: input.name,
+        description: input.description || null, // Handle nullable field
+        price: input.price,
+        stock_quantity: input.stock_quantity,
+        created_at: new Date() // Placeholder date
+    } as Product
+    )
+}
+
 </file>
 """.strip()
 
@@ -73,7 +85,10 @@ BASE_GET_HANDLER_DECLARATION = """
 <file path="server/src/handlers/get_products.ts">
 import { type Product } from '../schema';
 
-export declare function getProducts(): Promise<Product[]>;
+export const async getProducts(): Promise<Product[]> => {
+    // This is a placeholder declaration! Real code should be implemented here.
+    return [];
+}
 </file>
 """.strip()
 
@@ -500,7 +515,7 @@ Example:
 Example:
 {BASE_DRIZZLE_SCHEMA}
 
-- For each handler write its declaration in corresponding file in server/src/handlers/; prefer simple handlers, follow single responsibility principle
+- For each handler write its dummy stub implementations in corresponding file in server/src/handlers/; prefer simple handlers, follow single responsibility principle
 Examples:
 {BASE_HANDLER_DECLARATION}
 

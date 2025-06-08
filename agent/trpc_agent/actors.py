@@ -211,9 +211,11 @@ class HandlersActor(BaseTRPCActor):
             async with rx:
                 async for (key, node) in rx:
                     if not node:
-                        raise ValueError(f"No solution found for handler: {key}")
-                    solution[key] = node
-                    logger.info(f"Received solution for handler: {key}")
+                        # FixMe: should we expose this to top level?
+                        logger.warning(f"Handler {key} returned no solution or an empty node, skipping")
+                    else:
+                        solution[key] = node
+                        logger.info(f"Received solution for handler: {key}")
 
         logger.info(f"HandlersActor completed with {len(solution)} solutions")
         return solution
