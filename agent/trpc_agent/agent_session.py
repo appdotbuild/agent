@@ -134,8 +134,21 @@ class TrpcAgentSession(AgentInterface):
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
-            # Unconditional initialization
-            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app)
+            async def emit_intermediate_diff(unified_diff: str) -> None:
+                await self.send_event(
+                    event_tx=event_tx,
+                    status=AgentStatus.RUNNING,
+                    kind=MessageKind.STAGE_RESULT,
+                    content="Generating intermediate files...",
+                    agent_state=agent_state,
+                    unified_diff=unified_diff,
+                    app_name=agent_state["metadata"]["app_name"],
+                )
+
+            fsm_settings = {**self.settings, 'event_callback': emit_intermediate_diff}
+            
+            # Unconditional initialization with event callback
+            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app, settings=fsm_settings, event_callback=emit_intermediate_diff)
             agent_state: AgentState = {
                 "fsm_messages": fsm_message_history,
                 "fsm_state": fsm_state,
