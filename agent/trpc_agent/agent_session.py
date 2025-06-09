@@ -142,18 +142,18 @@ class TrpcAgentSession(AgentInterface):
                     content="Generating intermediate files...",
                     agent_state=agent_state,
                     unified_diff=unified_diff,
-                    app_name=agent_state["metadata"]["app_name"],
+                    app_name=metadata["app_name"],
                 )
 
-            fsm_settings = {**self.settings, 'event_callback': emit_intermediate_diff}
-            
-            # Unconditional initialization with event callback
-            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app, settings=fsm_settings, event_callback=emit_intermediate_diff)
             agent_state: AgentState = {
                 "fsm_messages": fsm_message_history,
                 "fsm_state": fsm_state,
                 "metadata": metadata,
             }
+
+            fsm_settings = {**self.settings, 'event_callback': emit_intermediate_diff}
+            
+            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app, settings=fsm_settings, event_callback=emit_intermediate_diff)
             snapshot_files = {**fsm_state["context"]["files"]} if fsm_state else {} # pyright: ignore
 
             # Processing

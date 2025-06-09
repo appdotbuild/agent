@@ -1,4 +1,7 @@
-from typing import Awaitable, Callable, Self, Protocol, runtime_checkable, Dict, Any, Tuple
+from typing import Awaitable, Callable, Protocol, runtime_checkable, Dict, Any, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
 import anyio
 import dagger
 from fire import Fire
@@ -17,7 +20,7 @@ logger = get_logger(__name__)
 @runtime_checkable
 class FSMInterface(ApplicationBase, Protocol):
     @classmethod
-    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any]) -> Self: ...
+    async def start_fsm(cls, client: dagger.Client, user_prompt: str, settings: Dict[str, Any]): ...
     async def confirm_state(self): ...
     async def apply_changes(self, feedback: str): ...
     async def complete_fsm(self): ...
@@ -35,7 +38,7 @@ class FSMStatus(enum.Enum):
     REFINEMENT_REQUEST = "REFINEMENT_REQUEST"
 
 
-class FSMToolProcessor[T: FSMInterface]:
+class FSMToolProcessor:
     """
     Thin adapter that exposes FSM functionality as tools for AI agents.
 
@@ -44,11 +47,11 @@ class FSMToolProcessor[T: FSMInterface]:
     any FSM application that implements the FSMInterface protocol.
     """
 
-    fsm_class: type[T]
-    fsm_app: T | None
+    fsm_class: type
+    fsm_app: Any | None
     settings: Dict[str, Any]
 
-    def __init__(self, client: dagger.Client, fsm_class: type[T], fsm_app: T | None = None, settings: Dict[str, Any] | None = None, event_callback: Callable[[str], Awaitable[None]] | None = None):
+    def __init__(self, client: dagger.Client, fsm_class: type, fsm_app: Any | None = None, settings: Dict[str, Any] | None = None, event_callback: Callable[[str], Awaitable[None]] | None = None):
         """
         Initialize the FSM Tool Processor
 
@@ -135,7 +138,7 @@ class FSMToolProcessor[T: FSMInterface]:
             self.fsm_app = await self.fsm_class.start_fsm(self.client, user_prompt=app_description, settings=self.settings)
 
             # Check for errors
-            if (error_msg := self.fsm_app.maybe_error()):
+            if hasattr(self.fsm_app, 'maybe_error') and (error_msg := self.fsm_app.maybe_error()):
                 return CommonToolResult(content=f"FSM initialization failed: {error_msg}", is_error=True)
 
             # Prepare the result
@@ -170,8 +173,16 @@ class FSMToolProcessor[T: FSMInterface]:
                 except Exception as e:
                     logger.warning(f"Failed to emit intermediate diff: {e}")
 
+            if self.event_callback and hasattr(self.fsm_app, 'fsm') and hasattr(self.fsm_app.fsm, 'context') and hasattr(self.fsm_app.fsm.context, 'files') and self.fsm_app.fsm.context.files:
+                try:
+                    if hasattr(self.fsm_app, 'get_diff_with'):
+                        intermediate_diff = await self.fsm_app.get_diff_with({})
+                        await self.event_callback(intermediate_diff)
+                except Exception as e:
+                    logger.warning(f"Failed to emit intermediate diff: {e}")
+
             # Check for errors
-            if (error_msg := self.fsm_app.maybe_error()):
+            if hasattr(self.fsm_app, 'maybe_error') and (error_msg := self.fsm_app.maybe_error()):
                 return CommonToolResult(content=f"FSM confirmation failed: {error_msg}", is_error=True)
 
             # Prepare result
@@ -207,7 +218,7 @@ class FSMToolProcessor[T: FSMInterface]:
                     logger.warning(f"Failed to emit intermediate diff: {e}")
 
             # Check for errors
-            if (error_msg := self.fsm_app.maybe_error()):
+            if hasattr(self.fsm_app, 'maybe_error') and (error_msg := self.fsm_app.maybe_error()):
                 return CommonToolResult(content=f"FSM while processing feedback: {error_msg}", is_error=True)
 
             # Prepare result
@@ -367,7 +378,7 @@ async def main(initial_prompt: str = "A simple greeting app that says hello in f
 
             logger.debug(f"New messages: {new_messages}")
             if new_messages:
-                current_messages += new_messages
+                current_messages.extend(new_messages[0] if isinstance(new_messages, tuple) else new_messages)
 
             logger.info(f"Iteration completed: {len(current_messages) - 1}")
 
