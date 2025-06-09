@@ -50,7 +50,14 @@ def _guess_llm_backend(model_name: str) -> LLMBackend:
         case ("gemini-flash" | "gemini-pro" | "gemini-flash-lite"):
             if os.getenv("GEMINI_API_KEY"):
                 return "gemini"
-            raise ValueError("Gemini backend requires GEMINI_API_KEY to be set")
+            if os.getenv("AWS_SECRET_ACCESS_KEY") or os.getenv("PREFER_BEDROCK"):
+                logger.warning(f"GEMINI_API_KEY not found for {model_name}, falling back to bedrock")
+                return "bedrock"
+            if os.getenv("ANTHROPIC_API_KEY"):
+                logger.warning(f"GEMINI_API_KEY not found for {model_name}, falling back to anthropic")
+                return "anthropic"
+            logger.warning(f"No API keys found for {model_name}, defaulting to bedrock")
+            return "bedrock"
         case _:
             raise ValueError(f"Unknown model name: {model_name}")
 
@@ -120,7 +127,11 @@ def get_llm_client(
             },
     }
 
-    chosen_model = models_map[model_name][backend]
+    if model_name in ("gemini-flash", "gemini-pro", "gemini-flash-lite") and backend in ("bedrock", "anthropic"):
+        chosen_model = models_map["sonnet"][backend]
+        logger.info(f"Using sonnet model as fallback for {model_name}")
+    else:
+        chosen_model = models_map[model_name][backend]
 
     match backend:
         case "bedrock" | "anthropic":

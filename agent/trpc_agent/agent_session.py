@@ -159,8 +159,17 @@ class TrpcAgentSession(AgentInterface):
             # Processing
             logger.info(f"Last user message: {fsm_message_history[-1].content}")
 
-            flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
-            top_level_agent_llm = get_llm_client(model_name="gemini-flash")
+            try:
+                flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
+            except Exception as e:
+                logger.warning(f"Failed to initialize gemini-flash-lite client: {e}, falling back to sonnet")
+                flash_lite_client = get_llm_client(model_name="sonnet")
+            
+            try:
+                top_level_agent_llm = get_llm_client(model_name="gemini-flash")
+            except Exception as e:
+                logger.warning(f"Failed to initialize gemini-flash client: {e}, falling back to sonnet")
+                top_level_agent_llm = get_llm_client(model_name="sonnet")
 
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(
