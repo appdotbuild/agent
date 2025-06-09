@@ -553,6 +553,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "jinja2" },
     { name = "patch-ng" },
+    { name = "rusty" },
     { name = "sentry-sdk" },
     { name = "tenacity" },
     { name = "ujson" },
@@ -591,6 +592,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=1.18.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "patch-ng", specifier = ">=1.17.4" },
+    { name = "rusty", directory = "../rusty" },
     { name = "sentry-sdk", specifier = ">=2.25.1" },
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "ujson", specifier = ">=5.10.0" },
@@ -1796,6 +1798,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b9/fe/00c78010e3332a6e92762424cf4c1919065707e962232797d0b57fd8267e/ruff-0.11.5-py3-none-win_amd64.whl", hash = "sha256:6c6dc38af3cfe2863213ea25b6dc616d679205732dc0fb673356c2d69608f800", size = 11378665 },
     { url = "https://files.pythonhosted.org/packages/43/7c/c83fe5cbb70ff017612ff36654edfebec4b1ef79b558b8e5fd933bab836b/ruff-0.11.5-py3-none-win_arm64.whl", hash = "sha256:67e241b4314f4eacf14a601d586026a962f4002a475aa702c69980a38087aa4e", size = 10460287 },
 ]
+
+[[package]]
+name = "rusty"
+version = "0.1.0"
+source = { directory = "../rusty" }
 
 [[package]]
 name = "s3transfer"

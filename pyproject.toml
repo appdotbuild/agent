@@ -3,13 +3,14 @@ name = "appdotbuild-server"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["fullstack-agent"]
+dependencies = ["fullstack-agent", "rusty"]
 
 [tool.uv.sources]
 fullstack-agent = { workspace = true }
+rusty = { workspace = true }
 
 [tool.uv.workspace]
-members = ["agent/"]
+members = ["agent/", "rusty/"]
 
 [tool.ruff]
 exclude = [

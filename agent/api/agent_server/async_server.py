@@ -35,7 +35,7 @@ from api.agent_server.models import (
 from api.agent_server.interface import AgentInterface
 from trpc_agent.agent_session import TrpcAgentSession
 from api.agent_server.template_diff_impl import TemplateDiffAgentImplementation
-from api.config import CONFIG
+from rusty import Config as CONFIG
 
 from log import get_logger, configure_uvicorn_logging, set_trace_id, clear_trace_id
 
