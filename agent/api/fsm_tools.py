@@ -48,7 +48,7 @@ class FSMToolProcessor[T: FSMInterface]:
     fsm_app: T | None
     settings: Dict[str, Any]
 
-    def __init__(self, client: dagger.Client, fsm_class: type[T], fsm_app: T | None = None, settings: Dict[str, Any] | None = None):
+    def __init__(self, client: dagger.Client, fsm_class: type[T], fsm_app: T | None = None, settings: Dict[str, Any] | None = None, event_callback: Callable[[str], Awaitable[None]] | None = None):
         """
         Initialize the FSM Tool Processor
 
@@ -56,11 +56,13 @@ class FSMToolProcessor[T: FSMInterface]:
             fsm_class: FSM application class to use
             fsm_app: Optional existing FSM application instance
             settings: Optional dictionary of settings for the FSM/LLM
+            event_callback: Optional callback to emit intermediate SSE events with diffs
         """
         self.fsm_class = fsm_class
         self.fsm_app = fsm_app
         self.settings = settings or {}
         self.client = client
+        self.event_callback = event_callback
 
         # Define tool definitions for the AI agent using the common Tool structure
         self.tool_definitions: list[Tool] = [
@@ -161,6 +163,13 @@ class FSMToolProcessor[T: FSMInterface]:
             await self.fsm_app.confirm_state()
             current_state = self.fsm_app.current_state
 
+            if self.event_callback and self.fsm_app.fsm.context.files:
+                try:
+                    intermediate_diff = await self.fsm_app.get_diff_with(self.fsm_app.fsm.context.files)
+                    await self.event_callback(intermediate_diff)
+                except Exception as e:
+                    logger.warning(f"Failed to emit intermediate diff: {e}")
+
             # Check for errors
             if (error_msg := self.fsm_app.maybe_error()):
                 return CommonToolResult(content=f"FSM confirmation failed: {error_msg}", is_error=True)
@@ -189,6 +198,13 @@ class FSMToolProcessor[T: FSMInterface]:
             logger.info("Providing feedback")
             await self.fsm_app.apply_changes(feedback)
             new_state = self.fsm_app.current_state
+
+            if self.event_callback and self.fsm_app.fsm.context.files:
+                try:
+                    intermediate_diff = await self.fsm_app.get_diff_with(self.fsm_app.fsm.context.files)
+                    await self.event_callback(intermediate_diff)
+                except Exception as e:
+                    logger.warning(f"Failed to emit intermediate diff: {e}")
 
             # Check for errors
             if (error_msg := self.fsm_app.maybe_error()):

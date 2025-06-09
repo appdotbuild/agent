@@ -1,5 +1,6 @@
 import re
 import logging
+from typing import Callable, Awaitable
 from core.base_node import Node
 from core.workspace import ExecResult
 from core.actors import BaseData
@@ -23,7 +24,7 @@ class ParseFiles:
 parse_files = ParseFiles()
 
 
-async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
+async def run_write_files(node: Node[BaseData], event_callback: Callable[[dict[str, str]], Awaitable[None]] | None = None) -> TextRaw | None:
     errors = []
     files_written = 0
 
@@ -44,6 +45,11 @@ async def run_write_files(node: Node[BaseData]) -> TextRaw | None:
 
     if files_written > 0:
         logger.debug(f"Written {files_written} files to workspace")
+        if event_callback and node.data.files:
+            try:
+                await event_callback(node.data.files)
+            except Exception as e:
+                logger.warning(f"Failed to emit intermediate files: {e}")
 
     if errors:
         errors.append(f"Only those files should be written: {node.data.workspace.allowed}")
