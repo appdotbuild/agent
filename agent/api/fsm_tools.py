@@ -1,7 +1,4 @@
-from typing import Awaitable, Callable, Protocol, runtime_checkable, Dict, Any, Tuple, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
+from typing import Awaitable, Callable, Protocol, runtime_checkable, Dict, Any, Tuple
 import anyio
 import dagger
 from fire import Fire
