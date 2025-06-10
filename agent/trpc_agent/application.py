@@ -98,7 +98,7 @@ class FSMApplication:
             "1. Application draft. Contains types, database tables and handler declarations only.",
             "2. Core backend implementations and application frontend.",
             "",
-            "The result application will be based on Typescript, Drizzle, tRPC and React."
+            "The result application will be based on Typescript, Drizzle, tRPC and React. The list of available libraries is limited but sufficient to build CRUD apps."
         ])
 
     @classmethod
@@ -194,7 +194,7 @@ class FSMApplication:
                 FSMState.REVIEW_APPLICATION: State(
                     on={
                         FSMEvent("CONFIRM"): FSMState.COMPLETE,
-                        FSMEvent("FEEDBACK"): FSMState.APPLICATION,
+                        FSMEvent("FEEDBACK"): FSMState.APPLY_FEEDBACK,
                     },
                 ),
                 FSMState.APPLY_FEEDBACK: State(
