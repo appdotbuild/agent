@@ -164,7 +164,6 @@ class TrpcAgentSession(AgentInterface):
                     agent_state["fsm_state"] = await self.processor_instance.fsm_app.fsm.dump()
 
                 if not agent_state["metadata"]["template_diff_sent"] and self.processor_instance.fsm_app is not None:
-                    logger.info("GENERATING APP NAME")
                     prompt = self.processor_instance.fsm_app.fsm.context.user_prompt
                     app_name = await generate_app_name(prompt, flash_lite_client)
                     # Communicate the app name and commit message and template diff to the client
