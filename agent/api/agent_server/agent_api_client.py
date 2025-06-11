@@ -374,8 +374,8 @@ def get_all_files_from_project_dir(project_dir_path: str) -> List[FileEntry]:
 
     for root, _, files in os.walk(project_dir_path):
         for filename in files:
-            # Exclude common problematic/temporary files
-            if filename.startswith('.') or filename.endswith(('.patch', '.swp', '.swo', '.rej')):
+            # Exclude common problematic/temporary files but allow .gitignore
+            if (filename.startswith('.') and filename != '.gitignore') or filename.endswith(('.patch', '.swp', '.swo', '.rej')):
                 continue
             
             filepath = os.path.join(root, filename)
