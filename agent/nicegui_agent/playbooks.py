@@ -75,9 +75,11 @@ To facilitate testing nicegui provides a set of utilities.
 ```
 # in application code
 ui.label('Hello World!').mark('greeting')
+ui.upload(on_upload=receive_file)
 
 # in tests
-await user.should_see(marker='greeting')
+await user.should_see(marker='greeting') # filter by marker
+await user.should_see(ui.upload) # filter by kind
 ```
 2. interaction functions
 ```

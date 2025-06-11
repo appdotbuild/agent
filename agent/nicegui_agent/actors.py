@@ -257,10 +257,13 @@ class NiceguiActor(BaseActor, LLMActor):
                         result.append(ToolUseResult.from_tool_use(block, "success"))
                     case "uv_add":
                         packages = block.input["packages"] # pyright: ignore[reportIndexIssue]
-                        exec_res = await node.data.workspace.exec_mut(["uv", "add", "\n".join(packages)])
+                        exec_res = await node.data.workspace.exec_mut(["uv", "add", " ".join(packages)])
                         if exec_res.exit_code != 0:
                             result.append(ToolUseResult.from_tool_use(block, f"Failed to add packages: {exec_res.stderr}", is_error=True))
                         else:
+                            node.data.files.update({
+                                "pyproject.toml": await node.data.workspace.read_file("pyproject.toml")
+                            })
                             result.append(ToolUseResult.from_tool_use(block, "success"))
                     case "complete":
                         if not self.has_modifications(node):
@@ -303,7 +306,7 @@ class NiceguiActor(BaseActor, LLMActor):
     async def run_checks(self, node: Node[BaseData], user_prompt: str) -> str | None:
         pytest_result = await node.data.workspace.exec(["uv", "run", "pytest"])
         if pytest_result.exit_code != 0:
-            return f"Pytest errors:\n{pytest_result.stdout}\n{pytest_result.stderr}"
+            return f"{pytest_result.stdout}\n{pytest_result.stderr}"
         return None
 
     @property
