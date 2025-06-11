@@ -158,6 +158,9 @@ model AgentRequest {
   @doc("Unique identifier for this request/response cycle.")
   traceId: string;
 
+  @doc("Unique identifier of the template the agent supports.")
+  templateId?: string;
+
   @doc("The full state of the Agent Server to restore from.")
   agentState?: Record<string, unknown> | null;
 
@@ -189,6 +192,7 @@ interface MessageOperations {
   - allMessages: [str] - history of all user messages
   - applicationId: str - required for Agent Server for tracing
   - traceId: str - required - a string used in SSE events
+  - templateId: str - optional an ID of the template to use in the agent
   - agentState: {..} or null - the full state of the Agent to restore from
   - settings: {...} - json with settings with number of iterations etc
 
