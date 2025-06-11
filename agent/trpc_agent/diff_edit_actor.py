@@ -187,6 +187,12 @@ class EditActor(BaseActor, LLMActor):
         if solution is None:
             logger.error("EditActor failed to find a solution")
             raise ValueError("No solutions found")
+        
+        # Check if no modifications were made and mark the result accordingly
+        if not self.has_modifications(solution):
+            logger.info("EditActor completed with no modifications")
+            solution.data.no_changes_applied = True
+        
         return solution
 
     def select(self, node: Node[BaseData]) -> list[Node[BaseData]]:

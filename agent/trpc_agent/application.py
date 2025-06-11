@@ -127,6 +127,14 @@ class FSMApplication:
                 for key, node in result.items():
                     ctx.files.update(agg_node_files(node))
 
+        async def update_node_files_and_check_changes(ctx: ApplicationContext, result: Node[BaseData] | Dict[str, Node[BaseData]]) -> None:
+            """Update files and check if EditActor reported no changes"""
+            logger.info("Updating context files from result and checking for no-changes flag")
+            ctx.files.update(agg_node_files(result))
+            if hasattr(result.data, 'no_changes_applied') and result.data.no_changes_applied:
+                logger.info("EditActor reported no changes were applied")
+                setattr(ctx, '_edit_no_changes', True)
+
         async def set_error(ctx: ApplicationContext, error: Exception) -> None:
             """Set error in context"""
             # Use logger.exception to include traceback
@@ -203,7 +211,7 @@ class FSMApplication:
                         "input_fn": lambda ctx: (ctx.files, ctx.user_prompt, ctx.feedback_data),
                         "on_done": {
                             "target": FSMState.COMPLETE,
-                            "actions": [update_node_files]
+                            "actions": [update_node_files_and_check_changes]
                         },
                         "on_error": {
                             "target": FSMState.FAILURE,
@@ -235,6 +243,11 @@ class FSMApplication:
 
     def maybe_error(self) -> str | None:
         return self.fsm.context.error
+
+    @property
+    def _no_changes_applied(self) -> bool:
+        """Check if EditActor reported that no changes were applied"""
+        return hasattr(self.fsm.context, '_edit_no_changes') and getattr(self.fsm.context, '_edit_no_changes', False)
 
     @property
     def current_state(self) -> str:
