@@ -265,7 +265,12 @@ class FSMToolProcessor[T: FSMInterface]:
             case (_, app) if app and app.maybe_error():
                 fsm_status = FSMStatus.FAILED
             case (_, app) if app and app.is_completed:
-                fsm_status = FSMStatus.COMPLETED
+                if (app.current_state == "complete" and 
+                    hasattr(app, '_no_changes_applied') and 
+                    app._no_changes_applied):
+                    fsm_status = FSMStatus.REFINEMENT_REQUEST  # No changes made, request refinement
+                else:
+                    fsm_status = FSMStatus.COMPLETED
             case ([], app):
                 fsm_status = FSMStatus.REFINEMENT_REQUEST # no tools used, always exit
             case _:
