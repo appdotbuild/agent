@@ -6,6 +6,12 @@ RUN npm install
 COPY client/ ./
 RUN npm run build
 
+# Development stage for server (with SDK for dotnet watch)
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS development
+WORKDIR /app
+EXPOSE 5000
+# This stage will have source code mounted at /app/server
+
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 EXPOSE 5000
