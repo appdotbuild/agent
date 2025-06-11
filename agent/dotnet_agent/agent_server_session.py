@@ -4,18 +4,14 @@
 This module provides the DotNetAgentSession class that implements the AgentInterface
 protocol for use with the async agent server.
 """
-import os
-import json
-import logging
 from typing import Dict, Any, Optional, List
 import dagger
 from anyio.streams.memory import MemoryObjectSendStream
-import hashlib
 
 from api.agent_server.interface import AgentInterface
 from api.agent_server.models import (
     AgentSseEvent, AgentMessage, AgentStatus, MessageKind, 
-    AgentRequest, ConversationMessage, UserMessage, 
+    AgentRequest, UserMessage, 
     ExternalContentBlock, DiffStatEntry
 )
 from dotnet_agent.application import DotNetFSMApplication, FSMState
@@ -124,7 +120,6 @@ class DotNetAgentSession(AgentInterface):
         """Send stage result event."""
         
         current_state = self.fsm_app.current_state
-        output = self.fsm_app.state_output
         
         # Generate content message based on state
         if current_state == FSMState.DRAFT:
@@ -156,7 +151,6 @@ class DotNetAgentSession(AgentInterface):
         """Send review result event."""
         
         current_state = self.fsm_app.current_state
-        output = self.fsm_app.state_output
         
         if current_state == FSMState.REVIEW_DRAFT:
             content_msg = "📋 .NET application draft ready for review. The structure includes models, DTOs, Entity Framework DbContext, and API controller stubs."
