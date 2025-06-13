@@ -68,7 +68,8 @@ def generate():
 
 
 def _generate(prompt=None, template_id=None):
-    from tests.test_e2e import run_e2e, DEFAULT_APP_REQUEST
+    from tests.test_e2e import run_e2e
+    from api.agent_server.agent_api_client import DEFAULT_APP_REQUEST
     coloredlogs.install(level="INFO")
     if prompt is None:
         prompt = DEFAULT_APP_REQUEST
