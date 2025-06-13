@@ -24,7 +24,10 @@ class ParseFiles:
 parse_files = ParseFiles()
 
 
-async def run_write_files(node: Node[BaseData], event_callback: Callable[[dict[str, str]], Awaitable[None]] | None = None) -> TextRaw | None:
+async def run_write_files(
+    node: Node[BaseData],
+    event_callback: Callable[[str], Awaitable[None]] | None = None,
+) -> TextRaw | None:
     errors = []
     files_written = 0
 
@@ -45,9 +48,10 @@ async def run_write_files(node: Node[BaseData], event_callback: Callable[[dict[s
 
     if files_written > 0:
         logger.debug(f"Written {files_written} files to workspace")
-        if event_callback and node.data.files:
+        if event_callback:
             try:
-                await event_callback(node.data.files)
+                diff_output = await node.data.workspace.diff(node.data.files)
+                await event_callback(diff_output)
             except Exception as e:
                 logger.warning(f"Failed to emit intermediate files: {e}")
 
