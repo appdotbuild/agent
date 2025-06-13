@@ -28,6 +28,10 @@ def normalize(obj):
                 elif k == "cache_control":
                     # ignore cache_control field used to control caching
                     pass
+                elif k == "event_callback":
+                    pass
+                elif callable(v):
+                    pass
                 elif hasattr(v, "cache_key"):
                     normalized_dict[k] = v.cache_key
                 else:
@@ -35,6 +39,9 @@ def normalize(obj):
             return normalized_dict
         case _ if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
             return normalize(obj.to_dict())
+        case _ if callable(obj):
+            # ignore callable objects as they are not JSON serializable
+            return "__CALLABLE_PLACEHOLDER__"
         case _:
             return obj
 
@@ -210,7 +217,14 @@ class CachedLLM(AsyncLLM):
                 return Completion.from_dict(self._cache[cache_key]["data"])
         
         try:
-            response = await self.client.completion(**request_params)
+            # Filter out parameters that the underlying client may not accept.
+            # Currently only "event_callback" is known to cause issues for some
+            # model implementations (e.g. AnthropicLLM). We strip it to avoid
+            # unexpected TypeError while keeping the argument available for
+            # caching / higher-level coordination.
+            safe_request_params = {k: v for k, v in request_params.items() if k != "event_callback"}
+
+            response = await self.client.completion(**safe_request_params)
             
             async with self.lock:
                 self._cache[cache_key] = {"data": response.to_dict(), "params": norm_params}
