@@ -978,8 +978,10 @@ def cli(host: str = "",
         ):
     if not host:
         with spawn_local_server() as (local_host, local_port):
+            # host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False, template_id: Optional[str] = None
             anyio.run(run_chatbot_client, local_host, local_port, state_file, None, False, template_id, backend="asyncio")
     else:
+        # host: str, port: int, state_file: str, settings: Optional[str] = None, autosave=False, template_id: Optional[str] = None
         anyio.run(run_chatbot_client, host, port, state_file, None, False, template_id, backend="asyncio")
 
 
