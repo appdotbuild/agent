@@ -128,7 +128,7 @@ async def run_e2e(prompt: str, standalone: bool, with_edit=True, template_id=Non
                         new_events, new_request = await client.continue_conversation(
                             previous_events=events,
                             previous_request=request,
-                            message="no changes",
+                            message="make no changes, just describe the app",
                         )
                         empty_diff = latest_unified_diff(new_events)
                         for evt in new_events:
