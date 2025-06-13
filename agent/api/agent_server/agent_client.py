@@ -153,7 +153,7 @@ class AgentApiClient:
             agentState=agent_state,
             allFiles=file_entries,
             templateId=template_id,
-            settings=settings or {"max-iterations": 3}
+            settings=settings
         )
 
     @staticmethod
