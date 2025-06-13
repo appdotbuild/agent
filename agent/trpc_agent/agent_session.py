@@ -134,20 +134,42 @@ class TrpcAgentSession(AgentInterface):
             else:
                 logger.info(f"Initializing new session for trace {self.trace_id}")
 
-            # Unconditional initialization
-            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app)
+            async def emit_intermediate_diff(unified_diff: str) -> None:
+                await self.send_event(
+                    event_tx=event_tx,
+                    status=AgentStatus.RUNNING,
+                    kind=MessageKind.STAGE_RESULT,
+                    content="Generating intermediate files...",
+                    agent_state=agent_state,
+                    unified_diff=unified_diff,
+                    app_name=metadata["app_name"],
+                )
+
             agent_state: AgentState = {
                 "fsm_messages": fsm_message_history,
                 "fsm_state": fsm_state,
                 "metadata": metadata,
             }
+
+            fsm_settings = {**self.settings, 'event_callback': emit_intermediate_diff}
+            
+            self.processor_instance = FSMToolProcessor(self.client, FSMApplication, fsm_app=fsm_app, settings=fsm_settings, event_callback=emit_intermediate_diff)
             snapshot_files = {**fsm_state["context"]["files"]} if fsm_state else {} # pyright: ignore
 
             # Processing
             logger.info(f"Last user message: {fsm_message_history[-1].content}")
 
-            flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
-            top_level_agent_llm = get_llm_client(model_name="gemini-flash")
+            try:
+                flash_lite_client = get_llm_client(model_name="gemini-flash-lite")
+            except Exception as e:
+                logger.warning(f"Failed to initialize gemini-flash-lite client: {e}, falling back to sonnet")
+                flash_lite_client = get_llm_client(model_name="sonnet")
+            
+            try:
+                top_level_agent_llm = get_llm_client(model_name="gemini-flash")
+            except Exception as e:
+                logger.warning(f"Failed to initialize gemini-flash client: {e}, falling back to sonnet")
+                top_level_agent_llm = get_llm_client(model_name="sonnet")
 
             while True:
                 new_messages, fsm_status = await self.processor_instance.step(

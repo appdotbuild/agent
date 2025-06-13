@@ -134,7 +134,11 @@ class FSMApplication:
             ctx.error = str(error)
 
         llm = get_llm_client()
-        vlm = get_llm_client(model_name="gemini-flash-lite")
+        try:
+            vlm = get_llm_client(model_name="gemini-flash-lite")
+        except Exception as e:
+            logger.warning(f"Failed to initialize gemini-flash-lite VLM client: {e}, falling back to sonnet")
+            vlm = get_llm_client(model_name="sonnet")
         model_params = settings or {}
         workspace = await Workspace.create(
             client=client,
@@ -143,10 +147,11 @@ class FSMApplication:
             setup_cmd=[["bun", "install"]],
         )
 
-        draft_actor = DraftActor(llm, workspace.clone(), model_params)
+        event_callback = settings.get('event_callback') if settings else None
+        draft_actor = DraftActor(llm, workspace.clone(), model_params, event_callback=event_callback)
         application_actor = ConcurrentActor(
-            handlers=HandlersActor(llm, workspace.clone(), model_params, beam_width=3),
-            frontend=FrontendActor(llm, vlm, workspace.clone(), model_params, beam_width=1, max_depth=20)
+            handlers=HandlersActor(llm, workspace.clone(), model_params, beam_width=3, event_callback=event_callback),
+            frontend=FrontendActor(llm, vlm, workspace.clone(), model_params, beam_width=1, max_depth=20, event_callback=event_callback)
         )
         edit_actor = EditActor(llm, vlm, workspace.clone())
 
